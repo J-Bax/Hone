@@ -14,12 +14,19 @@
 
 .PARAMETER ScenarioPath
     Override the scenario path from config. Optional.
+
+.PARAMETER ScenarioName
+    Logical name for the scenario (e.g. 'stress-products'). When provided the
+    k6 summary file is written as k6-summary-{ScenarioName}-iteration-{N}.json
+    and .NET counter collection is skipped (counters are only gathered for the
+    primary optimization scenario).
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
     [int]$Iteration = 0,
-    [string]$ScenarioPath
+    [string]$ScenarioPath,
+    [string]$ScenarioName
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -35,7 +42,11 @@ if (-not $ScenarioPath) {
 }
 
 $outputDir = Join-Path $repoRoot $config.ScaleTest.OutputPath
-$jsonSummaryPath = Join-Path $outputDir "k6-summary-iteration-$Iteration.json"
+if ($ScenarioName) {
+    $jsonSummaryPath = Join-Path $outputDir "k6-summary-$ScenarioName-iteration-$Iteration.json"
+} else {
+    $jsonSummaryPath = Join-Path $outputDir "k6-summary-iteration-$Iteration.json"
+}
 $baseUrl = $config.Api.BaseUrl
 
 # Ensure output directory exists
@@ -47,6 +58,39 @@ if (-not (Test-Path $outputDir)) {
     -Phase 'measure' -Level 'info' `
     -Message "Running k6 scenario: $ScenarioPath against $baseUrl" `
     -Iteration $Iteration
+
+# ── Start .NET counter collection if enabled (primary scenario only) ─────
+$counterHandle = $null
+$counterMetrics = $null
+$countersEnabled = $config.DotnetCounters -and $config.DotnetCounters.Enabled -and (-not $ScenarioName)
+
+if ($countersEnabled) {
+    # Discover the API process PID from the base URL port
+    $apiPort = ([Uri]$baseUrl).Port
+    $apiProcess = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if ($apiProcess) {
+        $counterHandle = & (Join-Path $PSScriptRoot 'Start-DotnetCounters.ps1') `
+            -ProcessId $apiProcess.OwningProcess `
+            -ConfigPath $ConfigPath `
+            -Iteration $Iteration
+
+        if (-not $counterHandle.Success) {
+            & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+                -Phase 'measure' -Level 'warning' `
+                -Message 'Counter collection failed to start — continuing without counters' `
+                -Iteration $Iteration
+            $counterHandle = $null
+        }
+    }
+    else {
+        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+            -Phase 'measure' -Level 'warning' `
+            -Message "Could not find API process listening on port $apiPort — skipping counter collection" `
+            -Iteration $Iteration
+    }
+}
 
 # Build k6 arguments
 $k6Args = @(
@@ -109,12 +153,20 @@ else {
         -Iteration $Iteration
 }
 
+# ── Stop .NET counter collection ────────────────────────────────────────────
+if ($counterHandle) {
+    $counterMetrics = & (Join-Path $PSScriptRoot 'Stop-DotnetCounters.ps1') `
+        -CounterHandle $counterHandle `
+        -Iteration $Iteration
+}
+
 $result = [ordered]@{
-    Success      = ($k6ExitCode -eq 0 -and $null -ne $metrics)
-    ExitCode     = $k6ExitCode
-    Metrics      = if ($metrics) { [PSCustomObject]$metrics } else { $null }
-    SummaryPath  = $jsonSummaryPath
-    Output       = ($k6Output | Out-String)
+    Success        = ($k6ExitCode -eq 0 -and $null -ne $metrics)
+    ExitCode       = $k6ExitCode
+    Metrics        = if ($metrics) { [PSCustomObject]$metrics } else { $null }
+    CounterMetrics = $counterMetrics
+    SummaryPath    = $jsonSummaryPath
+    Output         = ($k6Output | Out-String)
 }
 
 return [PSCustomObject]$result

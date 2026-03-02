@@ -28,7 +28,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('build', 'verify', 'measure', 'compare', 'analyze', 'fix', 'loop', 'baseline')]
+    [ValidateSet('build', 'verify', 'measure', 'compare', 'analyze', 'fix', 'loop', 'baseline', 'counters')]
     [string]$Phase,
 
     [Parameter(Mandatory)]

@@ -19,9 +19,15 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
+// Deterministic ID generation for reproducible traffic patterns.
+function seededId(max, salt) {
+  const h = ((__VU * 997 + __ITER * 8191 + salt * 127) * 2654435761) >>> 0;
+  return (h % max) + 1;
+}
+
 export default function () {
   // Mix of endpoints to simulate realistic marketplace traffic
-  const randomId = Math.floor(Math.random() * 100) + 1;
+  const randomId = seededId(100, 1);
   const sessionId = `k6-stress-${__VU}-${__ITER}`;
 
   const endpoints = [
@@ -32,8 +38,8 @@ export default function () {
     `${BASE_URL}/api/products/by-category/Electronics`,
     `${BASE_URL}/api/categories`,
     // Review endpoints
-    `${BASE_URL}/api/reviews/by-product/${Math.floor(Math.random() * 500) + 1}`,
-    `${BASE_URL}/api/reviews/average/${Math.floor(Math.random() * 500) + 1}`,
+    `${BASE_URL}/api/reviews/by-product/${seededId(500, 2)}`,
+    `${BASE_URL}/api/reviews/average/${seededId(500, 3)}`,
     // Cart endpoint
     `${BASE_URL}/api/cart/${sessionId}`,
     // Order endpoints
@@ -46,14 +52,15 @@ export default function () {
     `${BASE_URL}/Orders`,
   ];
 
-  const endpoint = endpoints[Math.floor(Math.random() * endpoints.length)];
+  const endpointIndex = (seededId(endpoints.length, 4) - 1);
+  const endpoint = endpoints[endpointIndex];
   const res = http.get(endpoint);
 
   check(res, {
     'status is 200 or 404': (r) => r.status === 200 || r.status === 404,
   });
 
-  sleep(Math.random() * 0.5 + 0.1); // Random 100-600ms think time
+  sleep(0.3); // Fixed think time for reproducibility
 }
 
 export function handleSummary(data) {

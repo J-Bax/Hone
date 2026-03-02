@@ -14,6 +14,13 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
+// Deterministic ID generation for reproducible traffic patterns.
+// Same VU + iteration + salt always produces the same ID across runs.
+function seededId(max, salt) {
+  const h = ((__VU * 997 + __ITER * 8191 + salt * 127) * 2654435761) >>> 0;
+  return (h % max) + 1;
+}
+
 export default function () {
   // ── Product endpoints ──
 
@@ -30,7 +37,7 @@ export default function () {
   sleep(0.5);
 
   // GET /api/products/{id} — get a single product
-  const randomId = Math.floor(Math.random() * 100) + 1;
+  const randomId = seededId(100, 1);
   const getRes = http.get(`${BASE_URL}/api/products/${randomId}`);
   check(getRes, {
     'get product: status 200 or 404': (r) => r.status === 200 || r.status === 404,
@@ -57,7 +64,7 @@ export default function () {
   // ── Review endpoints ──
 
   // GET /api/reviews/by-product/{id} — reviews for a product (loads all, filters in memory)
-  const reviewProductId = Math.floor(Math.random() * 500) + 1;
+  const reviewProductId = seededId(500, 2);
   const reviewsRes = http.get(`${BASE_URL}/api/reviews/by-product/${reviewProductId}`);
   check(reviewsRes, {
     'reviews by product: status 200': (r) => r.status === 200,
@@ -108,8 +115,8 @@ export default function () {
     JSON.stringify({
       customerName: `k6-user-${__VU}`,
       items: [
-        { productId: Math.floor(Math.random() * 100) + 1, quantity: 1 },
-        { productId: Math.floor(Math.random() * 100) + 1, quantity: 2 },
+        { productId: seededId(100, 3), quantity: 1 },
+        { productId: seededId(100, 4), quantity: 2 },
       ],
     }),
     { headers: { 'Content-Type': 'application/json' } }

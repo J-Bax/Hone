@@ -10,8 +10,8 @@ Ensure the following tools are installed and available on your `PATH`:
 |------|----------------|--------|---------|
 | PowerShell | 7.2 | `$PSVersionTable.PSVersion` | `winget install Microsoft.PowerShell` |
 | .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` |
-| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.LocalDB` |
-| k6 | 0.47+ | `k6 version` | `winget install Grafana.k6` |
+| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` |
+| k6 | 0.47+ | `k6 version` | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `gh --version` | `winget install GitHub.cli` |
 
 ### Required Extensions
@@ -34,7 +34,25 @@ gh auth status
 gh auth login
 ```
 
-## Setup
+## Quick Setup (Recommended)
+
+After cloning the repo, run the setup script to install and verify all dependencies in one step:
+
+```powershell
+git clone https://github.com/your-org/autotune.git
+cd autotune
+
+# Install everything via winget
+.\Setup-DevEnvironment.ps1
+```
+
+The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, the gh-copilot extension, and the `dotnet-counters` global tool. It also starts LocalDB and restores NuGet packages.
+
+> **Note:** Run in an elevated (Administrator) terminal for winget installs. Restart your terminal afterwards to pick up new `PATH` entries.
+
+## Manual Setup
+
+If you prefer to install dependencies individually, follow the steps below.
 
 ### 1. Clone the Repository
 

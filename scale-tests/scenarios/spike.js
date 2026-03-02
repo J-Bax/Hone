@@ -19,9 +19,15 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
+// Deterministic ID generation for reproducible traffic patterns.
+function seededId(max, salt) {
+  const h = ((__VU * 997 + __ITER * 8191 + salt * 127) * 2654435761) >>> 0;
+  return (h % max) + 1;
+}
+
 export default function () {
   // Hit the heaviest endpoints during spike — including marketplace features
-  const randomId = Math.floor(Math.random() * 100) + 1;
+  const randomId = seededId(100, 1);
 
   const listRes = http.get(`${BASE_URL}/api/products`);
   check(listRes, {

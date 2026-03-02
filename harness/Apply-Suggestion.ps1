@@ -47,6 +47,11 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 $branchName = "$($config.Loop.BranchPrefix)-$Iteration"
 $fullPath = Join-Path $repoRoot $FilePath
 
+# Determine the submodule root for git operations
+$submoduleDir = Join-Path $repoRoot 'sample-api'
+# Strip the 'sample-api/' prefix so paths are relative to the submodule root
+$submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
+
 & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
     -Phase 'fix' -Level 'info' `
     -Message "Applying fix on branch: $branchName — $Description" `
@@ -54,8 +59,8 @@ $fullPath = Join-Path $repoRoot $FilePath
     -Data @{ file = $FilePath; branch = $branchName }
 
 try {
-    # Create and switch to a new branch
-    Push-Location $repoRoot
+    # Create and switch to a new branch inside the submodule
+    Push-Location $submoduleDir
 
     git checkout -b $branchName 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -66,8 +71,8 @@ try {
     # Write the new content
     $NewContent | Out-File -FilePath $fullPath -Encoding utf8 -Force
 
-    # Stage and commit
-    git add $FilePath 2>&1 | Out-Null
+    # Stage and commit (paths relative to submodule root)
+    git add $submoduleRelPath 2>&1 | Out-Null
     git commit -m "autotune(iteration-$Iteration): $Description" 2>&1 | Out-Null
 
     $result = [ordered]@{

@@ -62,20 +62,25 @@ $prompt = @"
 I am optimizing a .NET 6 Web API for performance. Here are the current results:
 
 ## Current Performance (Iteration $Iteration)
-- p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms (target: $($config.Thresholds.P95LatencyMs)ms)
-- Requests/sec: $([math]::Round($CurrentMetrics.HttpReqs.Rate, 1)) (target: $($config.Thresholds.MinRequestsPerSec))
+- p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
+- Requests/sec: $([math]::Round($CurrentMetrics.HttpReqs.Rate, 1))
 - Error rate: $([math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2))%
 - Improvement vs baseline: $($ComparisonResult.ImprovementPct)%
 
 ## Baseline Performance
 - p95 Latency: $($BaselineMetrics.HttpReqDuration.P95)ms
 - Requests/sec: $([math]::Round($BaselineMetrics.HttpReqs.Rate, 1))
+- Error rate: $([math]::Round($BaselineMetrics.HttpReqFailed.Rate * 100, 2))%
 
 ## Source Code (Controllers)
 $($sourceContext -join "`n`n")
 
 ## Task
-Suggest ONE specific, targeted code change to improve the p95 latency or throughput.
+Suggest ONE specific, targeted code change that will improve at least one of
+these metrics (lower p95 latency, higher RPS, or lower error rate) WITHOUT
+regressing any other metric. I need a measurable improvement from the current
+values — there are no fixed targets, just make it better.
+
 Focus on the most impactful optimization. Provide the exact file to modify and the
 complete replacement code. Common optimization patterns to consider:
 - Adding database indexes
@@ -86,7 +91,7 @@ complete replacement code. Common optimization patterns to consider:
 
 Respond with:
 1. The file path to modify
-2. A brief explanation of the change
+2. A brief explanation of the change and which metric it should improve
 3. The complete new file content
 "@
 

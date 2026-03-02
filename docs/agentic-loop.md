@@ -132,8 +132,16 @@ Compares the current iteration's metrics against the baseline (from `Get-Perform
 | All thresholds met | Exit loop — success |
 | P95 latency increased > 10% from previous iteration | Rollback branch, abort — regression detected |
 | Error rate exceeds threshold | Rollback branch, abort — reliability regression |
+| No performance change but CPU or working set reduced ≥ 5% | Continue (efficiency tiebreaker) — reset stale count |
 | Iteration count = max iterations | Exit loop — limit reached |
 | Otherwise | Continue to Analyze phase |
+
+> **Efficiency tiebreaker**: When performance metrics (p95, RPS, error rate) are flat — no
+> improvement and no regression — the loop checks OS-level resource usage. If average CPU
+> or peak working set decreased beyond the configured threshold (default 5%), the iteration
+> is accepted and the stale counter resets. This prevents the loop from stopping prematurely
+> when there are genuine efficiency gains to pursue. Only CPU and working set are evaluated
+> because these are the resources that matter on a shared-VM architecture.
 
 ### Phase 5: Analyze (Copilot)
 
@@ -165,8 +173,26 @@ The loop then increments the iteration counter and returns to Phase 1 (Build).
 |------|---------|--------|
 | **Success** | All performance thresholds met | Final branch has all optimizations |
 | **Regression** | An optimization broke functionality or degraded performance | Previous branch is the best |
+| **No Improvement** | No performance or efficiency gain for consecutive iterations | Best iteration branch identified in summary |
 | **Limit** | Max iterations reached without meeting all targets | Best iteration branch identified in summary |
 | **Build Error** | Code doesn't compile | Manual intervention needed |
+
+> **Note**: Efficiency-only improvements (CPU or working set reduction with flat performance)
+> reset the stale iteration counter, preventing a premature `No Improvement` exit.
+
+## Future: Efficiency-Only Optimization Phase
+
+Once the performance optimization loop converges (exits with `No Improvement` and the
+efficiency tiebreaker can no longer find gains), a second optimization phase could target
+resource efficiency as the primary goal:
+
+1. **Primary acceptance criteria**: CPU usage or working set must decrease
+2. **Guard rails**: p95 latency, RPS, and error rate must not regress beyond tolerance
+3. **Exit**: When no further efficiency gain can be found
+
+This would allow the harness to first maximize throughput and latency, then minimize the
+resource cost of delivering that performance — directly optimizing for shared-VM density.
+This phase is not yet implemented.
 
 ## Logging
 

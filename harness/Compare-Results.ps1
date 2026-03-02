@@ -1,10 +1,12 @@
 <#
 .SYNOPSIS
-    Compares current performance metrics against baseline and thresholds.
+    Compares current performance metrics against previous iteration using
+    relative improvement / regression logic.
 
 .DESCRIPTION
-    Evaluates whether performance targets are met, whether a regression occurred
-    compared to the previous iteration, and outputs a structured comparison report.
+    Evaluates whether at least one metric improved without any metric regressing
+    beyond the configured tolerance.  There are no absolute targets — the loop
+    keeps running as long as it can make things better.
 
 .PARAMETER CurrentMetrics
     PSCustomObject with current iteration metrics (from Invoke-ScaleTests.ps1).
@@ -13,7 +15,16 @@
     PSCustomObject with baseline metrics (from Get-PerformanceBaseline.ps1).
 
 .PARAMETER PreviousMetrics
-    PSCustomObject with previous iteration metrics. Optional for first iteration.
+    PSCustomObject with previous iteration metrics. For the first iteration
+    the baseline is used as the previous reference.
+
+.PARAMETER CurrentCounterMetrics
+    PSCustomObject with .NET counter metrics for this iteration.
+
+.PARAMETER PreviousCounterMetrics
+    PSCustomObject with .NET counter metrics from the previous iteration.
+    For the first iteration the baseline counter data is not available,
+    so the efficiency tiebreaker is skipped.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
@@ -31,6 +42,10 @@ param(
 
     [PSCustomObject]$PreviousMetrics,
 
+    [PSCustomObject]$CurrentCounterMetrics,
+
+    [PSCustomObject]$PreviousCounterMetrics,
+
     [string]$ConfigPath,
 
     [int]$Iteration = 0
@@ -41,89 +56,224 @@ if (-not $ConfigPath) {
 }
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
-$thresholds = $config.Thresholds
+$tolerances = $config.Tolerances
 
 & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
-    -Phase 'compare' -Level 'info' -Message 'Comparing performance metrics' `
+    -Phase 'compare' -Level 'info' -Message 'Comparing performance metrics (relative mode)' `
     -Iteration $Iteration
 
-# ── Check thresholds ────────────────────────────────────────────────────────
-$p95Met = $CurrentMetrics.HttpReqDuration.P95 -le $thresholds.P95LatencyMs
-$rpsMet = $CurrentMetrics.HttpReqs.Rate -ge $thresholds.MinRequestsPerSec
-$errorMet = $CurrentMetrics.HttpReqFailed.Rate -le $thresholds.MaxErrorRate
-$allTargetsMet = $p95Met -and $rpsMet -and $errorMet
+# Use baseline as reference when there is no previous iteration
+$reference = if ($PreviousMetrics) { $PreviousMetrics } else { $BaselineMetrics }
 
-# ── Check for regression vs previous iteration ─────────────────────────────
-$regression = $false
-$regressionDetail = ''
+# ── Per-metric helpers ──────────────────────────────────────────────────────
 
-if ($PreviousMetrics) {
-    $previousP95 = $PreviousMetrics.HttpReqDuration.P95
-    $currentP95 = $CurrentMetrics.HttpReqDuration.P95
+function Get-PctChange([double]$Current, [double]$Previous) {
+    if ($Previous -eq 0) { return 0 }
+    return ($Current - $Previous) / $Previous
+}
 
-    if ($previousP95 -gt 0) {
-        $pctChange = ($currentP95 - $previousP95) / $previousP95
-        if ($pctChange -gt $thresholds.MaxRegressionPct) {
-            $regression = $true
-            $regressionDetail = "p95 regressed by $([math]::Round($pctChange * 100, 1))% " +
-                "(was $($previousP95)ms, now $($currentP95)ms)"
+# ── Calculate per-metric deltas vs reference ────────────────────────────────
+
+# p95 latency  – lower is better
+$p95Current  = $CurrentMetrics.HttpReqDuration.P95
+$p95Previous = $reference.HttpReqDuration.P95
+$p95Change   = Get-PctChange $p95Current $p95Previous          # negative = improved
+$p95Improved = $p95Change -le -$tolerances.MinImprovementPct   # improved beyond noise
+$p95Regressed = $p95Change -gt $tolerances.MaxRegressionPct    # regressed beyond tolerance
+
+# RPS – higher is better
+$rpsCurrent  = $CurrentMetrics.HttpReqs.Rate
+$rpsPrevious = $reference.HttpReqs.Rate
+$rpsChange   = Get-PctChange $rpsCurrent $rpsPrevious          # positive = improved
+$rpsImproved = $rpsChange -ge $tolerances.MinImprovementPct
+$rpsRegressed = $rpsChange -lt -$tolerances.MaxRegressionPct
+
+# Error rate – lower is better
+$errCurrent  = $CurrentMetrics.HttpReqFailed.Rate
+$errPrevious = $reference.HttpReqFailed.Rate
+$errChange   = Get-PctChange $errCurrent $errPrevious          # negative = improved
+# For error rate, only flag improvement if the absolute change is meaningful
+$errImproved  = ($errChange -le -$tolerances.MinImprovementPct) -and ($errPrevious -gt 0)
+$errRegressed = ($errChange -gt $tolerances.MaxRegressionPct) -and ($errCurrent -gt 0)
+
+# ── Aggregate performance decisions ─────────────────────────────────────────
+
+$anyImproved  = $p95Improved -or $rpsImproved -or $errImproved
+$anyRegressed = $p95Regressed -or $rpsRegressed -or $errRegressed
+
+# ── Efficiency tiebreaker (CPU + Working Set) ───────────────────────────────
+# When performance is flat (no improvement, no regression), check whether
+# OS-level resource usage decreased.  Only CpuUsage.Avg and WorkingSetMB.Max
+# are evaluated — these represent real shared-VM resource contention.
+
+$efficiencyConfig   = $tolerances.Efficiency
+$efficiencyEnabled  = $efficiencyConfig -and $efficiencyConfig.Enabled
+$cpuImproved        = $false
+$workingSetImproved = $false
+$efficiencyImproved = $false
+$tiebreakerUsed     = $false
+$efficiencyDeltas   = $null
+
+$counterReference = if ($PreviousCounterMetrics) { $PreviousCounterMetrics } else { $null }
+
+if ($efficiencyEnabled -and $CurrentCounterMetrics -and $counterReference) {
+    # CPU average — lower is better (negative change = improved)
+    $cpuCurrent  = $CurrentCounterMetrics.Runtime.CpuUsage.Avg
+    $cpuPrevious = $counterReference.Runtime.CpuUsage.Avg
+    $cpuChange   = Get-PctChange $cpuCurrent $cpuPrevious
+    $cpuImproved = $cpuChange -le -$efficiencyConfig.MinCpuReductionPct
+
+    # Working set peak — lower is better (negative change = improved)
+    $wsCurrent   = $CurrentCounterMetrics.Runtime.WorkingSetMB.Max
+    $wsPrevious  = $counterReference.Runtime.WorkingSetMB.Max
+    $wsChange    = Get-PctChange $wsCurrent $wsPrevious
+    $workingSetImproved = $wsChange -le -$efficiencyConfig.MinWorkingSetReductionPct
+
+    $efficiencyImproved = $cpuImproved -or $workingSetImproved
+
+    $efficiencyDeltas = [ordered]@{
+        CpuUsage = [ordered]@{
+            Current   = [math]::Round($cpuCurrent, 2)
+            Previous  = [math]::Round($cpuPrevious, 2)
+            ChangePct = [math]::Round($cpuChange * 100, 1)
+            Improved  = $cpuImproved
+        }
+        WorkingSet = [ordered]@{
+            Current   = [math]::Round($wsCurrent, 2)
+            Previous  = [math]::Round($wsPrevious, 2)
+            ChangePct = [math]::Round($wsChange * 100, 1)
+            Improved  = $workingSetImproved
         }
     }
 }
 
-# ── Calculate improvement vs baseline ───────────────────────────────────────
+# Tiebreaker: performance flat + efficiency improved → accept as improved
+$tiebreakerUsed = (-not $anyImproved) -and (-not $anyRegressed) -and $efficiencyImproved
+
+$regressionDetails = @()
+if ($p95Regressed) {
+    $regressionDetails += "p95 regressed by $([math]::Round($p95Change * 100, 1))% " +
+        "(was $($p95Previous)ms, now $($p95Current)ms)"
+}
+if ($rpsRegressed) {
+    $regressionDetails += "RPS regressed by $([math]::Round([math]::Abs($rpsChange) * 100, 1))% " +
+        "(was $([math]::Round($rpsPrevious, 1)), now $([math]::Round($rpsCurrent, 1)))"
+}
+if ($errRegressed) {
+    $regressionDetails += "Error rate regressed by $([math]::Round($errChange * 100, 1))% " +
+        "(was $([math]::Round($errPrevious * 100, 2))%, now $([math]::Round($errCurrent * 100, 2))%)"
+}
+
+# ── Improvement vs baseline (informational) ─────────────────────────────────
+
 $baselineP95 = $BaselineMetrics.HttpReqDuration.P95
-$currentP95 = $CurrentMetrics.HttpReqDuration.P95
 $improvementPct = if ($baselineP95 -gt 0) {
-    [math]::Round((($baselineP95 - $currentP95) / $baselineP95) * 100, 1)
+    [math]::Round((($baselineP95 - $p95Current) / $baselineP95) * 100, 1)
 } else { 0 }
 
 $result = [ordered]@{
-    AllTargetsMet    = $allTargetsMet
-    Regression       = $regression
-    RegressionDetail = $regressionDetail
-    ImprovementPct   = $improvementPct
-    Checks           = [ordered]@{
+    Improved           = $anyImproved -or $tiebreakerUsed
+    Regression         = $anyRegressed
+    RegressionDetail   = ($regressionDetails -join '; ')
+    ImprovementPct     = $improvementPct
+    EfficiencyImproved = $efficiencyImproved
+    TiebreakerUsed     = $tiebreakerUsed
+    EfficiencyDeltas   = $efficiencyDeltas
+    Deltas             = [ordered]@{
         P95Latency = [ordered]@{
-            Met      = $p95Met
-            Current  = $CurrentMetrics.HttpReqDuration.P95
-            Target   = $thresholds.P95LatencyMs
+            Current    = $p95Current
+            Previous   = $p95Previous
+            ChangePct  = [math]::Round($p95Change * 100, 1)
+            Improved   = $p95Improved
+            Regressed  = $p95Regressed
         }
-        RPS        = [ordered]@{
-            Met      = $rpsMet
-            Current  = $CurrentMetrics.HttpReqs.Rate
-            Target   = $thresholds.MinRequestsPerSec
+        RPS = [ordered]@{
+            Current    = [math]::Round($rpsCurrent, 1)
+            Previous   = [math]::Round($rpsPrevious, 1)
+            ChangePct  = [math]::Round($rpsChange * 100, 1)
+            Improved   = $rpsImproved
+            Regressed  = $rpsRegressed
         }
-        ErrorRate  = [ordered]@{
-            Met      = $errorMet
-            Current  = $CurrentMetrics.HttpReqFailed.Rate
-            Target   = $thresholds.MaxErrorRate
+        ErrorRate = [ordered]@{
+            Current    = $errCurrent
+            Previous   = $errPrevious
+            ChangePct  = [math]::Round($errChange * 100, 1)
+            Improved   = $errImproved
+            Regressed  = $errRegressed
         }
+    }
+    DotnetCounters     = $null
+}
+
+# ── Include .NET counter highlights in comparison ───────────────────────────
+if ($CurrentCounterMetrics) {
+    $result.DotnetCounters = [ordered]@{
+        CpuUsage = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.CpuUsage.Avg
+            Max = $CurrentCounterMetrics.Runtime.CpuUsage.Max
+        }
+        GcHeapSizeMB = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.GcHeapSizeMB.Avg
+            Max = $CurrentCounterMetrics.Runtime.GcHeapSizeMB.Max
+        }
+        Gen0Collections = $CurrentCounterMetrics.Runtime.Gen0Collections.Last
+        Gen1Collections = $CurrentCounterMetrics.Runtime.Gen1Collections.Last
+        Gen2Collections = $CurrentCounterMetrics.Runtime.Gen2Collections.Last
+        GcPauseRatio = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.GcPauseRatio.Avg
+            Max = $CurrentCounterMetrics.Runtime.GcPauseRatio.Max
+        }
+        ThreadPoolThreads = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.ThreadPoolThreads.Avg
+            Max = $CurrentCounterMetrics.Runtime.ThreadPoolThreads.Max
+        }
+        ThreadPoolQueueLength = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.ThreadPoolQueue.Avg
+            Max = $CurrentCounterMetrics.Runtime.ThreadPoolQueue.Max
+        }
+        ExceptionCount     = $CurrentCounterMetrics.Runtime.ExceptionCount.Last
+        WorkingSetMB       = $CurrentCounterMetrics.Runtime.WorkingSetMB.Max
+        AllocRateMB        = $CurrentCounterMetrics.Runtime.AllocRateMB.Avg
     }
 }
 
 # Log the comparison
-$logMessage = "Improvement vs baseline: ${improvementPct}% | " +
-    "p95: $($CurrentMetrics.HttpReqDuration.P95)ms (target: $($thresholds.P95LatencyMs)ms) | " +
-    "RPS: $([math]::Round($CurrentMetrics.HttpReqs.Rate, 1)) (target: $($thresholds.MinRequestsPerSec)) | " +
-    "Errors: $([math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2))% (max: $([math]::Round($thresholds.MaxErrorRate * 100, 2))%)"
+$logMessage = "vs baseline: ${improvementPct}% | " +
+    "p95: $($p95Current)ms ($([math]::Round($p95Change * 100, 1))% vs prev) | " +
+    "RPS: $([math]::Round($rpsCurrent, 1)) ($([math]::Round($rpsChange * 100, 1))% vs prev) | " +
+    "Errors: $([math]::Round($errCurrent * 100, 2))% ($([math]::Round($errChange * 100, 1))% vs prev)"
 
-$level = if ($regression) { 'warning' } elseif ($allTargetsMet) { 'info' } else { 'info' }
+$level = if ($anyRegressed) { 'warning' } elseif ($anyImproved) { 'info' } else { 'info' }
 
 & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
     -Phase 'compare' -Level $level -Message $logMessage `
     -Iteration $Iteration `
-    -Data @{ improvement = $improvementPct; targetsMet = $allTargetsMet; regression = $regression }
+    -Data @{ improvement = $improvementPct; improved = ($anyImproved -or $tiebreakerUsed); regression = $anyRegressed; efficiencyImproved = $efficiencyImproved; tiebreakerUsed = $tiebreakerUsed }
 
-if ($regression) {
+if ($anyRegressed) {
     & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
-        -Phase 'compare' -Level 'warning' -Message "REGRESSION DETECTED: $regressionDetail" `
+        -Phase 'compare' -Level 'warning' `
+        -Message "REGRESSION DETECTED: $($regressionDetails -join '; ')" `
         -Iteration $Iteration
 }
 
-if ($allTargetsMet) {
+if ($anyImproved) {
     & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
-        -Phase 'compare' -Level 'info' -Message 'All performance targets met!' `
+        -Phase 'compare' -Level 'info' -Message 'Improvement detected in at least one metric' `
+        -Iteration $Iteration
+}
+elseif ($tiebreakerUsed) {
+    $tbDetails = @()
+    if ($cpuImproved) { $tbDetails += "CPU avg reduced by $([math]::Round([math]::Abs($cpuChange) * 100, 1))%" }
+    if ($workingSetImproved) { $tbDetails += "Working set reduced by $([math]::Round([math]::Abs($wsChange) * 100, 1))%" }
+    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        -Phase 'compare' -Level 'info' `
+        -Message "Efficiency tiebreaker: $($tbDetails -join '; ')" `
+        -Iteration $Iteration
+}
+elseif (-not $anyRegressed) {
+    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        -Phase 'compare' -Level 'info' -Message 'No meaningful change in any metric (stale iteration)' `
         -Iteration $Iteration
 }
 

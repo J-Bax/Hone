@@ -1,9 +1,4 @@
 {
-  "thresholds": {
-    "p95_latency_ms": 500,
-    "min_requests_per_sec": 100,
-    "max_error_rate_pct": 1.0
-  },
   "scenarios": {
     "baseline": {
       "description": "Steady-state: 50 VUs for 30s",
@@ -18,6 +13,26 @@
     "spike": {
       "description": "Sudden burst: idle → 100 VUs instant",
       "file": "scenarios/spike.js",
+      "use_for_optimization": false
+    },
+    "stress-products": {
+      "description": "Products CRUD lifecycle: 10→200 VUs over 2 min",
+      "file": "scenarios/stress-products.js",
+      "use_for_optimization": false
+    },
+    "stress-orders": {
+      "description": "Orders lifecycle (create, query, status updates): 10→200 VUs over 2 min",
+      "file": "scenarios/stress-orders.js",
+      "use_for_optimization": false
+    },
+    "stress-cart": {
+      "description": "Cart operations (add, read, update qty, remove, clear): 10→200 VUs over 2 min",
+      "file": "scenarios/stress-cart.js",
+      "use_for_optimization": false
+    },
+    "stress-reviews": {
+      "description": "Reviews CRUD lifecycle: 10→200 VUs over 2 min",
+      "file": "scenarios/stress-reviews.js",
       "use_for_optimization": false
     }
   }
