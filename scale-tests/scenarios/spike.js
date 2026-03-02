@@ -1,0 +1,43 @@
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+// Spike scenario: sudden burst to test resilience
+// Idle → instant 100 VUs → back to idle
+export const options = {
+  stages: [
+    { duration: '5s', target: 1 },     // Idle baseline
+    { duration: '1s', target: 100 },    // Instant spike!
+    { duration: '30s', target: 100 },   // Sustained spike
+    { duration: '1s', target: 1 },      // Drop back
+    { duration: '10s', target: 1 },     // Recovery period
+  ],
+  thresholds: {
+    http_req_duration: ['p(95)<2000'],   // p95 under 2s (very lenient for spike)
+    http_req_failed: ['rate<0.10'],       // error rate under 10%
+  },
+};
+
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
+
+export default function () {
+  // Hit the heaviest endpoints during spike
+  const listRes = http.get(`${BASE_URL}/api/products`);
+  check(listRes, {
+    'list: status 200': (r) => r.status === 200,
+  });
+
+  const searchRes = http.get(`${BASE_URL}/api/products/search?q=Product`);
+  check(searchRes, {
+    'search: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.2);
+}
+
+export function handleSummary(data) {
+  return {
+    stdout: textSummary(data, { indent: '  ', enableColors: true }),
+  };
+}
+
+import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.2/index.js';

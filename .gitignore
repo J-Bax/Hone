@@ -1,0 +1,60 @@
+# =============================================================================
+# Autotune .gitignore
+# =============================================================================
+
+# ----- .NET / C# -----
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+**/Properties/launchSettings.json
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+
+# ----- SQL Server -----
+*.mdf
+*.ldf
+
+# ----- PowerShell -----
+*.ps1xml
+
+# ----- k6 -----
+# k6 binary (if downloaded locally)
+k6.exe
+k6
+
+# ----- Node (if any tooling uses it) -----
+node_modules/
+
+# ----- IDE / Editor -----
+.vs/
+.vscode/settings.json
+.vscode/launch.json
+*.swp
+*.swo
+*~
+.idea/
+
+# ----- OS -----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# ----- Autotune Results -----
+# Test results, performance reports, and logs are generated per-run
+results/*
+!results/.gitkeep
