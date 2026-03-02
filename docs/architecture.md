@@ -57,31 +57,62 @@ The core of Autotune. A set of PowerShell scripts that orchestrate the optimizat
 
 ### Target API (`sample-api/`)
 
-A .NET 6 Web API with **intentionally suboptimal patterns** that give the harness real optimization targets:
+A .NET 6 Web API + Razor Pages marketplace with **intentionally suboptimal patterns** that give the harness real optimization targets:
 
 - **N+1 query patterns** — Fetching related data in loops instead of using `.Include()`
-- **Missing database indexes** — No indexes beyond primary keys
+- **Missing database indexes** — No indexes on foreign keys or filter columns
 - **No caching** — Every request hits the database
-- **Synchronous-over-async** — Blocking calls in async contexts
-- **No pagination** — Returns full result sets
+- **No pagination** — API endpoints return full result sets
+- **In-memory filtering** — Loads entire tables then filters in C#
+- **One-by-one operations** — Cart clear deletes items individually with `SaveChanges()` per item
+
+#### Domain Model
+
+The API models a marketplace with products, categories, reviews, orders, and a session-based shopping cart:
+
+| Entity | Seed Data | Key Relationships |
+|--------|-----------|-------------------|
+| Category | 10 | Has many Products |
+| Product | 1,000 | Belongs to Category; has Reviews, OrderItems, CartItems |
+| Review | ~2,000 | Belongs to Product |
+| Order | 100 | Has many OrderItems |
+| OrderItem | ~300 | Belongs to Order and Product |
+| CartItem | 0 (runtime) | Keyed by SessionId + ProductId |
+
+#### API Surface
+
+- **ProductsController** — CRUD + by-category + search (10 endpoints)
+- **ReviewsController** — CRUD + by-product + average rating (6 endpoints)
+- **OrdersController** — List/create/detail/status + by-customer (5 endpoints)
+- **CartController** — Session-based add/get/update/remove/clear (5 endpoints)
+
+#### Razor Pages Frontend
+
+Server-rendered Bootstrap 5 UI (`/Pages`) with product browsing, cart management, checkout, and order history. Adds realistic browser-like load patterns for k6 testing.
 
 ### E2E Tests (`sample-api/SampleApi.Tests/`)
 
-xUnit tests using `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory). These are the **regression gate** — the harness will not proceed past a failing test suite. Tests validate:
+xUnit tests using `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory) with a real LocalDB test database (`AutotuneSampleDb_Tests`). These are the **regression gate** — the harness will not proceed past a failing test suite.
 
-- CRUD operations return correct status codes and data
-- Business rules are enforced
-- Error cases are handled properly
+**43 tests** across 5 test classes sharing a single `SampleApiFactory` via `[Collection("SampleApi")]`:
+
+| Test Class | Count | Covers |
+|-----------|-------|--------|
+| ProductsEndpointTests | 14 | Products + categories CRUD |
+| ReviewsEndpointTests | 8 | Reviews CRUD + by-product + averages |
+| OrdersEndpointTests | 7 | Orders create/detail/status/by-customer |
+| CartEndpointTests | 7 | Cart add/get/update/remove/clear |
+| RazorPagesTests | 7 | All 6 Razor Pages smoke tests |
 
 ### Scale Tests (`scale-tests/`)
 
-k6 scenarios that generate load against the running API:
+k6 scenarios that generate load against the running API and Razor Pages:
 
 | Scenario | Purpose |
 |----------|---------|
-| `baseline.js` | Steady-state: 50 VUs for 30s |
-| `stress.js` | Progressive ramp: 10→200 VUs over 2 min |
-| `spike.js` | Sudden burst: idle → 100 VUs instant |
+| `baseline.js` | Steady-state: 50 VUs for 30s — hits all API endpoints + cart flow + Razor Pages |
+| `stress.js` | Progressive ramp: 10→200 VUs over 2 min — random selection from 14 endpoints |
+| `spike.js` | Sudden burst: idle → 100 VUs instant — reviews, products, and pages |
 
 ### Results (`results/`)
 

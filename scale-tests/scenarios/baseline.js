@@ -15,6 +15,8 @@ export const options = {
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
 export default function () {
+  // ── Product endpoints ──
+
   // GET /api/products — list all products (intentionally slow, no pagination)
   const listRes = http.get(`${BASE_URL}/api/products`);
   check(listRes, {
@@ -51,6 +53,95 @@ export default function () {
   });
 
   sleep(0.5);
+
+  // ── Review endpoints ──
+
+  // GET /api/reviews/by-product/{id} — reviews for a product (loads all, filters in memory)
+  const reviewProductId = Math.floor(Math.random() * 500) + 1;
+  const reviewsRes = http.get(`${BASE_URL}/api/reviews/by-product/${reviewProductId}`);
+  check(reviewsRes, {
+    'reviews by product: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
+
+  // GET /api/reviews/average/{id} — average rating (loads all reviews for product)
+  const avgRes = http.get(`${BASE_URL}/api/reviews/average/${reviewProductId}`);
+  check(avgRes, {
+    'average rating: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
+
+  // ── Cart flow ──
+
+  const sessionId = `k6-session-${__VU}-${__ITER}`;
+
+  // POST /api/cart — add item to cart
+  const addCartRes = http.post(`${BASE_URL}/api/cart`,
+    JSON.stringify({ sessionId, productId: randomId, quantity: 1 }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  check(addCartRes, {
+    'add to cart: status 200 or 201': (r) => r.status === 200 || r.status === 201,
+  });
+
+  sleep(0.3);
+
+  // GET /api/cart/{sessionId} — get cart with N+1 product lookups
+  const cartRes = http.get(`${BASE_URL}/api/cart/${sessionId}`);
+  check(cartRes, {
+    'get cart: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
+
+  // DELETE /api/cart/session/{sessionId} — clear cart (one-by-one deletes)
+  http.del(`${BASE_URL}/api/cart/session/${sessionId}`);
+
+  sleep(0.3);
+
+  // ── Order flow ──
+
+  // POST /api/orders — create order (N+1 product price lookups)
+  const orderRes = http.post(`${BASE_URL}/api/orders`,
+    JSON.stringify({
+      customerName: `k6-user-${__VU}`,
+      items: [
+        { productId: Math.floor(Math.random() * 100) + 1, quantity: 1 },
+        { productId: Math.floor(Math.random() * 100) + 1, quantity: 2 },
+      ],
+    }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  check(orderRes, {
+    'create order: status 201': (r) => r.status === 201,
+  });
+
+  sleep(0.3);
+
+  // ── Razor Pages ──
+
+  const homeRes = http.get(`${BASE_URL}/`);
+  check(homeRes, {
+    'home page: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
+
+  const productsPageRes = http.get(`${BASE_URL}/Products`);
+  check(productsPageRes, {
+    'products page: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
+
+  const detailPageRes = http.get(`${BASE_URL}/Products/Detail/${randomId}`);
+  check(detailPageRes, {
+    'product detail page: status 200': (r) => r.status === 200,
+  });
+
+  sleep(0.3);
 }
 
 export function handleSummary(data) {

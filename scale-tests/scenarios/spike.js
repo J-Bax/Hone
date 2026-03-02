@@ -20,7 +20,9 @@ export const options = {
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
 export default function () {
-  // Hit the heaviest endpoints during spike
+  // Hit the heaviest endpoints during spike — including marketplace features
+  const randomId = Math.floor(Math.random() * 100) + 1;
+
   const listRes = http.get(`${BASE_URL}/api/products`);
   check(listRes, {
     'list: status 200': (r) => r.status === 200,
@@ -29,6 +31,23 @@ export default function () {
   const searchRes = http.get(`${BASE_URL}/api/products/search?q=Product`);
   check(searchRes, {
     'search: status 200': (r) => r.status === 200,
+  });
+
+  // Reviews — heavy N+1 endpoint
+  const reviewsRes = http.get(`${BASE_URL}/api/reviews/by-product/${randomId}`);
+  check(reviewsRes, {
+    'reviews: status 200': (r) => r.status === 200,
+  });
+
+  // Razor Pages — each loads entire tables and filters in memory
+  const homeRes = http.get(`${BASE_URL}/`);
+  check(homeRes, {
+    'home page: status 200': (r) => r.status === 200,
+  });
+
+  const detailRes = http.get(`${BASE_URL}/Products/Detail/${randomId}`);
+  check(detailRes, {
+    'detail page: status 200': (r) => r.status === 200,
   });
 
   sleep(0.2);

@@ -20,13 +20,30 @@ export const options = {
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 
 export default function () {
-  // Mix of endpoints to simulate realistic traffic
+  // Mix of endpoints to simulate realistic marketplace traffic
+  const randomId = Math.floor(Math.random() * 100) + 1;
+  const sessionId = `k6-stress-${__VU}-${__ITER}`;
+
   const endpoints = [
+    // Product endpoints
     `${BASE_URL}/api/products`,
-    `${BASE_URL}/api/products/${Math.floor(Math.random() * 100) + 1}`,
+    `${BASE_URL}/api/products/${randomId}`,
     `${BASE_URL}/api/products/search?q=Product`,
     `${BASE_URL}/api/products/by-category/Electronics`,
     `${BASE_URL}/api/categories`,
+    // Review endpoints
+    `${BASE_URL}/api/reviews/by-product/${Math.floor(Math.random() * 500) + 1}`,
+    `${BASE_URL}/api/reviews/average/${Math.floor(Math.random() * 500) + 1}`,
+    // Cart endpoint
+    `${BASE_URL}/api/cart/${sessionId}`,
+    // Order endpoints
+    `${BASE_URL}/api/orders`,
+    // Razor Pages
+    `${BASE_URL}/`,
+    `${BASE_URL}/Products`,
+    `${BASE_URL}/Products/Detail/${randomId}`,
+    `${BASE_URL}/Cart`,
+    `${BASE_URL}/Orders`,
   ];
 
   const endpoint = endpoints[Math.floor(Math.random() * endpoints.length)];
