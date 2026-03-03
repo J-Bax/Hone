@@ -8,7 +8,7 @@
     between iterations.
 
 .PARAMETER ResultsPath
-    Path to the results directory. Defaults to 'results' at the repo root.
+    Path to the results directory. Defaults to 'sample-api/results' at the repo root.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
@@ -17,7 +17,7 @@
     .\harness\Show-Results.ps1
 
 .EXAMPLE
-    .\harness\Show-Results.ps1 -ResultsPath .\results
+    .\harness\Show-Results.ps1 -ResultsPath .\sample-api\results
 #>
 [CmdletBinding()]
 param(
@@ -122,7 +122,7 @@ function Format-Delta {
 
 Write-Host ""
 Write-Host "  ╔══════════════════════════════════════════════════════════════════════╗" -ForegroundColor DarkCyan
-Write-Host "  ║                    AUTOTUNE PERFORMANCE RESULTS                     ║" -ForegroundColor DarkCyan
+Write-Host "  ║                    HONE PERFORMANCE RESULTS                     ║" -ForegroundColor DarkCyan
 Write-Host "  ╚══════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkCyan
 Write-Host ""
 
@@ -224,7 +224,7 @@ foreach ($iter in $iterations) {
 
 if ($iterations.Count -eq 0 -or ($iterations.Count -eq 1 -and $iterations[0].Iteration -eq 0)) {
     Write-Host "  " -NoNewline
-    Write-Host "  No optimization iterations yet. Run .\harness\Invoke-AutotuneLoop.ps1" -ForegroundColor DarkGray
+    Write-Host "  No optimization iterations yet. Run .\harness\Invoke-HoneLoop.ps1" -ForegroundColor DarkGray
 }
 
 # ── Per-scenario results ────────────────────────────────────────────────────
@@ -391,7 +391,7 @@ if ($latestIter) {
     }
 }
 else {
-    Write-Host "Baseline only — run Invoke-AutotuneLoop.ps1 to optimize" -ForegroundColor DarkGray
+    Write-Host "Baseline only — run Invoke-HoneLoop.ps1 to optimize" -ForegroundColor DarkGray
 }
 
 Write-Host ""

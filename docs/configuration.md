@@ -9,49 +9,82 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
     # ── Target API ──────────────────────────────────────────────
     Api = @{
         # Path to the .NET solution file (relative to repo root)
-        SolutionPath   = 'sample-api/SampleApi.sln'
+        SolutionPath    = 'sample-api/SampleApi.sln'
 
         # Path to the API project directory (relative to repo root)
-        ProjectPath    = 'sample-api/SampleApi'
+        ProjectPath     = 'sample-api/SampleApi'
 
         # Path to the E2E test project directory (relative to repo root)
         TestProjectPath = 'sample-api/SampleApi.Tests'
 
         # URL where the API listens when started
-        BaseUrl        = 'http://localhost:5000'
+        BaseUrl         = 'http://localhost:5000'
 
         # Health check endpoint (GET, must return 200)
-        HealthEndpoint = '/health'
+        HealthEndpoint  = '/health'
 
         # Seconds to wait for API to become healthy after start
-        StartupTimeout = 30
+        StartupTimeout  = 90
     }
 
-    # ── Performance Thresholds ──────────────────────────────────
-    Thresholds = @{
-        # Target p95 latency in milliseconds
-        P95LatencyMs     = 200
+    # ── Performance Tolerances ───────────────────────────────────
+    # Instead of absolute targets, the loop accepts any improvement
+    # and rejects regressions.  It stops when no metric can be improved.
+    Tolerances = @{
+        # Minimum improvement (any single metric) to accept an iteration (0.01 = 1%)
+        MinImprovementPct = 0.01
 
-        # Minimum acceptable requests per second
-        MinRequestsPerSec = 500
+        # Maximum regression allowed per metric before rejecting (0.02 = 2%)
+        MaxRegressionPct  = 0.02
 
-        # Maximum acceptable error rate (0.01 = 1%)
-        MaxErrorRate     = 0.01
+        # Stop after this many consecutive iterations with no improvement
+        StaleIterationsBeforeStop = 2
 
-        # Maximum allowed p95 regression from previous iteration (0.10 = 10%)
-        MaxRegressionPct = 0.10
+        # ── Efficiency Tiebreaker ────────────────────────────────
+        # When performance metrics are flat (no improvement, no regression),
+        # accept the iteration if OS-level resource usage decreased.
+        Efficiency = @{
+            # Enable/disable efficiency tiebreaker
+            Enabled = $true
+
+            # Minimum reduction in avg CPU usage to count as efficiency gain (0.05 = 5%)
+            MinCpuReductionPct       = 0.05
+
+            # Minimum reduction in peak working set to count as efficiency gain (0.05 = 5%)
+            MinWorkingSetReductionPct = 0.05
+        }
     }
 
     # ── Scale Testing ───────────────────────────────────────────
     ScaleTest = @{
-        # Path to the k6 scenario to run on each iteration
-        ScenarioPath = 'scale-tests/scenarios/baseline.js'
+        # Path to the k6 scenario to run on each iteration (primary / optimization)
+        ScenarioPath = 'sample-api/scale-tests/scenarios/baseline.js'
+
+        # JSON file listing all scenarios and their metadata
+        ScenarioRegistryPath = 'sample-api/scale-tests/thresholds.json'
 
         # Path to store k6 JSON summary output
-        OutputPath   = 'results'
+        OutputPath   = 'sample-api/results'
 
         # Additional k6 CLI arguments
         ExtraArgs    = @()
+    }
+
+    # ── .NET Performance Counters ───────────────────────────────
+    DotnetCounters = @{
+        # Enable counter collection during scale tests
+        Enabled = $true
+
+        # Counter providers to collect
+        Providers = @(
+            'System.Runtime'
+            'Microsoft.AspNetCore.Hosting'
+            'Microsoft.AspNetCore.Http.Connections'
+            'System.Net.Http'
+        )
+
+        # Sampling interval in seconds
+        RefreshIntervalSeconds = 1
     }
 
     # ── Agentic Loop ───────────────────────────────────────────
@@ -60,13 +93,13 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
         MaxIterations = 5
 
         # Git branch prefix for optimization branches
-        BranchPrefix  = 'autotune/iteration'
+        BranchPrefix  = 'hone/iteration'
     }
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
         # Directory for log files (relative to repo root)
-        OutputPath = 'results'
+        OutputPath = 'sample-api/results'
 
         # Log level: 'verbose', 'info', 'warning', 'error'
         Level      = 'info'
@@ -98,39 +131,68 @@ Relative path appended to `BaseUrl` for startup health checks. The harness polls
 
 ### Api.StartupTimeout
 
-Maximum number of seconds to wait for the API to become healthy after `dotnet run` is started. If the timeout is exceeded, the iteration is aborted.
+Maximum number of seconds to wait for the API to become healthy after `dotnet run` is started. Default is 90 seconds. If the timeout is exceeded, the iteration is aborted.
 
-### Thresholds.P95LatencyMs
+### Tolerances.MinImprovementPct
 
-Target p95 (95th percentile) response time in milliseconds. When the measured p95 latency is at or below this value, the threshold is considered met.
+Minimum relative improvement required in any single metric (p95 latency, RPS, or error rate) to accept an iteration. Expressed as a decimal (e.g., `0.01` = 1%). If no metric improves by at least this amount, the iteration is considered stale.
 
-### Thresholds.MinRequestsPerSec
+### Tolerances.MaxRegressionPct
 
-Minimum sustained throughput target. Measured as the average requests per second during the k6 scenario.
+Maximum allowed regression per metric before rejecting an iteration. Expressed as a decimal (e.g., `0.02` = 2%). If any metric regresses beyond this threshold, the optimization branch is rolled back.
 
-### Thresholds.MaxErrorRate
+### Tolerances.StaleIterationsBeforeStop
 
-Maximum acceptable HTTP error rate (non-2xx responses). Expressed as a decimal (e.g., `0.01` = 1%).
+Number of consecutive iterations with no meaningful improvement before the loop stops early. Prevents wasting cycles when the optimization surface is exhausted.
 
-### Thresholds.MaxRegressionPct
+### Tolerances.Efficiency
 
-Maximum allowed p95 latency regression from the previous iteration. If p95 increases by more than this percentage, the optimization is considered a regression and the branch is rolled back.
+Efficiency tiebreaker settings, used when performance metrics are flat (neither improving nor regressing). When enabled, an iteration can still be accepted if it reduces resource usage.
+
+- **Enabled** — Toggle the efficiency tiebreaker on or off.
+- **MinCpuReductionPct** — Minimum reduction in average CPU usage to count as an efficiency gain (e.g., `0.05` = 5%).
+- **MinWorkingSetReductionPct** — Minimum reduction in peak working set to count as an efficiency gain (e.g., `0.05` = 5%).
 
 ### ScaleTest.ScenarioPath
 
-Path to the k6 JavaScript scenario file to execute on each measurement phase.
+Path to the primary k6 JavaScript scenario file used for optimization measurements on each iteration.
+
+### ScaleTest.ScenarioRegistryPath
+
+Path to the JSON file listing all available scenarios and their metadata (descriptions, file paths, thresholds, and `use_for_optimization` flags). Used by `Invoke-AllScaleTests.ps1` to run the full diagnostic suite during baseline collection.
+
+### ScaleTest.OutputPath
+
+Directory where k6 JSON summary files are written.
 
 ### ScaleTest.ExtraArgs
 
 Array of additional command-line arguments passed to `k6 run`. For example: `@('--vus', '100', '--duration', '60s')`.
 
+### DotnetCounters.Enabled
+
+Toggle .NET performance counter collection during scale tests. When enabled, `dotnet-counters collect` runs alongside k6, capturing runtime metrics for analysis.
+
+### DotnetCounters.Providers
+
+Array of .NET event counter providers to collect. Default providers:
+
+- `System.Runtime` — GC, thread pool, exception count
+- `Microsoft.AspNetCore.Hosting` — Request rate, duration
+- `Microsoft.AspNetCore.Http.Connections` — Connection metrics
+- `System.Net.Http` — Outbound HTTP client metrics
+
+### DotnetCounters.RefreshIntervalSeconds
+
+Sampling interval in seconds for `dotnet-counters collect`. Lower values give finer granularity but more data.
+
 ### Loop.MaxIterations
 
-Maximum number of build-verify-measure-analyze-fix cycles. The loop stops after this many iterations even if performance targets haven't been fully met.
+Maximum number of build-verify-measure-analyze-fix cycles. The loop stops after this many iterations even if further improvements are possible.
 
 ### Loop.BranchPrefix
 
-Git branch naming prefix. Each iteration creates a branch named `{BranchPrefix}-{N}` (e.g., `autotune/iteration-1`).
+Git branch naming prefix. Each iteration creates a branch named `{BranchPrefix}-{N}` (e.g., `hone/iteration-1`).
 
 ## Overriding at Runtime
 
@@ -138,10 +200,7 @@ The main loop script accepts parameter overrides:
 
 ```powershell
 # Override max iterations
-.\harness\Invoke-AutotuneLoop.ps1 -MaxIterations 10
-
-# Override the p95 target
-.\harness\Invoke-AutotuneLoop.ps1 -P95TargetMs 150
+.\harness\Invoke-HoneLoop.ps1 -MaxIterations 10
 ```
 
 Config file values serve as defaults; command-line parameters take precedence.

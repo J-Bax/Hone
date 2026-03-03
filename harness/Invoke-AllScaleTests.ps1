@@ -3,7 +3,7 @@
     Runs every registered k6 scenario and returns per-scenario results.
 
 .DESCRIPTION
-    Reads the scenario registry (scale-tests/thresholds.json), iterates through
+    Reads the scenario registry (sample-api/scale-tests/thresholds.json), iterates through
     each scenario, and calls Invoke-ScaleTests.ps1 for each one.  The primary
     optimization scenario (use_for_optimization = true) is identified separately
     so callers can decide whether to skip it (it is usually run first by the
@@ -71,7 +71,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     # existing k6-summary-iteration-{N}.json naming is preserved.
     $scenarioNameArg = if ($scenario.use_for_optimization) { $null } else { $name }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Running scenario '$name': $($scenario.description)" `
         -Iteration $Iteration
@@ -88,7 +88,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         $result = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') @params
     }
     catch {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Scenario '$name' threw an error: $_" `
             -Iteration $Iteration

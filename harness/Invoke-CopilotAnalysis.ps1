@@ -46,7 +46,7 @@ if (-not $ConfigPath) {
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message 'Preparing Copilot analysis prompt' `
     -Iteration $Iteration
 
@@ -99,7 +99,7 @@ Respond with:
 $promptPath = Join-Path $repoRoot $config.Logging.OutputPath "copilot-prompt-iteration-$Iteration.md"
 $prompt | Out-File -FilePath $promptPath -Encoding utf8
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Sending prompt to Copilot CLI (prompt saved to $promptPath)" `
     -Iteration $Iteration
 
@@ -121,7 +121,7 @@ try {
         ResponsePath = $responsePath
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'info' -Message 'Copilot response received' `
         -Iteration $Iteration
 }
@@ -135,7 +135,7 @@ catch {
         ResponsePath = $null
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'error' -Message "Copilot CLI failed: $_" `
         -Iteration $Iteration
 }

@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in the Autotune harness or sample API
+about: Report a bug in the Hone harness or sample API
 title: "[BUG] "
 labels: bug
 assignees: ''
@@ -14,7 +14,7 @@ A clear and concise description of what the bug is.
 
 - [ ] PowerShell harness (`harness/`)
 - [ ] Sample API (`sample-api/`)
-- [ ] k6 scale tests (`scale-tests/`)
+- [ ] k6 scale tests (`sample-api/scale-tests/`)
 - [ ] Documentation (`docs/`)
 
 ## To Reproduce

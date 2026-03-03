@@ -58,7 +58,7 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 $tolerances = $config.Tolerances
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'compare' -Level 'info' -Message 'Comparing performance metrics (relative mode)' `
     -Iteration $Iteration
 
@@ -245,20 +245,20 @@ $logMessage = "vs baseline: ${improvementPct}% | " +
 
 $level = if ($anyRegressed) { 'warning' } elseif ($anyImproved) { 'info' } else { 'info' }
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'compare' -Level $level -Message $logMessage `
     -Iteration $Iteration `
     -Data @{ improvement = $improvementPct; improved = ($anyImproved -or $tiebreakerUsed); regression = $anyRegressed; efficiencyImproved = $efficiencyImproved; tiebreakerUsed = $tiebreakerUsed }
 
 if ($anyRegressed) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'warning' `
         -Message "REGRESSION DETECTED: $($regressionDetails -join '; ')" `
         -Iteration $Iteration
 }
 
 if ($anyImproved) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'info' -Message 'Improvement detected in at least one metric' `
         -Iteration $Iteration
 }
@@ -266,13 +266,13 @@ elseif ($tiebreakerUsed) {
     $tbDetails = @()
     if ($cpuImproved) { $tbDetails += "CPU avg reduced by $([math]::Round([math]::Abs($cpuChange) * 100, 1))%" }
     if ($workingSetImproved) { $tbDetails += "Working set reduced by $([math]::Round([math]::Abs($wsChange) * 100, 1))%" }
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'info' `
         -Message "Efficiency tiebreaker: $($tbDetails -join '; ')" `
         -Iteration $Iteration
 }
 elseif (-not $anyRegressed) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'info' -Message 'No meaningful change in any metric (stale iteration)' `
         -Iteration $Iteration
 }

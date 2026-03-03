@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Builds the API, starts it, runs the baseline k6 scenario, saves the results,
-    and stops the API. The baseline results are stored in results/baseline.json
+    and stops the API. The baseline results are stored in sample-api/results/baseline.json
     and used by Compare-Results.ps1 for comparison.
 
 .PARAMETER ConfigPath
@@ -23,7 +23,7 @@ if (-not $ConfigPath) {
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'baseline' -Level 'info' -Message 'Establishing performance baseline'
 
 # ── Collect machine info ────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ try {
     }
 
     if (-not $scaleResult.Success) {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'baseline' -Level 'warning' `
             -Message 'k6 thresholds not met (expected for unoptimized baseline)' `
             -Iteration 0
@@ -82,7 +82,7 @@ try {
     }
     $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'baseline' -Level 'info' `
         -Message "Run metadata saved to: $runMetadataPath" `
         -Iteration 0
@@ -92,13 +92,13 @@ try {
         $counterBaselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'baseline-counters.json'
         $scaleResult.CounterMetrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $counterBaselinePath -Encoding utf8
 
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'baseline' -Level 'info' `
             -Message "Counter baseline saved to: $counterBaselinePath" `
             -Iteration 0
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'baseline' -Level 'info' `
         -Message "Baseline saved to: $baselinePath" `
         -Data @{
@@ -132,13 +132,13 @@ try {
             $scenarioBaselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath "baseline-$($sr.ScenarioName).json"
             $sr.Metrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $scenarioBaselinePath -Encoding utf8
 
-            & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'baseline' -Level 'info' `
                 -Message "Scenario baseline saved: $($sr.ScenarioName) — p95: $($sr.Metrics.HttpReqDuration.P95)ms" `
                 -Iteration 0
         }
         else {
-            & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'baseline' -Level 'warning' `
                 -Message "Scenario '$($sr.ScenarioName)' produced no metrics" `
                 -Iteration 0

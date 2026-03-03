@@ -29,7 +29,7 @@ $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
 $resultsDir = Join-Path $repoRoot $config.Logging.OutputPath
 $trxPath = Join-Path $resultsDir "e2e-results-iteration-$Iteration.trx"
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'verify' -Level 'info' -Message "Running E2E tests: $testProjectPath" `
     -Iteration $Iteration
 
@@ -67,13 +67,13 @@ $logData = @{
 }
 
 if ($result.Success) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'verify' -Level 'info' `
         -Message "E2E tests passed ($($result.PassedTests)/$($result.TotalTests))" `
         -Iteration $Iteration -Data $logData
 }
 else {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'verify' -Level 'error' `
         -Message "E2E tests FAILED ($($result.FailedTests) failures out of $($result.TotalTests))" `
         -Iteration $Iteration -Data $logData

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Autotune is an agentic performance optimization system. The **harness** (PowerShell scripts) orchestrates a closed-loop cycle: build the target API, verify correctness, measure performance, analyze bottlenecks with AI, apply fixes, and repeat.
+Hone is an agentic performance optimization system. The **harness** (PowerShell scripts) orchestrates a closed-loop cycle: build the target API, verify correctness, measure performance, analyze bottlenecks with AI, apply fixes, and repeat.
 
 The architecture separates concerns so the harness is reusable across different target projects, while the included sample API provides a concrete, testable reference implementation.
 
@@ -10,12 +10,12 @@ The architecture separates concerns so the harness is reusable across different 
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                        AUTOTUNE HARNESS                          │
+│                        HONE HARNESS                          │
 │                   (PowerShell 7.2+ Scripts)                      │
 │                                                                  │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐  │
-│  │   config     │  │ Invoke-      │  │  Write-AutotuneLog     │  │
-│  │   .psd1      │  │ AutotuneLoop │  │  (Structured Logging)  │  │
+│  │   config     │  │ Invoke-      │  │  Write-HoneLog     │  │
+│  │   .psd1      │  │ HoneLoop │  │  (Structured Logging)  │  │
 │  └─────────────┘  └──────┬───────┘  └────────────────────────┘  │
 │                          │                                       │
 │         ┌────────┬───────┼────────┬──────────┐                   │
@@ -39,11 +39,11 @@ The architecture separates concerns so the harness is reusable across different 
 
 ### Harness (`harness/`)
 
-The core of Autotune. A set of PowerShell scripts that orchestrate the optimization loop.
+The core of Hone. A set of PowerShell scripts that orchestrate the optimization loop.
 
 | Script | Responsibility |
 |--------|---------------|
-| `Invoke-AutotuneLoop.ps1` | Main entry point — runs the full iterative loop |
+| `Invoke-HoneLoop.ps1` | Main entry point — runs the full iterative loop |
 | `Build-SampleApi.ps1` | Compiles the target project via `dotnet build` |
 | `Start-SampleApi.ps1` | Launches the API as a background process |
 | `Stop-SampleApi.ps1` | Gracefully shuts down the API process |
@@ -53,7 +53,7 @@ The core of Autotune. A set of PowerShell scripts that orchestrate the optimizat
 | `Compare-Results.ps1` | Compares current vs. baseline metrics |
 | `Invoke-CopilotAnalysis.ps1` | Sends perf context to `gh copilot suggest` |
 | `Apply-Suggestion.ps1` | Creates a branch and applies suggested changes |
-| `Write-AutotuneLog.ps1` | Structured logging (JSON-lines format) |
+| `Write-HoneLog.ps1` | Structured logging (JSON-lines format) |
 
 ### Target API (`sample-api/`)
 
@@ -92,7 +92,7 @@ Server-rendered Bootstrap 5 UI (`/Pages`) with product browsing, cart management
 
 ### E2E Tests (`sample-api/SampleApi.Tests/`)
 
-xUnit tests using `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory) with a real LocalDB test database (`AutotuneSampleDb_Tests`). These are the **regression gate** — the harness will not proceed past a failing test suite.
+xUnit tests using `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory) with a real LocalDB test database (`HoneSampleDb_Tests`). These are the **regression gate** — the harness will not proceed past a failing test suite.
 
 **43 tests** across 5 test classes sharing a single `SampleApiFactory` via `[Collection("SampleApi")]`:
 
@@ -104,7 +104,7 @@ xUnit tests using `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory) wit
 | CartEndpointTests | 7 | Cart add/get/update/remove/clear |
 | RazorPagesTests | 7 | All 6 Razor Pages smoke tests |
 
-### Scale Tests (`scale-tests/`)
+### Scale Tests (`sample-api/scale-tests/`)
 
 k6 scenarios that generate load against the running API and Razor Pages:
 
@@ -114,7 +114,7 @@ k6 scenarios that generate load against the running API and Razor Pages:
 | `stress.js` | Progressive ramp: 10→200 VUs over 2 min — random selection from 14 endpoints |
 | `spike.js` | Sudden burst: idle → 100 VUs instant — reviews, products, and pages |
 
-### Results (`results/`)
+### Results (`sample-api/results/`)
 
 All generated output (gitignored). Each iteration produces:
 

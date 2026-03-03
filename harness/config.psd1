@@ -53,13 +53,13 @@
     # ── Scale Testing ───────────────────────────────────────────
     ScaleTest = @{
         # Path to the k6 scenario to run on each iteration (primary / optimization)
-        ScenarioPath = 'scale-tests/scenarios/baseline.js'
+        ScenarioPath = 'sample-api/scale-tests/scenarios/baseline.js'
 
         # JSON file listing all scenarios and their metadata
-        ScenarioRegistryPath = 'scale-tests/thresholds.json'
+        ScenarioRegistryPath = 'sample-api/scale-tests/thresholds.json'
 
         # Path to store k6 JSON summary output
-        OutputPath   = 'results'
+        OutputPath   = 'sample-api/results'
 
         # Additional k6 CLI arguments
         ExtraArgs    = @()
@@ -88,13 +88,13 @@
         MaxIterations = 5
 
         # Git branch prefix for optimization branches
-        BranchPrefix  = 'autotune/iteration'
+        BranchPrefix  = 'hone/iteration'
     }
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
         # Directory for log files (relative to repo root)
-        OutputPath = 'results'
+        OutputPath = 'sample-api/results'
 
         # Log level: 'verbose', 'info', 'warning', 'error'
         Level      = 'info'

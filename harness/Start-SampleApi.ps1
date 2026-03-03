@@ -29,7 +29,7 @@ $baseUrl = $config.Api.BaseUrl
 $healthUrl = "$baseUrl$($config.Api.HealthEndpoint)"
 $timeout = $config.Api.StartupTimeout
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' -Message "Starting API from: $projectPath"
 
 # Start the API as a background process
@@ -65,11 +65,11 @@ $result = [ordered]@{
 }
 
 if ($healthy) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' -Message "API is healthy at $baseUrl (took ${elapsed}s)"
 }
 else {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' -Message "API failed to become healthy within ${timeout}s"
 
     # Kill the process if it didn't become healthy

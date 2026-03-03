@@ -26,7 +26,7 @@ param(
     [int]$Iteration = 0
 )
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message 'Stopping dotnet-counters collection' `
     -Iteration $Iteration
@@ -41,13 +41,13 @@ if ($process -and -not $process.HasExited) {
         Stop-Process -Id $process.Id -Force -ErrorAction Stop
         $process.WaitForExit(10000) | Out-Null
 
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
             -Message "dotnet-counters process stopped (PID: $($process.Id))" `
             -Iteration $Iteration
     }
     catch {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Error stopping dotnet-counters: $_" `
             -Iteration $Iteration
@@ -59,7 +59,7 @@ Start-Sleep -Seconds 1
 
 # Parse the CSV output
 if (-not (Test-Path $csvPath)) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Counter output file not found: $csvPath" `
         -Iteration $Iteration
@@ -71,7 +71,7 @@ try {
     $csvContent = Get-Content $csvPath -Raw
 
     if ([string]::IsNullOrWhiteSpace($csvContent)) {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message 'Counter output file is empty' `
             -Iteration $Iteration
@@ -82,7 +82,7 @@ try {
     $rows = $csvContent | ConvertFrom-Csv -ErrorAction Stop
 
     if ($rows.Count -eq 0) {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message 'No counter data rows found' `
             -Iteration $Iteration
@@ -180,7 +180,7 @@ try {
     $threads = if ($metrics.Runtime.ThreadPoolThreads) { $metrics.Runtime.ThreadPoolThreads.Max } else { 'N/A' }
     $exceptions = if ($metrics.Runtime.ExceptionCount) { $metrics.Runtime.ExceptionCount.Last } else { 'N/A' }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Counter summary — CPU avg: $cpuAvg, GC heap max: $heapMax, Gen2: $gen2, GC pause: $gcPause, Threads max: $threads, Exceptions: $exceptions" `
         -Iteration $Iteration `
@@ -196,7 +196,7 @@ try {
     $jsonPath = [System.IO.Path]::ChangeExtension($csvPath, '.json')
     [PSCustomObject]$metrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonPath -Encoding utf8
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Counter metrics saved to: $jsonPath" `
         -Iteration $Iteration
@@ -204,7 +204,7 @@ try {
     return [PSCustomObject]$metrics
 }
 catch {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to parse counter data: $_" `
         -Iteration $Iteration

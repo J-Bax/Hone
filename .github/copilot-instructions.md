@@ -1,8 +1,8 @@
-# Copilot Instructions for Autotune
+# Copilot Instructions for Hone
 
 ## Project Context
 
-Autotune is an **agentic performance optimization harness** that automatically improves API service performance through an iterative loop of testing, measuring, analyzing, and fixing.
+Hone is an **agentic performance optimization harness** that automatically improves API service performance through an iterative loop of testing, measuring, analyzing, and fixing.
 
 ## Tech Stack
 
@@ -20,8 +20,8 @@ Autotune is an **agentic performance optimization harness** that automatically i
 | `harness/` | PowerShell orchestration scripts — the core of the project |
 | `sample-api/SampleApi/` | .NET 6 Web API — the optimization target |
 | `sample-api/SampleApi.Tests/` | xUnit E2E tests — the regression gate |
-| `scale-tests/` | k6 load test scenarios and thresholds |
-| `results/` | Generated output (gitignored) |
+| `sample-api/scale-tests/` | k6 load test scenarios and thresholds |
+| `sample-api/results/` | Generated output (gitignored) |
 | `docs/` | Architecture and usage documentation |
 
 ## Coding Conventions
@@ -60,5 +60,5 @@ Autotune is an **agentic performance optimization harness** that automatically i
 
 - The sample API intentionally contains suboptimal patterns (N+1 queries, missing indexes, no caching) to give the agentic loop real optimization targets
 - E2E tests use `WebApplicationFactory` so they don't require a running server
-- Performance results are stored as JSON in `results/` for comparison across iterations
+- Performance results are stored as JSON in `sample-api/results/` for comparison across iterations
 - Each optimization attempt is made on a separate git branch for easy rollback

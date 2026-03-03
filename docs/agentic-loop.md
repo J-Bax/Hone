@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Autotune agentic loop is a fully automated optimization cycle. It runs as a single PowerShell invocation (`Invoke-AutotuneLoop.ps1`) and proceeds through a fixed sequence of phases on each iteration, making decisions based on test results and performance metrics.
+The Hone agentic loop is a fully automated optimization cycle. It runs as a single PowerShell invocation (`Invoke-HoneLoop.ps1`) and proceeds through a fixed sequence of phases on each iteration, making decisions based on test results and performance metrics.
 
 ## Loop Lifecycle
 
@@ -54,7 +54,7 @@ Iteration = 1
                 ▼                       │
 ┌─── PHASE 6: FIX ─────────────────┐   │
 │ Create git branch                 │   │
-│   autotune/iteration-{N}          │   │
+│   hone/iteration-{N}          │   │
 │ Apply suggested code changes      │   │
 │ Commit changes                    │   │
 └───────────────┬───────────────────┘   │
@@ -161,7 +161,7 @@ The prompt asks Copilot to suggest a specific, targeted code change to improve p
 
 **Script**: `Apply-Suggestion.ps1`
 
-1. Creates a new git branch: `autotune/iteration-{N}`
+1. Creates a new git branch: `hone/iteration-{N}`
 2. Applies the code changes suggested by Copilot
 3. Commits with a descriptive message including the iteration number and targeted metric
 
@@ -196,7 +196,7 @@ This phase is not yet implemented.
 
 ## Logging
 
-Every phase logs structured data to `results/autotune-{timestamp}.jsonl` via `Write-AutotuneLog.ps1`. Each log entry includes:
+Every phase logs structured data to `sample-api/results/hone-{timestamp}.jsonl` via `Write-HoneLog.ps1`. Each log entry includes:
 
 ```json
 {

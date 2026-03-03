@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Main entry point for the Autotune agentic optimization loop.
+    Main entry point for the Hone agentic optimization loop.
 
 .DESCRIPTION
     Orchestrates the full iterative optimization cycle:
@@ -18,10 +18,10 @@
     Path to the harness config.psd1 file.
 
 .EXAMPLE
-    .\Invoke-AutotuneLoop.ps1
+    .\Invoke-HoneLoop.ps1
 
 .EXAMPLE
-    .\Invoke-AutotuneLoop.ps1 -MaxIterations 10
+    .\Invoke-HoneLoop.ps1 -MaxIterations 10
 #>
 [CmdletBinding()]
 param(
@@ -47,7 +47,7 @@ $tolerances = $config.Tolerances
 # ── Banner ──────────────────────────────────────────────────────────────────
 Write-Information '' -InformationAction Continue
 Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-Write-Information '║               AUTOTUNE — Agentic Optimizer              ║' -InformationAction Continue
+Write-Information '║               HONE — Agentic Optimizer              ║' -InformationAction Continue
 Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
 Write-Information '' -InformationAction Continue
 Write-Information "  Max iterations:       $maxIter" -InformationAction Continue
@@ -60,8 +60,8 @@ if ($effCfg -and $effCfg.Enabled) {
 }
 Write-Information '' -InformationAction Continue
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
-    -Phase 'loop' -Level 'info' -Message "Autotune loop starting (max $maxIter iterations)"
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+    -Phase 'loop' -Level 'info' -Message "Hone loop starting (max $maxIter iterations)"
 
 # ── Collect machine info ────────────────────────────────────────────────────
 $machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
@@ -71,7 +71,7 @@ Write-Information "  RAM:     $($machineInfo.Memory.TotalGB)GB" -InformationActi
 Write-Information "  OS:      $($machineInfo.OS.Description)" -InformationAction Continue
 Write-Information '' -InformationAction Continue
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message 'Machine info collected' `
     -Data @{
         machineName      = $machineInfo.MachineName
@@ -133,7 +133,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     Write-Information '' -InformationAction Continue
     Write-Information "━━━ Iteration $iteration / $maxIter ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -InformationAction Continue
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' -Message "Starting iteration $iteration" -Iteration $iteration
 
     # ── Phase 1: Build ──────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 # ── Summary ─────────────────────────────────────────────────────────────────
 Write-Information '' -InformationAction Continue
 Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-Write-Information '║                    AUTOTUNE COMPLETE                     ║' -InformationAction Continue
+Write-Information '║                    HONE COMPLETE                     ║' -InformationAction Continue
 Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
 Write-Information '' -InformationAction Continue
 Write-Information "  Exit reason:     $exitReason" -InformationAction Continue
@@ -340,9 +340,9 @@ $totalImprovement = if ($baselineMetrics.HttpReqDuration.P95 -gt 0) {
 Write-Information "  Total improvement: ${totalImprovement}% (p95 vs baseline)" -InformationAction Continue
 Write-Information '' -InformationAction Continue
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' `
-    -Message "Autotune loop complete: $exitReason after $iteration iterations" `
+    -Message "Hone loop complete: $exitReason after $iteration iterations" `
     -Data @{
         exitReason    = $exitReason
         iterations    = $iteration

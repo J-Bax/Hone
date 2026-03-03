@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an enhancement to the Autotune harness
+about: Suggest an enhancement to the Hone harness
 title: "[FEATURE] "
 labels: enhancement
 assignees: ''
@@ -18,7 +18,7 @@ Describe the solution you'd like.
 
 - [ ] PowerShell harness (`harness/`)
 - [ ] Sample API (`sample-api/`)
-- [ ] k6 scale tests (`scale-tests/`)
+- [ ] k6 scale tests (`sample-api/scale-tests/`)
 - [ ] Documentation (`docs/`)
 
 ## Alternatives Considered

@@ -79,7 +79,7 @@ else {
 
 $providerList = $providers -join ','
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message "Starting dotnet-counters collection for PID $ProcessId (providers: $providerList)" `
     -Iteration $Iteration
@@ -106,7 +106,7 @@ try {
 
     if ($counterProcess.HasExited) {
         $exitCode = $counterProcess.ExitCode
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'error' `
             -Message "dotnet-counters exited immediately with code $exitCode. Is dotnet-counters installed? Run: dotnet tool install --global dotnet-counters" `
             -Iteration $Iteration
@@ -118,7 +118,7 @@ try {
         }
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "dotnet-counters collecting (PID: $($counterProcess.Id)) → $OutputPath" `
         -Iteration $Iteration
@@ -130,7 +130,7 @@ try {
     }
 }
 catch {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to start dotnet-counters: $_. Counter collection will be skipped." `
         -Iteration $Iteration

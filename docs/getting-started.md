@@ -39,8 +39,8 @@ gh auth login
 After cloning the repo, run the setup script to install and verify all dependencies in one step:
 
 ```powershell
-git clone https://github.com/your-org/autotune.git
-cd autotune
+git clone https://github.com/your-org/hone.git
+cd hone
 
 # Install everything via winget
 .\Setup-DevEnvironment.ps1
@@ -57,8 +57,8 @@ If you prefer to install dependencies individually, follow the steps below.
 ### 1. Clone the Repository
 
 ```powershell
-git clone https://github.com/your-org/autotune.git
-cd autotune
+git clone https://github.com/your-org/hone.git
+cd hone
 ```
 
 ### 2. Verify LocalDB
@@ -102,7 +102,7 @@ Invoke-RestMethod http://localhost:5000/api/products | ConvertTo-Json
 
 ```powershell
 # API must be running first (step 5 above)
-k6 run --env BASE_URL=http://localhost:5000 scale-tests/scenarios/baseline.js
+k6 run --env BASE_URL=http://localhost:5000 sample-api/scale-tests/scenarios/baseline.js
 ```
 
 ### 7. Establish a Performance Baseline
@@ -111,12 +111,12 @@ k6 run --env BASE_URL=http://localhost:5000 scale-tests/scenarios/baseline.js
 .\harness\Get-PerformanceBaseline.ps1
 ```
 
-This starts the API, runs the baseline k6 scenario, saves results to `results/baseline.json`, and stops the API.
+This starts the API, runs the baseline k6 scenario, saves results to `sample-api/results/baseline.json`, and stops the API.
 
-### 8. Run the Full Autotune Loop
+### 8. Run the Full Hone Loop
 
 ```powershell
-.\harness\Invoke-AutotuneLoop.ps1
+.\harness\Invoke-HoneLoop.ps1
 ```
 
 This kicks off the agentic optimization cycle. Watch the console output for build results, test outcomes, performance metrics, Copilot suggestions, and iteration summaries.
@@ -129,7 +129,7 @@ On the first run, the sample API has intentional performance issues:
 - No response caching
 - Large unbounded result sets
 
-The Autotune loop will detect these through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
+The Hone loop will detect these through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
 
 ## Troubleshooting
 

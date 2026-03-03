@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Generates an interactive HTML dashboard for Autotune performance results.
+    Generates an interactive HTML dashboard for Hone performance results.
 
 .DESCRIPTION
     Reads baseline and iteration results from the results directory, generates
@@ -8,13 +8,13 @@
     opens it in the default browser.
 
 .PARAMETER ResultsPath
-    Path to the results directory. Defaults to 'results' at the repo root.
+    Path to the results directory. Defaults to 'sample-api/results' at the repo root.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
 .PARAMETER OutputPath
-    Where to write the HTML file. Defaults to results/dashboard.html.
+    Where to write the HTML file. Defaults to sample-api/results/dashboard.html.
 
 .PARAMETER Open
     Open the dashboard in the default browser after generation.
@@ -293,7 +293,7 @@ $html = @'
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Autotune Performance Dashboard</title>
+    <title>Hone Performance Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <style>
         :root {
@@ -356,7 +356,7 @@ $html = @'
     </style>
 </head>
 <body>
-    <h1>Autotune Performance Dashboard</h1>
+    <h1>Hone Performance Dashboard</h1>
     <p class="subtitle">Generated __GENERATED_AT__ &nbsp;│&nbsp; Mode: Relative Improvement &nbsp;│&nbsp; Min improve: __MIN_IMPROVE__%  &nbsp;│&nbsp; Max regress: __MAX_REGRESS__%</p>
 
     <div id="machineInfoBar" style="display:none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px; margin-bottom: 24px; font-size: 0.85rem; color: var(--text-muted);">

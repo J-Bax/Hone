@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Structured logging helper for the Autotune harness.
+    Structured logging helper for the Hone harness.
 
 .DESCRIPTION
     Writes structured log entries as JSON-lines to a log file and optionally
@@ -23,7 +23,7 @@
     Current iteration number.
 
 .PARAMETER LogPath
-    Path to the log file. Defaults to results/autotune.jsonl.
+    Path to the log file. Defaults to sample-api/results/hone.jsonl.
 #>
 [CmdletBinding()]
 param(
@@ -48,7 +48,7 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $LogPath) {
-    $LogPath = Join-Path $repoRoot 'results' 'autotune.jsonl'
+    $LogPath = Join-Path $repoRoot 'sample-api' 'results' 'hone.jsonl'
 }
 
 # Ensure the output directory exists

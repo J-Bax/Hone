@@ -54,7 +54,7 @@ if (-not (Test-Path $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 }
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message "Running k6 scenario: $ScenarioPath against $baseUrl" `
     -Iteration $Iteration
@@ -77,7 +77,7 @@ if ($countersEnabled) {
             -Iteration $Iteration
 
         if (-not $counterHandle.Success) {
-            & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'measure' -Level 'warning' `
                 -Message 'Counter collection failed to start — continuing without counters' `
                 -Iteration $Iteration
@@ -85,7 +85,7 @@ if ($countersEnabled) {
         }
     }
     else {
-        & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Could not find API process listening on port $apiPort — skipping counter collection" `
             -Iteration $Iteration
@@ -136,7 +136,7 @@ if (Test-Path $jsonSummaryPath) {
         }
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "k6 completed — p95: $($metrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($metrics.HttpReqs.Rate, 1))" `
         -Iteration $Iteration `
@@ -147,7 +147,7 @@ if (Test-Path $jsonSummaryPath) {
         }
 }
 else {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' `
         -Message "k6 summary file not found at: $jsonSummaryPath" `
         -Iteration $Iteration

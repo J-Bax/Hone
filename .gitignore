@@ -1,5 +1,5 @@
 # =============================================================================
-# Autotune .gitignore
+# Hone .gitignore
 # =============================================================================
 
 # ----- .NET / C# -----
@@ -54,7 +54,7 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 
-# ----- Autotune Results -----
+# ----- Hone Results -----
 # Test results, performance reports, and logs are generated per-run
-results/*
-!results/.gitkeep
+sample-api/results/*
+!sample-api/results/.gitkeep

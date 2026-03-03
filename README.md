@@ -1,8 +1,8 @@
-# Autotune
+# Hone
 
 **Agentic performance optimization for web APIs.**
 
-Autotune is a PowerShell-driven harness that automatically optimizes the performance of API services through an iterative agentic loop. It builds your project, verifies correctness with E2E tests, measures performance with k6 load tests, uses GitHub Copilot CLI to brainstorm optimizations, applies fixes, and repeats — until performance targets are met or iteration limits are reached.
+Hone is a PowerShell-driven harness that automatically optimizes the performance of API services through an iterative agentic loop. It builds your project, verifies correctness with E2E tests, measures performance with k6 load tests, uses GitHub Copilot CLI to brainstorm optimizations, applies fixes, and repeats — until performance targets are met or iteration limits are reached.
 
 ```mermaid
 graph LR
@@ -23,14 +23,14 @@ graph LR
 
 ### Component Architecture
 
-The Autotune harness is a set of PowerShell scripts that orchestrate external tools. The **Target API is a blackbox** — Autotune only interacts with it through well-defined boundaries: build commands, test runners, and HTTP endpoints.
+The Hone harness is a set of PowerShell scripts that orchestrate external tools. The **Target API is a blackbox** — Hone only interacts with it through well-defined boundaries: build commands, test runners, and HTTP endpoints.
 
 ```mermaid
 graph TB
-    subgraph HARNESS["<b>Autotune Harness</b> (PowerShell 7.2+)"]
+    subgraph HARNESS["<b>Hone Harness</b> (PowerShell 7.2+)"]
         CONFIG["config.psd1<br/>─────────────<br/>Thresholds, paths,<br/>loop settings"]
-        LOOP["Invoke-AutotuneLoop<br/>─────────────<br/>Main orchestrator"]
-        LOG["Write-AutotuneLog<br/>─────────────<br/>Structured JSON logging"]
+        LOOP["Invoke-HoneLoop<br/>─────────────<br/>Main orchestrator"]
+        LOG["Write-HoneLog<br/>─────────────<br/>Structured JSON logging"]
 
         BUILD_S["Build-SampleApi"]
         VERIFY_S["Invoke-E2ETests"]
@@ -69,7 +69,7 @@ graph TB
         SCALE_TESTS["k6 Stress Tests<br/><i>Must be provided by target</i>"]
     end
 
-    subgraph OUTPUT["Results (results/)"]
+    subgraph OUTPUT["Results (sample-api/results/)"]
         METRICS["Performance Metrics<br/>(JSON)"]
         LOGS["Iteration Logs<br/>(JSONL)"]
         REPORTS["Comparison Reports"]
@@ -100,11 +100,11 @@ graph TB
 
 ### Target API Contract (Blackbox Boundary)
 
-Autotune treats the target API as an opaque system. It does **not** understand the API's internal implementation. However, the target **must** provide two key artifacts that Autotune depends on:
+Hone treats the target API as an opaque system. It does **not** understand the API's internal implementation. However, the target **must** provide two key artifacts that Hone depends on:
 
 ```mermaid
 graph LR
-    subgraph AUTOTUNE["Autotune Harness"]
+    subgraph HONE["Hone Harness"]
         direction TB
         BUILD_CMD["Build Phase<br/><code>dotnet build</code>"]
         TEST_CMD["Verify Phase<br/><code>dotnet test</code>"]
@@ -114,7 +114,7 @@ graph LR
 
     subgraph BLACKBOX["Target API (Blackbox)"]
         direction TB
-        SRC["Source Code<br/><i>Opaque to Autotune</i>"]
+        SRC["Source Code<br/><i>Opaque to Hone</i>"]
 
         subgraph REQUIRED["<b>Required Contracts</b>"]
             FUNC["🧪 Functional Test Suite<br/>─────────────────────<br/>• Must exist and be runnable<br/>  via <code>dotnet test</code><br/>• Acts as regression gate<br/>• 100% pass = safe to proceed"]
@@ -135,7 +135,7 @@ graph LR
     FIX_CMD -- "modifies" --> SRC
 
     style BLACKBOX fill:#2d2d2d,color:#e0e0e0,stroke:#e67e22,stroke-width:3px,stroke-dasharray: 5 5
-    style AUTOTUNE fill:#1a1a2e,color:#e0e0e0,stroke:#4a90d9,stroke-width:2px
+    style HONE fill:#1a1a2e,color:#e0e0e0,stroke:#4a90d9,stroke-width:2px
     style REQUIRED fill:#3d3020,color:#e0e0e0,stroke:#e67e22,stroke-width:2px
     style OPAQUE fill:#333,color:#999,stroke:#666,stroke-width:1px,stroke-dasharray: 3 3
     style FUNC fill:#e67e22,color:#fff
@@ -148,7 +148,7 @@ graph LR
 
 ### Agentic Loop Flowchart
 
-The complete decision flow for a single invocation of `Invoke-AutotuneLoop.ps1`:
+The complete decision flow for a single invocation of `Invoke-HoneLoop.ps1`:
 
 ```mermaid
 flowchart TD
@@ -234,12 +234,12 @@ flowchart LR
     end
 
     subgraph PHASE_FIX["Fix"]
-        BRANCH["git branch<br/>autotune/iteration-N"]
+        BRANCH["git branch<br/>hone/iteration-N"]
         COMMIT["Apply changes<br/>+ commit"]
     end
 
     subgraph OUTPUTS["Outputs"]
-        LOG_FILE["autotune-*.jsonl<br/>(audit trail)"]
+        LOG_FILE["hone-*.jsonl<br/>(audit trail)"]
         RESULT_JSON["iteration-N.json<br/>(metrics snapshot)"]
         GIT_BRANCH["Git branch<br/>(rollback point)"]
     end
@@ -296,8 +296,8 @@ The loop exits when performance targets are met, the maximum iteration count is 
 
 ```powershell
 # 1. Clone the repo
-git clone https://github.com/your-org/autotune.git
-cd autotune
+git clone https://github.com/your-org/hone.git
+cd hone
 
 # 2. Build the sample API
 dotnet build sample-api/SampleApi.sln
@@ -309,17 +309,17 @@ dotnet test sample-api/SampleApi.Tests/
 .\harness\Get-PerformanceBaseline.ps1
 
 # 5. Run the full agentic optimization loop
-.\harness\Invoke-AutotuneLoop.ps1
+.\harness\Invoke-HoneLoop.ps1
 ```
 
 ## Project Structure
 
 ```mermaid
 graph TD
-    subgraph REPO["autotune/"]
+    subgraph REPO["hone/"]
         direction TB
 
-        subgraph CORE["<b>Autotune Core</b>"]
+        subgraph CORE["<b>Hone Core</b>"]
             HARNESS["harness/<br/>─────────────<br/>PowerShell orchestration<br/>config.psd1 + scripts"]
             DOCS["docs/<br/>─────────────<br/>Architecture, guides,<br/>configuration reference"]
             GITHUB[".github/<br/>─────────────<br/>Copilot instructions"]
@@ -328,10 +328,10 @@ graph TD
         subgraph TARGET_AREA["<b>Target API</b> (Blackbox — swappable)"]
             API["sample-api/<br/>─────────────<br/>API source code<br/><i>Internal details opaque</i>"]
             TESTS["sample-api/Tests/<br/>─────────────<br/>🧪 Functional test suite<br/><i>MUST be provided</i>"]
-            STESTS["scale-tests/<br/>─────────────<br/>📈 k6 stress scenarios<br/><i>MUST be provided</i>"]
+            STESTS["sample-api/scale-tests/<br/>─────────────<br/>📈 k6 stress scenarios<br/><i>MUST be provided</i>"]
         end
 
-        RESULTS["results/<br/>─────────────<br/>Metrics, logs, reports<br/><i>(gitignored, generated)</i>"]
+        RESULTS["sample-api/results/<br/>─────────────<br/>Metrics, logs, reports<br/><i>(gitignored, generated)</i>"]
     end
 
     HARNESS -- "orchestrates" --> API
@@ -348,10 +348,10 @@ graph TD
     style REPO fill:#111,color:#e0e0e0,stroke:#444
 ```
 
-> **Key insight**: The target API is a **blackbox** to Autotune. The harness only requires that the target provides: **(1)** a buildable source project, **(2)** a functional test suite (regression gate), and **(3)** k6 stress test scenarios (performance measurement). Everything else — database schema, business logic, route structure, domain models — is opaque.
+> **Key insight**: The target API is a **blackbox** to Hone. The harness only requires that the target provides: **(1)** a buildable source project, **(2)** a functional test suite (regression gate), and **(3)** k6 stress test scenarios (performance measurement). Everything else — database schema, business logic, route structure, domain models — is opaque.
 
 ```
-autotune/
+hone/
 ├── .github/                    # GitHub configuration & Copilot instructions
 │   ├── copilot-instructions.md
 │   └── ISSUE_TEMPLATE/
@@ -362,15 +362,15 @@ autotune/
 │   └── configuration.md
 ├── sample-api/                 # Target API (blackbox — swappable)
 │   ├── SampleApi/              # API source code (opaque internals)
-│   └── SampleApi.Tests/        # ⚠ Functional test suite (REQUIRED)
+│   ├── SampleApi.Tests/        # ⚠ Functional test suite (REQUIRED)
+│   ├── scale-tests/            # ⚠ k6 load test scenarios (REQUIRED)
+│   │   ├── scenarios/
+│   │   └── thresholds.json
+│   └── results/                # Output: metrics, reports, logs (gitignored)
 ├── harness/                    # PowerShell orchestration scripts
 │   ├── config.psd1             # Harness configuration
-│   ├── Invoke-AutotuneLoop.ps1 # Main entry point
+│   ├── Invoke-HoneLoop.ps1     # Main entry point
 │   └── ...                     # Build, test, measure, analyze, fix scripts
-├── scale-tests/                # ⚠ k6 load test scenarios (REQUIRED)
-│   ├── scenarios/
-│   └── thresholds.json
-└── results/                    # Output: metrics, reports, logs (gitignored)
 ```
 
 ## Configuration

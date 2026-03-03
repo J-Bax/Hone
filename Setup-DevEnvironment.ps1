@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Sets up the development environment for Autotune.
+    Sets up the development environment for Hone.
 
 .DESCRIPTION
     Installs all required dependencies (via winget and dotnet tool) and verifies
     they are available. Run this script once after cloning the repository to
-    ensure your machine is ready for the Autotune harness.
+    ensure your machine is ready for the Hone harness.
 
     Requires an elevated (Administrator) terminal for winget installs.
 

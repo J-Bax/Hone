@@ -52,7 +52,7 @@ $submoduleDir = Join-Path $repoRoot 'sample-api'
 # Strip the 'sample-api/' prefix so paths are relative to the submodule root
 $submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'fix' -Level 'info' `
     -Message "Applying fix on branch: $branchName — $Description" `
     -Iteration $Iteration `
@@ -73,7 +73,7 @@ try {
 
     # Stage and commit (paths relative to submodule root)
     git add $submoduleRelPath 2>&1 | Out-Null
-    git commit -m "autotune(iteration-$Iteration): $Description" 2>&1 | Out-Null
+    git commit -m "hone(iteration-$Iteration): $Description" 2>&1 | Out-Null
 
     $result = [ordered]@{
         Success     = $true
@@ -82,7 +82,7 @@ try {
         Description = $Description
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'info' `
         -Message "Fix committed on branch: $branchName" `
         -Iteration $Iteration
@@ -95,7 +95,7 @@ catch {
         Description = "Error: $_"
     }
 
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'error' `
         -Message "Failed to apply fix: $_" `
         -Iteration $Iteration

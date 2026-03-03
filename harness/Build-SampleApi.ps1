@@ -23,7 +23,7 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 $solutionPath = Join-Path $repoRoot $config.Api.SolutionPath
 
-& (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+& (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'build' -Level 'info' -Message "Building solution: $solutionPath"
 
 $buildOutput = dotnet build $solutionPath --configuration Release 2>&1
@@ -37,11 +37,11 @@ $result = [ordered]@{
 }
 
 if ($result.Success) {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'build' -Level 'info' -Message 'Build succeeded'
 }
 else {
-    & (Join-Path $PSScriptRoot 'Write-AutotuneLog.ps1') `
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'build' -Level 'error' -Message "Build failed with exit code $buildExitCode" `
         -Data @{ output = $result.Output }
 }
