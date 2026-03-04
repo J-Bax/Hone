@@ -190,7 +190,6 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $countersForAnalysis = if ($previousCounterMetrics) { $previousCounterMetrics } else { $null }
 
     # Build a comparison object for the analysis prompt.
-    # For iteration 1, compare baseline vs baseline (0% delta — Copilot uses absolute values + source code).
     $comparisonForAnalysis = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
         -CurrentMetrics $metricsForAnalysis `
         -BaselineMetrics $baselineMetrics `
@@ -200,7 +199,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         -ConfigPath $ConfigPath `
         -Iteration $iteration
 
-    $analysisResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAnalysis.ps1') `
+    # ── Sub-agent 1: Analysis ──────────────────────────────────────────────
+    $analysisResult = & (Join-Path $PSScriptRoot 'Invoke-AnalysisAgent.ps1') `
         -CurrentMetrics $metricsForAnalysis `
         -BaselineMetrics $baselineMetrics `
         -ComparisonResult $comparisonForAnalysis `
@@ -216,7 +216,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $skipIteration = $false
 
     if (-not $analysisResult.Success) {
-        Write-Warning '  Copilot analysis failed — skipping iteration'
+        Write-Warning '  Analysis agent failed — skipping iteration'
         $staleCount++
         if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
             $exitReason = 'no_improvement'
@@ -226,11 +226,25 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         continue
     }
 
-    Write-Information "  Copilot response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
+    Write-Information "  Analysis: $($analysisResult.FilePath)" -InformationAction Continue
+    Write-Information "  Response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
 
-    # Generate root cause analysis document
+    # ── Sub-agent 2: Classification ────────────────────────────────────────
+    $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
+        -FilePath $analysisResult.FilePath `
+        -Explanation $analysisResult.Explanation `
+        -Iteration $iteration `
+        -ConfigPath $ConfigPath
+
+    $changeScope = $classificationResult.Scope
+    Write-Information "  Classification: $changeScope — $($classificationResult.Reasoning)" -InformationAction Continue
+
+    # Generate root cause analysis document (structured data, no regex)
     $rcaResult = & (Join-Path $PSScriptRoot 'Export-IterationRCA.ps1') `
-        -CopilotResponse $analysisResult.Response `
+        -FilePath $analysisResult.FilePath `
+        -Explanation $analysisResult.Explanation `
+        -ChangeScope $changeScope `
+        -ScopeReasoning $classificationResult.Reasoning `
         -CurrentMetrics $metricsForAnalysis `
         -BaselineMetrics $baselineMetrics `
         -ComparisonResult $comparisonForAnalysis `
@@ -241,31 +255,35 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
     }
 
-    # Check if the suggestion is actionable
-    $isArchitecture = ($rcaResult.ChangeScope -eq 'architecture')
+    # Always log the analysis to optimization-log.md
+    $isArchitecture = ($changeScope -eq 'architecture')
 
-    if ($isArchitecture -and $rcaResult.Success) {
+    if ($isArchitecture) {
         Write-Information '  ⚠ Architecture-level change detected — queuing for manual review' -InformationAction Continue
-        Write-Information "    Scope: $($rcaResult.ChangeScope) | File: $($rcaResult.FilePath)" -InformationAction Continue
+        Write-Information "    Scope: $changeScope | File: $($analysisResult.FilePath)" -InformationAction Continue
         Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'fix' -Level 'info' `
-            -Message "Architecture change queued (not applied): $($rcaResult.Explanation.Substring(0, [Math]::Min(100, $rcaResult.Explanation.Length)))" `
+            -Message "Architecture change queued (not applied): $($analysisResult.Explanation.Substring(0, [Math]::Min(100, $analysisResult.Explanation.Length)))" `
             -Iteration $iteration
 
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddQueue' `
             -Iteration $iteration `
-            -Opportunities @($rcaResult.Explanation) `
+            -Opportunities @($analysisResult.Explanation) `
             -Scopes @('architecture') `
             -ConfigPath $ConfigPath
 
-        $skipIteration = $true
-    }
-    elseif (-not $rcaResult.Success -or -not $rcaResult.FilePath -or -not $rcaResult.CodeBlock) {
-        Write-Information '  → Could not parse actionable file path or code from Copilot response.' -InformationAction Continue
-        Write-Information '    Review copilot-response.md and apply manually if desired.' -InformationAction Continue
+        # Log architecture changes to the optimization log too
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary $analysisResult.Explanation `
+            -FilePath $analysisResult.FilePath `
+            -Outcome 'queued' `
+            -ConfigPath $ConfigPath
+
         $skipIteration = $true
     }
 
@@ -279,11 +297,24 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         continue
     }
 
-    # ── Phase 2: Fix (apply locally, defer PR) ─────────────────────────────
-    Write-Information '[2/7] Applying fix...' -InformationAction Continue
+    # ── Phase 2: Fix (generate + apply locally, defer PR) ──────────────────
+    Write-Information '[2/7] Generating fix...' -InformationAction Continue
 
-    $targetFile = $rcaResult.FilePath.Trim()
-    # Normalise: ensure it starts with 'sample-api/'
+    # ── Sub-agent 3: Fix ───────────────────────────────────────────────────
+    $fixResult = & (Join-Path $PSScriptRoot 'Invoke-FixAgent.ps1') `
+        -FilePath $analysisResult.FilePath `
+        -Explanation $analysisResult.Explanation `
+        -Iteration $iteration `
+        -ConfigPath $ConfigPath
+
+    if (-not $fixResult.Success -or -not $fixResult.CodeBlock) {
+        Write-Warning '  Fix agent failed to generate code — skipping iteration'
+        $staleCount++
+        continue
+    }
+
+    # Normalise file path: ensure it starts with 'sample-api/'
+    $targetFile = $analysisResult.FilePath.Trim()
     if ($targetFile -notmatch '^sample-api[\\/]') {
         $targetFile = "sample-api/$targetFile"
     }
@@ -299,8 +330,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
         -FilePath $targetFile `
-        -NewContent $rcaResult.CodeBlock `
-        -Description $rcaResult.Explanation.Substring(0, [Math]::Min(120, $rcaResult.Explanation.Length)) `
+        -NewContent $fixResult.CodeBlock `
+        -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
         -Iteration $iteration `
         -ConfigPath $ConfigPath `
         -DeferPR
@@ -452,8 +483,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
             -Iteration $iteration `
-            -Summary $rcaResult.Explanation `
-            -FilePath $rcaResult.FilePath `
+            -Summary $analysisResult.Explanation `
+            -FilePath $analysisResult.FilePath `
             -Outcome 'regressed' `
             -ConfigPath $ConfigPath
 
@@ -499,9 +530,9 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $prBody = @"
 ## Hone Iteration $iteration
 
-**Optimization:** $($rcaResult.Explanation.Substring(0, [Math]::Min(200, $rcaResult.Explanation.Length)))
+**Optimization:** $($analysisResult.Explanation.Substring(0, [Math]::Min(200, $analysisResult.Explanation.Length)))
 
-**File changed:** ``$($rcaResult.FilePath)``
+**File changed:** ``$($analysisResult.FilePath)``
 
 ### Performance Results
 | Metric | Baseline | After Fix | Delta |
@@ -520,7 +551,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $prUrl = gh pr create `
             --base master `
             --head $branchName `
-            --title "hone(iteration-$iteration): $($rcaResult.Explanation.Substring(0, [Math]::Min(80, $rcaResult.Explanation.Length)))" `
+            --title "hone(iteration-$iteration): $($analysisResult.Explanation.Substring(0, [Math]::Min(80, $analysisResult.Explanation.Length)))" `
             --body $prBody 2>&1
 
         $prNumber = $null
@@ -599,8 +630,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
             -Iteration $iteration `
-            -Summary $rcaResult.Explanation `
-            -FilePath $rcaResult.FilePath `
+            -Summary $analysisResult.Explanation `
+            -FilePath $analysisResult.FilePath `
             -Outcome 'improved' `
             -ConfigPath $ConfigPath
     }
@@ -619,8 +650,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
             -Iteration $iteration `
-            -Summary $rcaResult.Explanation `
-            -FilePath $rcaResult.FilePath `
+            -Summary $analysisResult.Explanation `
+            -FilePath $analysisResult.FilePath `
             -Outcome 'stale' `
             -ConfigPath $ConfigPath
 
@@ -633,25 +664,25 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     # Queue additional optimization opportunities from the analysis
     if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
-        $oppScopes = @()
-        foreach ($opp in $analysisResult.AdditionalOpportunities) {
-            if ($opp -match '^\[ARCHITECTURE\]') { $oppScopes += 'architecture' }
-            else { $oppScopes += 'narrow' }
-        }
+        # Analysis agent returns JSON objects with .description and .scope fields
+        $oppDescriptions = @($analysisResult.AdditionalOpportunities | ForEach-Object { $_.description })
+        $oppScopes = @($analysisResult.AdditionalOpportunities | ForEach-Object {
+            if ($_.scope -eq 'architecture') { 'architecture' } else { 'narrow' }
+        })
 
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddQueue' `
             -Iteration $iteration `
-            -Opportunities $analysisResult.AdditionalOpportunities `
+            -Opportunities $oppDescriptions `
             -Scopes $oppScopes `
             -ConfigPath $ConfigPath
 
-        Write-Information "  Queued $($analysisResult.AdditionalOpportunities.Count) additional optimization opportunities" -InformationAction Continue
+        Write-Information "  Queued $($oppDescriptions.Count) additional optimization opportunities" -InformationAction Continue
     }
 
     $previousMetrics = $currentMetrics
     $previousCounterMetrics = $currentCounterMetrics
-    $previousRcaExplanation = if ($rcaResult) { $rcaResult.Explanation } else { '' }
+    $previousRcaExplanation = if ($analysisResult) { $analysisResult.Explanation } else { '' }
 
     # ── Record iteration metadata ──────────────────────────────────────────────
     $iterationMeta = [ordered]@{

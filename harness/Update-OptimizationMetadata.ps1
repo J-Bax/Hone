@@ -41,7 +41,7 @@ param(
 
     [string]$Summary,
 
-    [ValidateSet('improved', 'regressed', 'stale', 'pending', '')]
+    [ValidateSet('improved', 'regressed', 'stale', 'pending', 'queued', '')]
     [string]$Outcome = 'pending',
 
     [string]$FilePath,

@@ -3,13 +3,25 @@
     Generates a root cause analysis document for a harness iteration.
 
 .DESCRIPTION
-    Parses the Copilot response and current performance metrics to produce
-    a concise root-cause markdown file stored in the iteration subfolder.
-    The document covers what performance issue was identified, the rationale
-    behind the proposed fix, and the fix details.
+    Takes structured analysis data (from the analysis and classification agents)
+    and current performance metrics to produce a concise root-cause markdown file
+    stored in the iteration subfolder.
 
-.PARAMETER CopilotResponse
-    Raw text of the Copilot CLI response.
+.PARAMETER FilePath
+    Target file identified by the analysis agent (relative to sample-api/).
+
+.PARAMETER Explanation
+    Description of the proposed optimization.
+
+.PARAMETER ChangeScope
+    Scope classification: 'narrow' or 'architecture'.
+
+.PARAMETER ScopeReasoning
+    Reasoning behind the scope classification.
+
+.PARAMETER CodeBlock
+    The optimized file content (from the fix agent). Optional — may be empty
+    if the fix agent hasn't run yet (e.g., architecture changes).
 
 .PARAMETER CurrentMetrics
     PSCustomObject with current iteration metrics (p95, RPS, error rate).
@@ -28,8 +40,15 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)]
-    [string]$CopilotResponse,
+    [string]$FilePath,
+
+    [string]$Explanation,
+
+    [string]$ChangeScope = 'architecture',
+
+    [string]$ScopeReasoning,
+
+    [string]$CodeBlock,
 
     [Parameter(Mandatory)]
     [PSCustomObject]$CurrentMetrics,
@@ -37,7 +56,6 @@ param(
     [Parameter(Mandatory)]
     [PSCustomObject]$BaselineMetrics,
 
-    [Parameter(Mandatory)]
     [PSCustomObject]$ComparisonResult,
 
     [int]$Iteration = 0,
@@ -57,85 +75,26 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
     -Phase 'analyze' -Level 'info' -Message "Generating root cause analysis for iteration $Iteration" `
     -Iteration $Iteration
 
-# ── Parse the Copilot response into sections ────────────────────────────────
-# The prompt asks Copilot to respond with numbered sections:
-#   1. File path   2. Explanation   3. Code   4. Additional opportunities
-# We attempt regex splitting; fall back to the full response on failure.
-
-$filePath = ''
-$explanation = ''
-$codeBlock = ''
-$changeScope = 'architecture'   # safe default — requires manual approval
-
-try {
-    # Split on numbered section headers. Handles various markdown styles:
-    #   "1. ..."  "1) ..."  "**1. File path:**"  "## 1. Explanation"
-    # The pattern matches the entire header line so section content starts clean.
-    $sections = [regex]::Split(
-        $CopilotResponse,
-        '(?m)^\s*(?:\*{0,2}|#{1,3}\s*)\s*\d+[\.\)][^\r\n]*\r?\n'
-    )
-    # Filter out empty / whitespace-only entries (e.g. preamble before section 1)
-    $sections = $sections | Where-Object { $_.Trim().Length -gt 0 }
-
-    # The first non-empty entry may be preamble text before section 1.
-    # Detect it: if the first entry doesn't look like a file path, skip it.
-    $offset = 0
-    if ($sections.Count -gt 0 -and $sections[0].Trim() -notmatch '\.\w{1,5}\b') {
-        $offset = 1
-    }
-
-    if ($sections.Count -ge ($offset + 1)) {
-        # Section 1: file path — strip markdown formatting, backticks, bold markers
-        $filePath = ($sections[$offset]).Trim() -replace '[`*\r\n]', '' -replace '^\*\*', '' -replace '\*\*$', ''
-        # Extract just the source file path if surrounded by descriptive text
-        if ($filePath -match '([\w./\\]+\.\w{1,5}\b)') {
-            $filePath = $Matches[1]
-        }
-    }
-    if ($sections.Count -ge ($offset + 2)) {
-        $explanation = ($sections[$offset + 1]).Trim()
-    }
-    if ($sections.Count -ge ($offset + 3)) {
-        $rawCode = ($sections[$offset + 2]).Trim()
-        # Extract content from fenced code block (```csharp ... ``` or ``` ... ```)
-        if ($rawCode -match '(?ms)```(?:\w+)?\s*\r?\n(.+?)```') {
-            $codeBlock = $Matches[1].TrimEnd()
-        }
-        else {
-            # No fenced block — use the raw section as the code
-            $codeBlock = $rawCode
-        }
-    }
-    if ($sections.Count -ge ($offset + 5)) {
-        $rawScope = ($sections[$offset + 4]).Trim().ToUpper()
-        if ($rawScope -match '\bNARROW\b') {
-            $changeScope = 'narrow'
-        }
-        elseif ($rawScope -match '\bARCHITECTURE\b') {
-            $changeScope = 'architecture'
-        }
-    }
-}
-catch {
-    # Parsing failed — we'll use the full response as fallback
-    $explanation = $CopilotResponse
-}
-
-# If parsing produced nothing useful, fall back
-if ([string]::IsNullOrWhiteSpace($explanation)) {
-    $explanation = $CopilotResponse
-}
+# ── Use structured data directly (no parsing needed) ─────────────────────────
+$filePath = if ($FilePath) { $FilePath } else { '' }
+$explanation = if ($Explanation) { $Explanation } else { '' }
+$codeBlock = if ($CodeBlock) { $CodeBlock } else { '' }
+$changeScope = if ($ChangeScope) { $ChangeScope } else { 'architecture' }
+$scopeReasoning = if ($ScopeReasoning) { $ScopeReasoning } else { '' }
 
 # ── Build metric context ────────────────────────────────────────────────────
-$d = $ComparisonResult.Deltas
 $p95Current  = $CurrentMetrics.HttpReqDuration.P95
 $p95Baseline = $BaselineMetrics.HttpReqDuration.P95
 $rpsCurrent  = [math]::Round($CurrentMetrics.HttpReqs.Rate, 1)
 $rpsBaseline = [math]::Round($BaselineMetrics.HttpReqs.Rate, 1)
 $errCurrent  = [math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2)
 $errBaseline = [math]::Round($BaselineMetrics.HttpReqFailed.Rate * 100, 2)
-$improvPct   = $ComparisonResult.ImprovementPct
+
+# Handle optional comparison result
+$p95Delta = if ($ComparisonResult -and $ComparisonResult.Deltas) { "$($ComparisonResult.Deltas.P95Latency.ChangePct)%" } else { 'N/A' }
+$rpsDelta = if ($ComparisonResult -and $ComparisonResult.Deltas) { "$($ComparisonResult.Deltas.RPS.ChangePct)%" } else { 'N/A' }
+$errDelta = if ($ComparisonResult -and $ComparisonResult.Deltas) { "$($ComparisonResult.Deltas.ErrorRate.ChangePct)%" } else { 'N/A' }
+$improvPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) { $ComparisonResult.ImprovementPct } else { 0 }
 
 # ── Build the RCA markdown ─────────────────────────────────────────────────
 $rca = @"
@@ -147,13 +106,13 @@ $rca = @"
 
 | Metric | Current | Baseline | Delta |
 |--------|---------|----------|-------|
-| p95 Latency | ${p95Current}ms | ${p95Baseline}ms | $($d.P95Latency.ChangePct)% |
-| Requests/sec | $rpsCurrent | $rpsBaseline | $($d.RPS.ChangePct)% |
-| Error Rate | ${errCurrent}% | ${errBaseline}% | $($d.ErrorRate.ChangePct)% |
+| p95 Latency | ${p95Current}ms | ${p95Baseline}ms | $p95Delta |
+| Requests/sec | $rpsCurrent | $rpsBaseline | $rpsDelta |
+| Error Rate | ${errCurrent}% | ${errBaseline}% | $errDelta |
 
 Overall improvement vs baseline: **${improvPct}%** (p95 latency).
 
-$(if ($ComparisonResult.EfficiencyDeltas) {
+$(if ($ComparisonResult -and $ComparisonResult.EfficiencyDeltas) {
     $ed = $ComparisonResult.EfficiencyDeltas
     "**Efficiency:** CPU $($ed.CpuUsage.Current)% ($($ed.CpuUsage.ChangePct)% delta) | Working Set $($ed.WorkingSet.Current)MB ($($ed.WorkingSet.ChangePct)% delta)"
 })
@@ -161,7 +120,7 @@ $(if ($ComparisonResult.EfficiencyDeltas) {
 ## Root Cause / Rationale
 
 $(if ($filePath) { "**Target file:** ``$filePath```n" })
-**Scope:** ``$changeScope``
+**Scope:** ``$changeScope``$(if ($scopeReasoning) { " — $scopeReasoning" })
 $explanation
 
 ## Proposed Fix
@@ -169,7 +128,7 @@ $explanation
 $(if ($codeBlock) {
     "```````n$codeBlock`n```````n"
 } else {
-    "_Complete replacement code included in the Copilot response — see ``copilot-response.md`` for full details._"
+    "_Code will be generated by the fix agent after scope classification._"
 })
 "@
 
