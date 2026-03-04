@@ -62,13 +62,11 @@ Desktop.ini
 # contributors understand the intended ignore policy for results.
 #
 # Performance results are stored per-run in sample-api/results/.
-# Baselines, k6 summaries, and run metadata are committed for review.
-# Counters, Copilot logs, dashboard, and operational files are gitignored.
+# All result artifacts are committed for review.
 sample-api/results/*
 !sample-api/results/.gitkeep
 !sample-api/results/baseline.json
 !sample-api/results/baseline-*.json
 !sample-api/results/run-metadata.json
+!sample-api/results/hone.jsonl
 !sample-api/results/iteration-*/
-sample-api/results/iteration-*/*
-!sample-api/results/iteration-*/k6-summary*.json
