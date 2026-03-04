@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Constructs a detailed prompt with current performance metrics, baseline
-    comparison, and source code context, then sends it to 'gh copilot suggest'
-    to get optimization recommendations.
+    comparison, and source code context, then sends it to the standalone
+    'copilot' CLI (with a configurable model) to get optimization recommendations.
 
 .PARAMETER CurrentMetrics
     PSCustomObject with current iteration metrics.
@@ -56,9 +56,16 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 # ── Read source code context ────────────────────────────────────────────────
 $apiProjectPath = Join-Path $repoRoot $config.Api.ProjectPath
-$controllerFiles = Get-ChildItem -Path (Join-Path $apiProjectPath 'Controllers') -Filter '*.cs' -Recurse
-$sourceContext = foreach ($file in $controllerFiles) {
-    "// === $($file.Name) ===`n$(Get-Content $file.FullName -Raw)"
+$sourceGlob = if ($config.Api.SourceFileGlob) { $config.Api.SourceFileGlob } else { '*.*' }
+$sourcePaths = if ($config.Api.SourceCodePaths) { $config.Api.SourceCodePaths } else { @('.') }
+
+$sourceContext = foreach ($subPath in $sourcePaths) {
+    $searchDir = Join-Path $apiProjectPath $subPath
+    if (Test-Path $searchDir) {
+        Get-ChildItem -Path $searchDir -Filter $sourceGlob -Recurse | ForEach-Object {
+            "// === $($_.Name) ===`n$(Get-Content $_.FullName -Raw)"
+        }
+    }
 }
 
 # ── Build counter metrics context ───────────────────────────────────────────
@@ -70,7 +77,7 @@ if ($CounterMetrics) {
     $threads = if ($CounterMetrics.Runtime.ThreadPoolThreads) { $CounterMetrics.Runtime.ThreadPoolThreads.Max } else { 'N/A' }
     $counterContext = @"
 
-## .NET Runtime Counters
+## Runtime Counters
 - CPU avg: $cpuAvg
 - GC heap max: $heapMax
 - Gen2 collections: $gen2
@@ -98,7 +105,7 @@ if ($PreviousRcaExplanation) {
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $prompt = @"
-I am optimizing a .NET 6 Web API for performance. Here are the current results:
+I am optimizing a Web API for performance. Here are the current results:
 
 ## Current Performance (Iteration $Iteration)
 - p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
@@ -113,7 +120,7 @@ I am optimizing a .NET 6 Web API for performance. Here are the current results:
 $counterContext
 $historyContext
 
-## Source Code (Controllers)
+## Source Code
 $($sourceContext -join "`n`n")
 
 ## RULES — READ CAREFULLY
@@ -126,15 +133,8 @@ $($sourceContext -join "`n`n")
 5. I need a measurable improvement from the current values — there are no fixed
    targets, just make it better.
 
-Common optimization patterns to consider (pick ONE):
-- Adding database indexes
-- Replacing N+1 queries with eager loading (.Include())
-- Adding response caching
-- Implementing pagination
-- Moving filtering to the database layer (IQueryable)
-
 Respond with EXACTLY these numbered sections:
-1. The file path to modify (relative to sample-api/, e.g. SampleApi/Controllers/ProductsController.cs)
+1. The file path to modify (relative to sample-api/, e.g. a relative path under the project directory)
 2. A brief explanation of the single change and which metric it should improve
 3. The complete new file content (the FULL file, not a diff)
 4. Two to three additional optimization opportunities NOT YET TRIED, ranked by expected impact (one line each, prefixed with "- ")
@@ -154,19 +154,25 @@ $prompt | Out-File -FilePath $promptPath -Encoding utf8
 
 # ── Call GitHub Copilot CLI ─────────────────────────────────────────────────
 try {
-    # The modern Copilot CLI uses -p for non-interactive prompts and -s for
-    # script-friendly (silent) output.  The -- prevents gh from consuming flags.
-    # The prompt is too large for a command-line argument on Windows, so we
-    # pass a short meta-prompt pointing at the saved file.
+    # Use the standalone copilot CLI with:
+    #   -p       non-interactive prompt mode
+    #   -s       silent/script-friendly output (response only, no stats)
+    #   --model  pick the model configured in config.psd1
+    #   --deny-tool  prevent the agent from running shell commands or writing files
+    #              (we want pure text analysis, not code execution)
+    #   --no-custom-instructions  ignore AGENTS.md etc. so only our prompt is used
+    #   --no-ask-user  work autonomously without asking questions
+    #   --no-auto-update  don't download updates mid-run
 
-    # Ensure GH_TOKEN is set — the built-in copilot command does not read
-    # from the gh credential store automatically.
-    if (-not $env:GH_TOKEN) {
-        $env:GH_TOKEN = gh auth token 2>$null
+    $copilotModel = if ($config.Copilot -and $config.Copilot.Model) {
+        $config.Copilot.Model
+    } else {
+        'claude-opus-4.6'
     }
 
-    $metaPrompt = "Read the file at '$promptPath' and follow its instructions exactly. Output your full response to stdout."
-    $copilotOutput = gh copilot -- -p $metaPrompt -s --no-auto-update --no-ask-user --add-dir $repoRoot 2>&1
+    $copilotOutput = copilot --model $copilotModel -p $prompt -s `
+        --deny-tool 'shell' --deny-tool 'write' --deny-tool 'read' `
+        --no-auto-update --no-ask-user --no-custom-instructions 2>&1
     $copilotExitCode = $LASTEXITCODE
 
     # Save the response

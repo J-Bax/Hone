@@ -3,8 +3,8 @@
     Resets the sample API database to ensure clean state between iterations.
 
 .DESCRIPTION
-    Drops the HoneSampleDb database from LocalDB so that the next API startup
-    recreates it from scratch with fresh seed data via EnsureCreated + SeedData.Initialize.
+    Drops the target database so that the next API startup recreates it from
+    scratch with fresh seed data.
     This ensures every iteration starts with identical data for fair performance comparisons.
 
 .PARAMETER ConfigPath

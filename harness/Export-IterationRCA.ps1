@@ -67,22 +67,36 @@ $explanation = ''
 $codeBlock = ''
 
 try {
-    # Match "1." or "1)" style numbered sections
-    $sections = [regex]::Split($CopilotResponse, '(?m)^\s*(?:\d+[\.\)]\s*)')
-    # Filter out empty entries
+    # Split on numbered section headers. Handles various markdown styles:
+    #   "1. ..."  "1) ..."  "**1. File path:**"  "## 1. Explanation"
+    # The pattern matches the entire header line so section content starts clean.
+    $sections = [regex]::Split(
+        $CopilotResponse,
+        '(?m)^\s*(?:\*{0,2}|#{1,3}\s*)\s*\d+[\.\)][^\r\n]*\r?\n'
+    )
+    # Filter out empty / whitespace-only entries (e.g. preamble before section 1)
     $sections = $sections | Where-Object { $_.Trim().Length -gt 0 }
 
-    if ($sections.Count -ge 2) {
+    # The first non-empty entry may be preamble text before section 1.
+    # Detect it: if the first entry doesn't look like a file path, skip it.
+    $offset = 0
+    if ($sections.Count -gt 0 -and $sections[0].Trim() -notmatch '\.\w{1,5}\b') {
+        $offset = 1
+    }
+
+    if ($sections.Count -ge ($offset + 1)) {
         # Section 1: file path — strip markdown formatting, backticks, bold markers
-        $filePath    = ($sections[0]).Trim() -replace '[`*\r\n]', '' -replace '^\*\*', '' -replace '\*\*$', ''
-        # If the path contains descriptive text after the actual path, take only the path
-        if ($filePath -match '([\w/\\]+\.cs\b)') {
+        $filePath = ($sections[$offset]).Trim() -replace '[`*\r\n]', '' -replace '^\*\*', '' -replace '\*\*$', ''
+        # Extract just the source file path if surrounded by descriptive text
+        if ($filePath -match '([\w./\\]+\.\w{1,5}\b)') {
             $filePath = $Matches[1]
         }
-        $explanation = ($sections[1]).Trim()
     }
-    if ($sections.Count -ge 3) {
-        $rawCode = ($sections[2]).Trim()
+    if ($sections.Count -ge ($offset + 2)) {
+        $explanation = ($sections[$offset + 1]).Trim()
+    }
+    if ($sections.Count -ge ($offset + 3)) {
+        $rawCode = ($sections[$offset + 2]).Trim()
         # Extract content from fenced code block (```csharp ... ``` or ``` ... ```)
         if ($rawCode -match '(?ms)```(?:\w+)?\s*\r?\n(.+?)```') {
             $codeBlock = $Matches[1].TrimEnd()
@@ -142,7 +156,7 @@ $explanation
 ## Proposed Fix
 
 $(if ($codeBlock) {
-    "``````csharp`n$codeBlock`n```````n"
+    "```````n$codeBlock`n```````n"
 } else {
     "_Complete replacement code included in the Copilot response — see ``copilot-response.md`` for full details._"
 })

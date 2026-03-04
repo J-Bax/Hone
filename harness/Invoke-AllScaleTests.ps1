@@ -72,10 +72,13 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
 
         # Trigger server-side GC so heap pressure from the previous scenario doesn't bleed over
         $baseUrl = $config.Api.BaseUrl
-        try {
-            Invoke-RestMethod -Uri "$baseUrl/diag/gc" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-        } catch {
-            Write-Verbose 'GC endpoint not available — skipping forced GC between scenarios'
+        $gcEndpoint = $config.Api.GcEndpoint
+        if ($gcEndpoint) {
+            try {
+                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
+            } catch {
+                Write-Verbose 'GC endpoint not available — skipping forced GC between scenarios'
+            }
         }
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

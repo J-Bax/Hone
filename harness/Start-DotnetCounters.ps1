@@ -4,8 +4,7 @@
 
 .DESCRIPTION
     Launches 'dotnet-counters collect' as a background process against the target
-    API. Captures counters from System.Runtime, Microsoft.AspNetCore.Hosting,
-    Microsoft.AspNetCore.Http.Connections, and System.Net.Http providers.
+    API. Captures counters from the providers configured in config.psd1.
     Returns a handle object used by Stop-DotnetCounters.ps1 to stop collection
     and parse results.
 

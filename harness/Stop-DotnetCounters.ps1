@@ -5,8 +5,8 @@
 .DESCRIPTION
     Stops the dotnet-counters process started by Start-DotnetCounters.ps1,
     reads the CSV output file, and returns a structured object with aggregated
-    .NET performance counter data including GC metrics, thread pool stats,
-    exception counts, working set, and ASP.NET Core hosting metrics.
+    runtime performance counter data including GC metrics, thread pool stats,
+    exception counts, and working set.
 
 .PARAMETER CounterHandle
     The PSCustomObject returned by Start-DotnetCounters.ps1 containing the

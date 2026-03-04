@@ -235,13 +235,13 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $currentMetrics = $scaleResult.Metrics
     $currentCounterMetrics = $scaleResult.CounterMetrics
 
-    # Display .NET counter highlights if available
+    # Display runtime counter highlights if available
     if ($currentCounterMetrics) {
         $cpuInfo = if ($currentCounterMetrics.Runtime.CpuUsage) { "CPU avg: $($currentCounterMetrics.Runtime.CpuUsage.Avg)%" } else { 'CPU: N/A' }
         $heapInfo = if ($currentCounterMetrics.Runtime.GcHeapSizeMB) { "GC heap max: $($currentCounterMetrics.Runtime.GcHeapSizeMB.Max)MB" } else { 'Heap: N/A' }
         $gen2Info = if ($currentCounterMetrics.Runtime.Gen2Collections) { "Gen2: $($currentCounterMetrics.Runtime.Gen2Collections.Last)" } else { 'Gen2: N/A' }
         $threadInfo = if ($currentCounterMetrics.Runtime.ThreadPoolThreads) { "Threads max: $($currentCounterMetrics.Runtime.ThreadPoolThreads.Max)" } else { 'Threads: N/A' }
-        Write-Information "  .NET counters: $cpuInfo | $heapInfo | $gen2Info | $threadInfo" -InformationAction Continue
+        Write-Information "  Runtime counters: $cpuInfo | $heapInfo | $gen2Info | $threadInfo" -InformationAction Continue
     }
 
     # Track best iteration

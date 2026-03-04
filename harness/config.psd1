@@ -7,6 +7,12 @@
         # Path to the API project directory (relative to repo root)
         ProjectPath     = 'sample-api/SampleApi'
 
+        # Subdirectories to scan for source code context (relative to ProjectPath)
+        SourceCodePaths = @('Controllers')
+
+        # File pattern for source files to include in analysis prompts
+        SourceFileGlob  = '*.cs'
+
         # Path to the E2E test project directory (relative to repo root)
         TestProjectPath = 'sample-api/SampleApi.Tests'
 
@@ -15,6 +21,9 @@
 
         # Health check endpoint (GET, must return 200)
         HealthEndpoint  = '/health'
+
+        # Optional endpoint (POST) to trigger server-side GC between runs
+        GcEndpoint      = '/diag/gc'
 
         # Seconds to wait for API to become healthy after start
         StartupTimeout  = 90
@@ -72,7 +81,7 @@
         ExtraArgs    = @()
         # ── Warmup ──────────────────────────────────────────
         # Run a short 1-VU warmup pass before the measured run to ensure
-        # the DB is seeded, EF Core model is compiled, and JIT is primed.
+        # the application is fully warmed up before measured runs.
         WarmupEnabled      = $true
         WarmupScenarioPath = 'sample-api/scale-tests/scenarios/warmup.js'
 
@@ -109,6 +118,12 @@
 
         # Git branch prefix for optimization branches
         BranchPrefix  = 'hone/iteration'
+    }
+
+    # ── Copilot CLI ─────────────────────────────────────────────
+    Copilot = @{
+        # AI model for performance analysis (see 'copilot --help' for choices)
+        Model = 'claude-opus-4.6'
     }
 
     # ── Logging ─────────────────────────────────────────────────

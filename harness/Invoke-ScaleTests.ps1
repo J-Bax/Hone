@@ -7,7 +7,7 @@
     output, and returns a structured performance metrics object.
 
     For the primary scenario (no ScenarioName), supports:
-    - Warmup: a short 1-VU pass that primes JIT, EF Core, and DB connections
+    - Warmup: a short 1-VU pass that warms up the application before measured runs
     - Multi-run: runs the scenario N times and returns the median result
 
 .PARAMETER ConfigPath
@@ -105,17 +105,20 @@ if ($warmupEnabled) {
     if (Test-Path $warmupPath) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
-            -Message 'Running warmup pass (JIT + DB + EF Core priming)' `
+            -Message 'Running warmup pass' `
             -Iteration $Iteration
 
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
         & k6 @warmupArgs 2>&1 | Out-Null
 
         # Trigger server-side GC so the heap is clean before measured runs
-        try {
-            Invoke-RestMethod -Uri "$baseUrl/diag/gc" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-        } catch {
-            Write-Verbose "GC endpoint not available — skipping post-warmup GC"
+        $gcEndpoint = $config.Api.GcEndpoint
+        if ($gcEndpoint) {
+            try {
+                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
+            } catch {
+                Write-Verbose "GC endpoint not available — skipping post-warmup GC"
+            }
         }
 
         # Cooldown after warmup — let GC, thread pool, and TCP connections settle
@@ -197,10 +200,13 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
 
         # Trigger server-side GC so heap pressure from the previous run doesn't bleed over
-        try {
-            Invoke-RestMethod -Uri "$baseUrl/diag/gc" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-        } catch {
-            Write-Verbose "GC endpoint not available — skipping forced GC"
+        $gcEndpoint = $config.Api.GcEndpoint
+        if ($gcEndpoint) {
+            try {
+                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
+            } catch {
+                Write-Verbose "GC endpoint not available — skipping forced GC"
+            }
         }
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
