@@ -3,13 +3,16 @@
     Main entry point for the Hone agentic optimization loop.
 
 .DESCRIPTION
-    Orchestrates the full iterative optimization cycle:
-    1. Build the target API
-    2. Verify correctness with E2E tests
-    3. Start the API and measure performance with k6
-    4. Compare results against baseline and thresholds
-    5. If targets not met: analyze with Copilot, apply fix, repeat
-    6. Exit when targets met, regression detected, or max iterations reached
+    Orchestrates the full iterative optimization cycle. Each iteration is
+    a self-contained optimization cycle:
+    1. Analyze with Copilot to identify the next optimization
+    2. Apply the suggested code change locally
+    3. Build the target API with the fix applied
+    4. Verify correctness with E2E tests
+    5. Start the API and measure performance with k6
+    6. Compare results against baseline — confirm improvement
+    7. If validated: push branch + create PR; if not: rollback
+    Exits when max iterations reached, regression detected, or no improvement.
 
 .PARAMETER MaxIterations
     Override max iterations from config.
@@ -84,7 +87,13 @@ if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
     }
 }
 
-# ── Ensure GH_TOKEN is set for gh copilot (built-in command needs explicit token)
+# ── Prerequisite check: standalone copilot CLI must be on PATH ───────────────
+if (-not (Get-Command 'copilot' -ErrorAction SilentlyContinue)) {
+    Write-Error 'copilot CLI is not on PATH — install the GitHub Copilot CLI (https://docs.github.com/copilot/how-tos/copilot-cli) before running the optimization loop'
+    return
+}
+
+# ── Ensure GH_TOKEN is set for copilot CLI ───────────────────────────────────
 if (-not $env:GH_TOKEN) {
     $ghToken = gh auth token 2>$null
     if ($ghToken) {
@@ -172,18 +181,156 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' -Message "Starting iteration $iteration" -Iteration $iteration
 
-    # ── Phase 1: Build ──────────────────────────────────────────────────────
-    Write-Information '[1/5] Building...' -InformationAction Continue
+    # ── Phase 1: Analyze ───────────────────────────────────────────────────
+    Write-Information '[1/7] Analyzing with Copilot...' -InformationAction Continue
+
+    # For iteration 1, use baseline as current (no prior fix to measure).
+    # For iteration 2+, use the metrics from the previous iteration's post-fix measurement.
+    $metricsForAnalysis = if ($previousMetrics) { $previousMetrics } else { $baselineMetrics }
+    $countersForAnalysis = if ($previousCounterMetrics) { $previousCounterMetrics } else { $null }
+
+    # Build a comparison object for the analysis prompt.
+    # For iteration 1, compare baseline vs baseline (0% delta — Copilot uses absolute values + source code).
+    $comparisonForAnalysis = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
+        -CurrentMetrics $metricsForAnalysis `
+        -BaselineMetrics $baselineMetrics `
+        -PreviousMetrics $previousMetrics `
+        -CurrentCounterMetrics $countersForAnalysis `
+        -PreviousCounterMetrics $previousCounterMetrics `
+        -ConfigPath $ConfigPath `
+        -Iteration $iteration
+
+    $analysisResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAnalysis.ps1') `
+        -CurrentMetrics $metricsForAnalysis `
+        -BaselineMetrics $baselineMetrics `
+        -ComparisonResult $comparisonForAnalysis `
+        -CounterMetrics $countersForAnalysis `
+        -Iteration $iteration `
+        -ConfigPath $ConfigPath `
+        -PreviousRcaExplanation $previousRcaExplanation
+
+    $rcaResult = $null
+    $applyResult = $null
+    $branchName = "$($config.Loop.BranchPrefix)-$iteration"
+    $applySuccess = $false
+    $skipIteration = $false
+
+    if (-not $analysisResult.Success) {
+        Write-Warning '  Copilot analysis failed — skipping iteration'
+        $staleCount++
+        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
+            $exitReason = 'no_improvement'
+            Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
+            break
+        }
+        continue
+    }
+
+    Write-Information "  Copilot response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
+
+    # Generate root cause analysis document
+    $rcaResult = & (Join-Path $PSScriptRoot 'Export-IterationRCA.ps1') `
+        -CopilotResponse $analysisResult.Response `
+        -CurrentMetrics $metricsForAnalysis `
+        -BaselineMetrics $baselineMetrics `
+        -ComparisonResult $comparisonForAnalysis `
+        -Iteration $iteration `
+        -ConfigPath $ConfigPath
+
+    if ($rcaResult.Success) {
+        Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
+    }
+
+    # Check if the suggestion is actionable
+    $isArchitecture = ($rcaResult.ChangeScope -eq 'architecture')
+
+    if ($isArchitecture -and $rcaResult.Success) {
+        Write-Information '  ⚠ Architecture-level change detected — queuing for manual review' -InformationAction Continue
+        Write-Information "    Scope: $($rcaResult.ChangeScope) | File: $($rcaResult.FilePath)" -InformationAction Continue
+        Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'fix' -Level 'info' `
+            -Message "Architecture change queued (not applied): $($rcaResult.Explanation.Substring(0, [Math]::Min(100, $rcaResult.Explanation.Length)))" `
+            -Iteration $iteration
+
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddQueue' `
+            -Iteration $iteration `
+            -Opportunities @($rcaResult.Explanation) `
+            -Scopes @('architecture') `
+            -ConfigPath $ConfigPath
+
+        $skipIteration = $true
+    }
+    elseif (-not $rcaResult.Success -or -not $rcaResult.FilePath -or -not $rcaResult.CodeBlock) {
+        Write-Information '  → Could not parse actionable file path or code from Copilot response.' -InformationAction Continue
+        Write-Information '    Review copilot-response.md and apply manually if desired.' -InformationAction Continue
+        $skipIteration = $true
+    }
+
+    if ($skipIteration) {
+        $staleCount++
+        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
+            $exitReason = 'no_improvement'
+            Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
+            break
+        }
+        continue
+    }
+
+    # ── Phase 2: Fix (apply locally, defer PR) ─────────────────────────────
+    Write-Information '[2/7] Applying fix...' -InformationAction Continue
+
+    $targetFile = $rcaResult.FilePath.Trim()
+    # Normalise: ensure it starts with 'sample-api/'
+    if ($targetFile -notmatch '^sample-api[\\/]') {
+        $targetFile = "sample-api/$targetFile"
+    }
+
+    $fullTargetPath = Join-Path $repoRoot $targetFile
+    if (-not (Test-Path (Split-Path $fullTargetPath -Parent))) {
+        Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
+        $staleCount++
+        continue
+    }
+
+    Write-Information "  Applying fix to: $targetFile" -InformationAction Continue
+
+    $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
+        -FilePath $targetFile `
+        -NewContent $rcaResult.CodeBlock `
+        -Description $rcaResult.Explanation.Substring(0, [Math]::Min(120, $rcaResult.Explanation.Length)) `
+        -Iteration $iteration `
+        -ConfigPath $ConfigPath `
+        -DeferPR
+
+    if (-not $applyResult.Success) {
+        Write-Warning "  Fix application failed: $($applyResult.Description)"
+        $staleCount++
+        continue
+    }
+
+    Write-Information "  ✓ Fix committed locally on branch: $($applyResult.BranchName)" -InformationAction Continue
+
+    # ── Phase 3: Build ──────────────────────────────────────────────────────
+    Write-Information '[3/7] Building...' -InformationAction Continue
     $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
 
     if (-not $buildResult.Success) {
         $exitReason = 'build_failure'
-        Write-Error "Build failed at iteration $iteration. Aborting."
+        Write-Error "Build failed at iteration $iteration — rolling back"
+
+        Push-Location (Join-Path $repoRoot 'sample-api')
+        git checkout master 2>&1 | Out-Null
+        git branch -D $branchName 2>&1 | Out-Null
+        Pop-Location
+
         break
     }
 
-    # ── Phase 2: Verify (E2E Tests) ────────────────────────────────────────
-    Write-Information '[2/5] Verifying (E2E tests)...' -InformationAction Continue
+    # ── Phase 4: Verify (E2E Tests) ────────────────────────────────────────
+    Write-Information '[4/7] Verifying (E2E tests)...' -InformationAction Continue
     $testResult = & (Join-Path $PSScriptRoot 'Invoke-E2ETests.ps1') `
         -ConfigPath $ConfigPath -Iteration $iteration
 
@@ -191,16 +338,16 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $exitReason = 'test_failure'
         Write-Warning "E2E tests failed at iteration $iteration — rolling back"
 
-        # Rollback the submodule to main
         Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout main 2>&1 | Out-Null
+        git checkout master 2>&1 | Out-Null
+        git branch -D $branchName 2>&1 | Out-Null
         Pop-Location
 
         break
     }
 
-    # ── Phase 3: Measure (Scale Tests) ─────────────────────────────────────
-    Write-Information '[3/5] Measuring (k6 scale tests)...' -InformationAction Continue
+    # ── Phase 5: Measure (Scale Tests) ─────────────────────────────────────
+    Write-Information '[5/7] Measuring (k6 scale tests)...' -InformationAction Continue
 
     # Reset database so every iteration starts with identical seed data
     & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Iteration $iteration
@@ -223,7 +370,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             break
         }
 
-        # ── Run additional (diagnostic) scenarios ───────────────────────────
+        # Run additional (diagnostic) scenarios
         Write-Information '      Running additional scenarios...' -InformationAction Continue
         $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
             -ConfigPath $ConfigPath -Iteration $iteration -SkipPrimary
@@ -250,8 +397,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $bestIteration = $iteration
     }
 
-    # ── Phase 4: Compare ───────────────────────────────────────────────────
-    Write-Information '[4/5] Comparing results...' -InformationAction Continue
+    # ── Phase 6: Compare ───────────────────────────────────────────────────
+    Write-Information '[6/7] Comparing results...' -InformationAction Continue
 
     $comparison = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
         -CurrentMetrics $currentMetrics `
@@ -279,18 +426,6 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             $v.CV, $v.Min, $v.Max, $v.StdDev, $v.Runs) -InformationAction Continue
     }
 
-    if ($comparison.Regression) {
-        $exitReason = 'regression'
-        Write-Warning "  Regression detected: $($comparison.RegressionDetail)"
-        Write-Warning "  Rolling back to previous iteration"
-
-        Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout main 2>&1 | Out-Null
-        Pop-Location
-
-        break
-    }
-
     # Display efficiency deltas when counter data is available
     if ($comparison.EfficiencyDeltas) {
         $ed = $comparison.EfficiencyDeltas
@@ -299,17 +434,196 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             $ed.WorkingSet.Current, $ed.WorkingSet.ChangePct) -InformationAction Continue
     }
 
-    if ($comparison.TiebreakerUsed) {
-        $staleCount = 0
-        Write-Information '  ↑ Efficiency improvement (tiebreaker) — continuing' -InformationAction Continue
+    # ── Phase 7: Publish or Rollback ───────────────────────────────────────
+    $iterationOutcome = 'stale'
+
+    if ($comparison.Regression) {
+        $iterationOutcome = 'regressed'
+        $exitReason = 'regression'
+        Write-Warning "  Regression detected: $($comparison.RegressionDetail)"
+        Write-Warning "  Rolling back to previous state"
+
+        Push-Location (Join-Path $repoRoot 'sample-api')
+        git checkout master 2>&1 | Out-Null
+        git branch -D $branchName 2>&1 | Out-Null
+        Pop-Location
+
+        # Update metadata with regression outcome
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary $rcaResult.Explanation `
+            -FilePath $rcaResult.FilePath `
+            -Outcome 'regressed' `
+            -ConfigPath $ConfigPath
+
+        break
     }
-    elseif ($comparison.Improved) {
+    elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
+        $iterationOutcome = 'improved'
         $staleCount = 0
-        Write-Information '  ↑ Improvement detected — continuing' -InformationAction Continue
+
+        if ($comparison.TiebreakerUsed) {
+            Write-Information '  ↑ Efficiency improvement (tiebreaker) — publishing' -InformationAction Continue
+        }
+        else {
+            Write-Information '  ↑ Improvement detected — publishing' -InformationAction Continue
+        }
+
+        Write-Information '[7/7] Publishing (push + PR)...' -InformationAction Continue
+
+        # Amend the commit to include post-fix artifacts (k6 summaries, comparison data)
+        Push-Location (Join-Path $repoRoot 'sample-api')
+        $iterationDir = Join-Path (Join-Path $repoRoot 'sample-api') 'results' "iteration-$iteration"
+        if (Test-Path $iterationDir) {
+            git add "results/iteration-$iteration/" 2>&1 | Out-Null
+        }
+        $runMetadataFile = Join-Path (Join-Path $repoRoot 'sample-api') 'results' 'run-metadata.json'
+        if (Test-Path $runMetadataFile) {
+            git add results/run-metadata.json 2>&1 | Out-Null
+        }
+        $metadataDir = Join-Path (Join-Path $repoRoot 'sample-api') 'results' 'metadata'
+        if (Test-Path $metadataDir) {
+            git add results/metadata/ 2>&1 | Out-Null
+        }
+        git commit --amend --no-edit 2>&1 | Out-Null
+
+        # Push and create PR
+        git push -u origin $branchName 2>&1 | Out-Null
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'fix' -Level 'info' `
+            -Message "Branch pushed to origin: $branchName" `
+            -Iteration $iteration
+
+        $prBody = @"
+## Hone Iteration $iteration
+
+**Optimization:** $($rcaResult.Explanation.Substring(0, [Math]::Min(200, $rcaResult.Explanation.Length)))
+
+**File changed:** ``$($rcaResult.FilePath)``
+
+### Performance Results
+| Metric | Baseline | After Fix | Delta |
+|--------|----------|-----------|-------|
+| p95 Latency | $($baselineMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
+| Requests/sec | $([math]::Round($baselineMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
+| Error Rate | $([math]::Round($baselineMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
+
+**vs baseline improvement:** $($comparison.ImprovementPct)%
+
+---
+*Auto-generated by the Hone agentic optimization harness.*
+*Review the changes, then merge to continue the optimization loop.*
+"@
+
+        $prUrl = gh pr create `
+            --base master `
+            --head $branchName `
+            --title "hone(iteration-$iteration): $($rcaResult.Explanation.Substring(0, [Math]::Min(80, $rcaResult.Explanation.Length)))" `
+            --body $prBody 2>&1
+
+        $prNumber = $null
+        if ($LASTEXITCODE -eq 0) {
+            $prNumber = ($prUrl -split '/')[-1]
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'fix' -Level 'info' `
+                -Message "Pull request created: $prUrl" `
+                -Iteration $iteration `
+                -Data @{ prUrl = "$prUrl"; prNumber = $prNumber }
+
+            Write-Information "  ✓ Pull request created: $prUrl" -InformationAction Continue
+        }
+        else {
+            Write-Warning "  Failed to create pull request: $prUrl"
+        }
+
+        # If more iterations remain, wait for PR to be merged before continuing
+        if ($prNumber -and $iteration -lt $maxIter) {
+            Write-Information '' -InformationAction Continue
+            Write-Information '  ⏳ Waiting for PR to be reviewed and merged...' -InformationAction Continue
+            Write-Information '     Merge the PR in GitHub to continue the optimization loop.' -InformationAction Continue
+
+            $pollInterval = 30
+            $lastLog = [datetime]::MinValue
+            $logEvery = [timespan]::FromMinutes(5)
+
+            while ($true) {
+                Start-Sleep -Seconds $pollInterval
+                $prState = gh pr view $prNumber --json state,mergedAt 2>$null | ConvertFrom-Json
+                if ($prState.state -eq 'MERGED') {
+                    Write-Information "  ✓ PR #$prNumber merged — continuing loop" -InformationAction Continue
+
+                    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                        -Phase 'fix' -Level 'info' `
+                        -Message "PR #$prNumber merged at $($prState.mergedAt)" `
+                        -Iteration $iteration
+
+                    # Update local master to include the merged changes
+                    git fetch origin master 2>&1 | Out-Null
+                    git checkout master 2>&1 | Out-Null
+                    git merge origin/master --ff-only 2>&1 | Out-Null
+                    break
+                }
+                elseif ($prState.state -eq 'CLOSED') {
+                    Write-Warning "  PR #$prNumber was closed without merging — stopping loop"
+
+                    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                        -Phase 'fix' -Level 'warning' `
+                        -Message "PR #$prNumber closed without merge" `
+                        -Iteration $iteration
+
+                    git checkout master 2>&1 | Out-Null
+                    $exitReason = 'pr_rejected'
+                    break
+                }
+                else {
+                    if (([datetime]::Now - $lastLog) -ge $logEvery) {
+                        Write-Information "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))" -InformationAction Continue
+                        $lastLog = [datetime]::Now
+                    }
+                }
+            }
+
+            # If PR was rejected, break out of the main loop
+            if ($exitReason -eq 'pr_rejected') {
+                Pop-Location
+                break
+            }
+        }
+
+        Pop-Location
+
+        # Update metadata with improvement outcome
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary $rcaResult.Explanation `
+            -FilePath $rcaResult.FilePath `
+            -Outcome 'improved' `
+            -ConfigPath $ConfigPath
     }
     else {
+        # No improvement and no regression — stale
         $staleCount++
         Write-Information "  ─ No improvement (stale $staleCount / $($tolerances.StaleIterationsBeforeStop))" -InformationAction Continue
+
+        # Rollback the fix since it didn't help
+        Push-Location (Join-Path $repoRoot 'sample-api')
+        git checkout master 2>&1 | Out-Null
+        git branch -D $branchName 2>&1 | Out-Null
+        Pop-Location
+
+        # Update metadata with stale outcome
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary $rcaResult.Explanation `
+            -FilePath $rcaResult.FilePath `
+            -Outcome 'stale' `
+            -ConfigPath $ConfigPath
+
         if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
             $exitReason = 'no_improvement'
             Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
@@ -317,142 +631,22 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         }
     }
 
-    # ── Phase 5: Analyze + Fix ─────────────────────────────────────────────
-    if ($iteration -lt $maxIter) {
-        Write-Information '[5/5] Analyzing with Copilot and applying fix...' -InformationAction Continue
-
-        $analysisResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAnalysis.ps1') `
-            -CurrentMetrics $currentMetrics `
-            -BaselineMetrics $baselineMetrics `
-            -ComparisonResult $comparison `
-            -CounterMetrics $currentCounterMetrics `
-            -Iteration $iteration `
-            -ConfigPath $ConfigPath `
-            -PreviousRcaExplanation $previousRcaExplanation
-
-        if ($analysisResult.Success) {
-            Write-Information "  Copilot response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
-
-            # ── Generate root cause analysis document ──────────────────────
-            $rcaResult = & (Join-Path $PSScriptRoot 'Export-IterationRCA.ps1') `
-                -CopilotResponse $analysisResult.Response `
-                -CurrentMetrics $currentMetrics `
-                -BaselineMetrics $baselineMetrics `
-                -ComparisonResult $comparison `
-                -Iteration $iteration `
-                -ConfigPath $ConfigPath
-
-            if ($rcaResult.Success) {
-                Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
-            }
-
-            # ── Auto-apply: single scoped fix ──────────────────────────────
-            # The RCA parser extracts the file path and code block from the
-            # Copilot response. We apply exactly ONE file change per iteration
-            # to keep each optimization isolated and easy to reason about.
-            #
-            # Architecture-level changes are queued for manual approval instead
-            # of being auto-applied.
-            $applySuccess = $false
-            $isArchitecture = ($rcaResult.ChangeScope -eq 'architecture')
-
-            if ($isArchitecture -and $rcaResult.Success) {
-                Write-Information '  ⚠ Architecture-level change detected — queuing for manual review' -InformationAction Continue
-                Write-Information "    Scope: $($rcaResult.ChangeScope) | File: $($rcaResult.FilePath)" -InformationAction Continue
-                Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
-
-                & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                    -Phase 'fix' -Level 'info' `
-                    -Message "Architecture change queued (not applied): $($rcaResult.Explanation.Substring(0, [Math]::Min(100, $rcaResult.Explanation.Length)))" `
-                    -Iteration $iteration
-
-                # Add the architecture suggestion to the queue
-                & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-                    -Action 'AddQueue' `
-                    -Iteration $iteration `
-                    -Opportunities @($rcaResult.Explanation) `
-                    -Scopes @('architecture') `
-                    -ConfigPath $ConfigPath
-            }
-            elseif ($rcaResult.Success -and $rcaResult.FilePath -and $rcaResult.CodeBlock) {
-                $targetFile = $rcaResult.FilePath.Trim()
-                # Normalise: ensure it starts with 'sample-api/'
-                if ($targetFile -notmatch '^sample-api[\\/]') {
-                    $targetFile = "sample-api/$targetFile"
-                }
-
-                $fullTargetPath = Join-Path $repoRoot $targetFile
-                if (Test-Path (Split-Path $fullTargetPath -Parent)) {
-                    Write-Information "  Applying fix to: $targetFile" -InformationAction Continue
-
-                    $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
-                        -FilePath $targetFile `
-                        -NewContent $rcaResult.CodeBlock `
-                        -Description $rcaResult.Explanation.Substring(0, [Math]::Min(120, $rcaResult.Explanation.Length)) `
-                        -Iteration $iteration `
-                        -ConfigPath $ConfigPath
-
-                    if ($applyResult.Success) {
-                        $applySuccess = $true
-                        Write-Information "  ✓ Fix committed on branch: $($applyResult.BranchName)" -InformationAction Continue
-                    }
-                    else {
-                        Write-Warning "  Fix application failed: $($applyResult.Description)"
-                    }
-                }
-                else {
-                    Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
-                }
-            }
-            else {
-                Write-Information '  → Could not parse actionable file path or code from Copilot response.' -InformationAction Continue
-                Write-Information '    Review copilot-response.md and apply manually if desired.' -InformationAction Continue
-            }
-
-            # ── Update optimization metadata ───────────────────────────────
-            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-                -Action 'AddTried' `
-                -Iteration $iteration `
-                -Summary $rcaResult.Explanation `
-                -FilePath $rcaResult.FilePath `
-                -Outcome $(if ($applySuccess) { 'pending' } else { 'stale' }) `
-                -ConfigPath $ConfigPath
-
-            if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
-                # Parse scope tags from opportunity text (e.g. "[ARCHITECTURE] ..." or "[NARROW] ...")
-                $oppScopes = @()
-                foreach ($opp in $analysisResult.AdditionalOpportunities) {
-                    if ($opp -match '^\[ARCHITECTURE\]') { $oppScopes += 'architecture' }
-                    else { $oppScopes += 'narrow' }
-                }
-
-                & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-                    -Action 'AddQueue' `
-                    -Iteration $iteration `
-                    -Opportunities $analysisResult.AdditionalOpportunities `
-                    -Scopes $oppScopes `
-                    -ConfigPath $ConfigPath
-
-                Write-Information "  Queued $($analysisResult.AdditionalOpportunities.Count) additional optimization opportunities" -InformationAction Continue
-            }
+    # Queue additional optimization opportunities from the analysis
+    if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
+        $oppScopes = @()
+        foreach ($opp in $analysisResult.AdditionalOpportunities) {
+            if ($opp -match '^\[ARCHITECTURE\]') { $oppScopes += 'architecture' }
+            else { $oppScopes += 'narrow' }
         }
-        else {
-            Write-Warning '  Copilot analysis failed — continuing to next iteration anyway'
-        }
-    }
-
-    # ── Update outcome for previous iteration's optimization ───────────────
-    if ($iteration -gt 1) {
-        $prevOutcome = if ($comparison.Regression) { 'regressed' }
-                       elseif ($comparison.Improved -or $comparison.TiebreakerUsed) { 'improved' }
-                       else { 'stale' }
 
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'MarkTried' `
-            -Iteration ($iteration - 1) `
-            -Summary $previousRcaExplanation `
-            -Outcome $prevOutcome `
+            -Action 'AddQueue' `
+            -Iteration $iteration `
+            -Opportunities $analysisResult.AdditionalOpportunities `
+            -Scopes $oppScopes `
             -ConfigPath $ConfigPath
+
+        Write-Information "  Queued $($analysisResult.AdditionalOpportunities.Count) additional optimization opportunities" -InformationAction Continue
     }
 
     $previousMetrics = $currentMetrics
@@ -468,6 +662,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         Regression  = $comparison.Regression
         P95         = $currentMetrics.HttpReqDuration.P95
         RPS         = [math]::Round($currentMetrics.HttpReqs.Rate, 1)
+        Outcome     = $iterationOutcome
     }
 
     # Append to the in-memory iterations list
