@@ -35,6 +35,27 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+function Undo-IterationBranch {
+    <#
+    .SYNOPSIS
+        Rolls back to master and deletes the iteration branch.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$BranchName,
+        [Parameter(Mandatory)][string]$RepoRoot
+    )
+    try {
+        Push-Location (Join-Path $RepoRoot 'sample-api')
+        git checkout master 2>&1 | Out-Null
+        git branch -D $BranchName 2>&1 | Out-Null
+        Pop-Location
+    }
+    catch {
+        Pop-Location -ErrorAction SilentlyContinue
+        Write-Warning "Rollback failed for branch '$BranchName': $_"
+    }
+}
+
 if (-not $ConfigPath) {
     $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
 }
@@ -333,8 +354,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         -NewContent $fixResult.CodeBlock `
         -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
         -Iteration $iteration `
-        -ConfigPath $ConfigPath `
-        -DeferPR
+        -ConfigPath $ConfigPath
 
     if (-not $applyResult.Success) {
         Write-Warning "  Fix application failed: $($applyResult.Description)"
@@ -352,10 +372,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $exitReason = 'build_failure'
         Write-Error "Build failed at iteration $iteration — rolling back"
 
-        Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout master 2>&1 | Out-Null
-        git branch -D $branchName 2>&1 | Out-Null
-        Pop-Location
+        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
 
         break
     }
@@ -369,10 +386,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $exitReason = 'test_failure'
         Write-Warning "E2E tests failed at iteration $iteration — rolling back"
 
-        Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout master 2>&1 | Out-Null
-        git branch -D $branchName 2>&1 | Out-Null
-        Pop-Location
+        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
 
         break
     }
@@ -474,10 +488,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         Write-Warning "  Regression detected: $($comparison.RegressionDetail)"
         Write-Warning "  Rolling back to previous state"
 
-        Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout master 2>&1 | Out-Null
-        git branch -D $branchName 2>&1 | Out-Null
-        Pop-Location
+        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
 
         # Update metadata with regression outcome
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
@@ -641,10 +652,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         Write-Information "  ─ No improvement (stale $staleCount / $($tolerances.StaleIterationsBeforeStop))" -InformationAction Continue
 
         # Rollback the fix since it didn't help
-        Push-Location (Join-Path $repoRoot 'sample-api')
-        git checkout master 2>&1 | Out-Null
-        git branch -D $branchName 2>&1 | Out-Null
-        Pop-Location
+        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
 
         # Update metadata with stale outcome
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
