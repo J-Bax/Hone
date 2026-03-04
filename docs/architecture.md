@@ -48,12 +48,22 @@ The core of Hone. A set of PowerShell scripts that orchestrate the optimization 
 | `Start-SampleApi.ps1` | Launches the API as a background process |
 | `Stop-SampleApi.ps1` | Gracefully shuts down the API process |
 | `Invoke-E2ETests.ps1` | Runs `dotnet test` and parses results |
-| `Invoke-ScaleTests.ps1` | Runs `k6 run` and parses JSON output |
+| `Invoke-ScaleTests.ps1` | Runs a single k6 scenario and parses JSON output |
+| `Invoke-AllScaleTests.ps1` | Runs all registered k6 scenarios and returns per-scenario results |
 | `Get-PerformanceBaseline.ps1` | Establishes initial performance baseline |
 | `Compare-Results.ps1` | Compares current vs. baseline metrics |
-| `Invoke-CopilotAnalysis.ps1` | Sends perf context to `gh copilot suggest` |
+| `Show-Results.ps1` | Displays formatted performance comparison tables in the terminal |
+| `Invoke-AnalysisAgent.ps1` | Sends perf context to `copilot` CLI for analysis |
+| `Invoke-ClassificationAgent.ps1` | Calls the hone-classifier agent to determine optimization scope (NARROW vs ARCHITECTURE) |
+| `Invoke-FixAgent.ps1` | Calls the hone-fixer agent to generate optimized file content |
 | `Apply-Suggestion.ps1` | Creates a branch and applies suggested changes |
+| `Invoke-Cooldown.ps1` | Triggers server-side GC and sleeps for a cooldown period between test runs |
+| `Reset-Database.ps1` | Drops and recreates the sample API database for clean state |
+| `Export-Dashboard.ps1` | Generates an interactive HTML dashboard with Chart.js visualizations |
 | `Export-IterationRCA.ps1` | Generates per-iteration root cause analysis markdown |
+| `Get-MachineInfo.ps1` | Collects machine hardware, OS, and runtime info for performance context |
+| `Start-DotnetCounters.ps1` | Launches `dotnet-counters` collection as a background process |
+| `Stop-DotnetCounters.ps1` | Stops `dotnet-counters` and parses CSV output into structured metrics |
 | `Update-OptimizationMetadata.ps1` | Maintains optimization log and opportunity queue |
 | `Write-HoneLog.ps1` | Structured logging (JSON-lines format) |
 
@@ -77,6 +87,7 @@ The API models a marketplace with products, categories, reviews, orders, and a s
 #### API Surface
 
 - **ProductsController** — CRUD + by-category + search (10 endpoints)
+- **CategoriesController** — List all + get by ID with products (2 endpoints)
 - **ReviewsController** — CRUD + by-product + average rating (6 endpoints)
 - **OrdersController** — List/create/detail/status + by-customer (5 endpoints)
 - **CartController** — Session-based add/get/update/remove/clear (5 endpoints)
@@ -105,9 +116,14 @@ k6 scenarios that generate load against the running API and Razor Pages:
 
 | Scenario | Purpose |
 |----------|---------|
-| `baseline.js` | Steady-state: 50 VUs for 30s — hits all API endpoints + cart flow + Razor Pages |
-| `stress.js` | Progressive ramp: 10→200 VUs over 2 min — random selection from 14 endpoints |
-| `spike.js` | Sudden burst: idle → 100 VUs instant — reviews, products, and pages |
+| `warmup.js` | Pre-test primer: 5 VUs × 10s to warm JIT compilation and connection pools |
+| `baseline.js` | Steady-state: 50 VUs × 30s — hits all API endpoints + cart flow + Razor Pages |
+| `stress.js` | Progressive ramp: 10→200 VUs over 2 min — mixed endpoints to find breaking points |
+| `stress-products.js` | Product-focused ramp: 10→200 VUs over 2 min — full CRUD lifecycle on products |
+| `stress-orders.js` | Order-focused ramp: 10→200 VUs over 2 min — create, fetch, and advance order status |
+| `stress-reviews.js` | Review-focused ramp: 10→200 VUs over 2 min — create, query, average, and delete reviews |
+| `stress-cart.js` | Cart-focused ramp: 10→200 VUs over 2 min — full cart session (add, read, update, remove, clear) |
+| `spike.js` | Sudden burst: 1 VU baseline → instant 100 VU spike for 30s → recovery |
 
 ### Results (`sample-api/results/`)
 
@@ -154,7 +170,7 @@ Performance results directory. Baselines, k6 summaries, and run metadata are com
                                EXIT)          ROLLBACK)
                                    │
                                    ▼
-                          Invoke-CopilotAnalysis
+                          Invoke-AnalysisAgent
                                    │
                                    ▼
                            Suggested changes
@@ -178,3 +194,13 @@ Performance results directory. Baselines, k6 summaries, and run metadata are com
 4. **Structured data everywhere** — PowerShell objects, JSON files, typed results. No string parsing when avoidable.
 
 5. **Idempotent phases** — Each phase can be re-run independently for debugging.
+
+## Agent Definitions (`.github/agents/`)
+
+Hone uses GitHub Copilot coding agents defined as Markdown files in `.github/agents/`:
+
+| Agent | Purpose |
+|-------|---------|
+| `hone-analyst.agent.md` | System prompt for the analysis agent — guides Copilot to produce actionable optimization recommendations from performance data |
+| `hone-classifier.agent.md` | System prompt for the classification agent — determines whether a proposed optimization is NARROW (single-file) or ARCHITECTURE (cross-cutting) scope |
+| `hone-fixer.agent.md` | System prompt for the fix agent — generates optimized source code for a proposed change |

@@ -39,7 +39,7 @@ graph TB
         SCALE["Invoke-ScaleTests"]
         BASELINE["Get-PerformanceBaseline"]
         COMPARE["Compare-Results"]
-        COPILOT_S["Invoke-CopilotAnalysis"]
+        COPILOT_S["Invoke-AnalysisAgent"]
         APPLY["Apply-Suggestion"]
 
         CONFIG --> LOOP
@@ -58,7 +58,7 @@ graph TB
     subgraph EXTERNAL["External Tools"]
         DOTNET["dotnet CLI"]
         K6["k6 (Grafana)"]
-        GH["gh copilot suggest"]
+        GH["copilot CLI"]
         GIT["Git"]
     end
 
@@ -180,7 +180,7 @@ flowchart TD
     REGRESSED -- No --> MAX_ITER{"Iteration<br/>≥ max?"}
     MAX_ITER -- Yes --> LIMIT(["⏱ Exit<br/><i>Max iterations reached</i>"])
 
-    MAX_ITER -- No --> ANALYZE["<b>Phase 5: Analyze</b><br/>gh copilot suggest<br/>(metrics + source context)"]
+    MAX_ITER -- No --> ANALYZE["<b>Phase 5: Analyze</b><br/>copilot CLI<br/>(metrics + source context)"]
     ANALYZE --> FIX["<b>Phase 6: Fix</b><br/>Create branch<br/>Apply changes<br/>Commit"]
     FIX --> INCREMENT["Iteration++"]
     INCREMENT --> BUILD
@@ -229,7 +229,7 @@ flowchart LR
 
     subgraph PHASE_ANALYZE["Analyze"]
         PROMPT["Build prompt:<br/>metrics + deltas +<br/>source context"]
-        PROMPT --> COPILOT["gh copilot suggest"]
+        PROMPT --> COPILOT["copilot CLI"]
         COPILOT --> SUGGESTION["Suggested<br/>code changes"]
     end
 
@@ -275,7 +275,7 @@ flowchart LR
 1. **Build** — Compiles the target API project (`dotnet build`)
 2. **Verify** — Runs functional E2E tests to ensure correctness (`dotnet test`)
 3. **Measure** — Executes k6 load tests to capture performance metrics (p95 latency, RPS, error rate)
-4. **Analyze** — Sends performance data and hot-path context to GitHub Copilot CLI (`gh copilot suggest`) to brainstorm optimizations
+4. **Analyze** — Sends performance data and hot-path context to GitHub Copilot CLI (`copilot --model claude-opus-4.6`) to brainstorm optimizations
 5. **Fix** — Applies Copilot's suggested changes on a new git branch
 6. **Repeat** — Loops back to Build, validating the fix doesn't regress functionality or performance
 
@@ -288,16 +288,17 @@ The loop exits when performance targets are met, the maximum iteration count is 
 | PowerShell | 7.2+ | `winget install Microsoft.PowerShell` |
 | .NET SDK | 6.0 | `winget install Microsoft.DotNet.SDK.6` |
 | SQL Server LocalDB | 2019+ | Included with Visual Studio or `winget install Microsoft.SQLServer.2019.LocalDB` |
-| k6 | Latest | `winget install Grafana.k6` |
+| k6 | Latest | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `winget install GitHub.cli` |
-| GitHub Copilot CLI | Latest | `gh extension install github/gh-copilot` |
+| GitHub Copilot CLI | Latest | [Install standalone `copilot` CLI](https://docs.github.com/copilot/how-tos/copilot-cli) |
 
 ## Quick Start
 
 ```powershell
 # 1. Clone the repo
-git clone https://github.com/your-org/hone.git
-cd hone
+git clone https://github.com/J-Bax/Hone.git
+cd Hone
+git submodule update --init --recursive
 
 # 2. Build the sample API
 dotnet build sample-api/SampleApi.sln
@@ -352,25 +353,66 @@ graph TD
 
 ```
 hone/
+├── .copilotignore              # Content exclusion rules for Copilot
 ├── .github/                    # GitHub configuration & Copilot instructions
 │   ├── copilot-instructions.md
+│   ├── agents/                 # Copilot coding agent definitions
+│   │   ├── hone-analyst.agent.md
+│   │   ├── hone-classifier.agent.md
+│   │   └── hone-fixer.agent.md
 │   └── ISSUE_TEMPLATE/
+│       ├── bug_report.md
+│       └── feature_request.md
 ├── docs/                       # Architecture, guides, and reference docs
 │   ├── architecture.md
 │   ├── getting-started.md
 │   ├── agentic-loop.md
 │   └── configuration.md
+├── harness/                    # PowerShell orchestration scripts
+│   ├── config.psd1             # Harness configuration
+│   ├── Invoke-HoneLoop.ps1     # Main entry point
+│   ├── Build-SampleApi.ps1
+│   ├── Start-SampleApi.ps1
+│   ├── Stop-SampleApi.ps1
+│   ├── Invoke-E2ETests.ps1
+│   ├── Invoke-ScaleTests.ps1
+│   ├── Invoke-AllScaleTests.ps1
+│   ├── Get-PerformanceBaseline.ps1
+│   ├── Compare-Results.ps1
+│   ├── Show-Results.ps1
+│   ├── Invoke-AnalysisAgent.ps1
+│   ├── Invoke-ClassificationAgent.ps1
+│   ├── Invoke-FixAgent.ps1
+│   ├── Apply-Suggestion.ps1
+│   ├── Invoke-Cooldown.ps1
+│   ├── Reset-Database.ps1
+│   ├── Export-Dashboard.ps1
+│   ├── Export-IterationRCA.ps1
+│   ├── Get-MachineInfo.ps1
+│   ├── Start-DotnetCounters.ps1
+│   ├── Stop-DotnetCounters.ps1
+│   ├── Update-OptimizationMetadata.ps1
+│   └── Write-HoneLog.ps1
 ├── sample-api/                 # Target API (blackbox — swappable)
 │   ├── SampleApi/              # API source code (opaque internals)
 │   ├── SampleApi.Tests/        # ⚠ Functional test suite (REQUIRED)
 │   ├── scale-tests/            # ⚠ k6 load test scenarios (REQUIRED)
 │   │   ├── scenarios/
+│   │   │   ├── warmup.js
+│   │   │   ├── baseline.js
+│   │   │   ├── stress.js
+│   │   │   ├── stress-products.js
+│   │   │   ├── stress-orders.js
+│   │   │   ├── stress-reviews.js
+│   │   │   ├── stress-cart.js
+│   │   │   └── spike.js
+│   │   ├── lib/
+│   │   │   └── helpers.js
 │   │   └── thresholds.json
-│   └── results/                # Output: metrics, reports, logs (gitignored)
-├── harness/                    # PowerShell orchestration scripts
-│   ├── config.psd1             # Harness configuration
-│   ├── Invoke-HoneLoop.ps1     # Main entry point
-│   └── ...                     # Build, test, measure, analyze, fix scripts
+│   ├── results/                # Output: metrics, reports, logs (gitignored)
+│   └── SampleApi.sln
+├── Setup-DevEnvironment.ps1    # One-step dev environment bootstrap
+└── README.md
 ```
 
 ## Configuration
