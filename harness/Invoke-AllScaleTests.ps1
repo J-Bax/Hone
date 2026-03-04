@@ -56,6 +56,7 @@ $registry = Get-Content $registryPath -Raw | ConvertFrom-Json
 # ── Iterate scenarios ───────────────────────────────────────────────────────
 
 $results = @()
+$scenarioIndex = 0
 
 foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     $scenario = $registry.scenarios.$name
@@ -65,10 +66,30 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         continue
     }
 
+    # ── Cooldown + GC between scenarios ──────────────────────────────────
+    if ($scenarioIndex -gt 0) {
+        $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
+
+        # Trigger server-side GC so heap pressure from the previous scenario doesn't bleed over
+        $baseUrl = $config.Api.BaseUrl
+        try {
+            Invoke-RestMethod -Uri "$baseUrl/diag/gc" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
+        } catch {
+            Write-Verbose 'GC endpoint not available — skipping forced GC between scenarios'
+        }
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'measure' -Level 'info' `
+            -Message "Cooldown ${cooldown}s between scenarios" `
+            -Iteration $Iteration
+        Start-Sleep -Seconds $cooldown
+    }
+    $scenarioIndex++
+
     $scenarioFile = Join-Path $repoRoot (Split-Path $config.ScaleTest.ScenarioRegistryPath -Parent) $scenario.file
 
     # For the primary optimization scenario use no ScenarioName so the
-    # existing k6-summary-iteration-{N}.json naming is preserved.
+    # existing k6-summary.json naming is preserved.
     $scenarioNameArg = if ($scenario.use_for_optimization) { $null } else { $name }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

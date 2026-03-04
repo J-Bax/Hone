@@ -55,6 +55,14 @@ Desktop.ini
 .DS_Store
 
 # ----- Hone Results -----
-# Test results, performance reports, and logs are generated per-run
+# Performance results are stored per-run in sample-api/results/.
+# Baselines, k6 summaries, and run metadata are committed for review.
+# Counters, Copilot logs, dashboard, and operational files are gitignored.
 sample-api/results/*
 !sample-api/results/.gitkeep
+!sample-api/results/baseline.json
+!sample-api/results/baseline-*.json
+!sample-api/results/run-metadata.json
+!sample-api/results/iteration-*/
+sample-api/results/iteration-*/*
+!sample-api/results/iteration-*/k6-summary*.json

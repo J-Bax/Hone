@@ -53,18 +53,13 @@ The core of Hone. A set of PowerShell scripts that orchestrate the optimization 
 | `Compare-Results.ps1` | Compares current vs. baseline metrics |
 | `Invoke-CopilotAnalysis.ps1` | Sends perf context to `gh copilot suggest` |
 | `Apply-Suggestion.ps1` | Creates a branch and applies suggested changes |
+| `Export-IterationRCA.ps1` | Generates per-iteration root cause analysis markdown |
+| `Update-OptimizationMetadata.ps1` | Maintains optimization log and opportunity queue |
 | `Write-HoneLog.ps1` | Structured logging (JSON-lines format) |
 
 ### Target API (`sample-api/`)
 
-A .NET 6 Web API + Razor Pages marketplace with **intentionally suboptimal patterns** that give the harness real optimization targets:
-
-- **N+1 query patterns** — Fetching related data in loops instead of using `.Include()`
-- **Missing database indexes** — No indexes on foreign keys or filter columns
-- **No caching** — Every request hits the database
-- **No pagination** — API endpoints return full result sets
-- **In-memory filtering** — Loads entire tables then filters in C#
-- **One-by-one operations** — Cart clear deletes items individually with `SaveChanges()` per item
+A .NET 6 Web API + Razor Pages marketplace that serves as the optimization target for the harness.
 
 #### Domain Model
 
@@ -116,12 +111,26 @@ k6 scenarios that generate load against the running API and Razor Pages:
 
 ### Results (`sample-api/results/`)
 
-All generated output (gitignored). Each iteration produces:
+Performance results directory. Baselines, k6 summaries, and run metadata are committed for review; counters, Copilot logs, and operational files are gitignored.
 
-- k6 JSON summary (latency percentiles, RPS, error rates)
-- Comparison report (current vs. baseline deltas)
-- Copilot suggestion log
-- Iteration metadata (timestamps, branch names, outcomes)
+**Root-level (committed):**
+- `baseline.json`, `baseline-counters.json`, `baseline-{scenario}.json` — reference metrics
+- `run-metadata.json` — machine info and iteration history
+
+**Per-iteration subdirectories (`iteration-{N}/`):**
+- `k6-summary.json` / `k6-summary-{scenario}.json` — k6 results (committed)
+- `root-cause.md` — root cause analysis document (committed)
+- `dotnet-counters.csv` / `dotnet-counters.json` — runtime metrics (gitignored)
+- `copilot-prompt.md` / `copilot-response.md` — AI analysis artifacts (gitignored)
+- `e2e-results.trx` — E2E test results (gitignored)
+
+**Optimization metadata (`metadata/`, committed):**
+- `optimization-log.md` — append-only ledger of tried optimizations with outcomes
+- `optimization-queue.md` — ranked list of potential optimizations, checked off when tried
+
+**Root-level (gitignored):**
+- `hone.jsonl` — structured run log
+- `dashboard.html` — interactive Chart.js report
 
 ## Data Flow
 

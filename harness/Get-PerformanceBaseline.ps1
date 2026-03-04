@@ -23,6 +23,12 @@ if (-not $ConfigPath) {
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
+# ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
+if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
+    Write-Error 'k6 is not on PATH — install k6 or add its directory to PATH before running the baseline'
+    return
+}
+
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'baseline' -Level 'info' -Message 'Establishing performance baseline'
 
@@ -53,7 +59,7 @@ try {
         -ConfigPath $ConfigPath -Iteration 0
 
     # For baselines, we only need metrics — k6 threshold failures are expected
-    # since the API is intentionally suboptimal at this stage.
+    # since the API has not been optimized yet.
     if (-not $scaleResult.Metrics) {
         Write-Error 'Scale tests produced no metrics — cannot establish baseline'
         return
@@ -67,11 +73,11 @@ try {
     }
 
     # ── Step 4: Save baseline ───────────────────────────────────────────────
-    $baselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'baseline.json'
+    $baselinePath = Join-Path $repoRoot $config.Api.ResultsPath 'baseline.json'
     $scaleResult.Metrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $baselinePath -Encoding utf8
 
     # Save machine info and run metadata
-    $runMetadataPath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'run-metadata.json'
+    $runMetadataPath = Join-Path $repoRoot $config.Api.ResultsPath 'run-metadata.json'
     $runMetadata = [ordered]@{
         Machine     = $machineInfo
         BaselineRun = [ordered]@{
@@ -89,7 +95,7 @@ try {
 
     # Save counter metrics baseline if available
     if ($scaleResult.CounterMetrics) {
-        $counterBaselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'baseline-counters.json'
+        $counterBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath 'baseline-counters.json'
         $scaleResult.CounterMetrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $counterBaselinePath -Encoding utf8
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -129,7 +135,7 @@ try {
 
     foreach ($sr in $allScenarioResults) {
         if ($sr.Metrics) {
-            $scenarioBaselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath "baseline-$($sr.ScenarioName).json"
+            $scenarioBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
             $sr.Metrics | ConvertTo-Json -Depth 5 | Out-File -FilePath $scenarioBaselinePath -Encoding utf8
 
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

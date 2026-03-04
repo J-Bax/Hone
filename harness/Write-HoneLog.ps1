@@ -28,7 +28,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('build', 'verify', 'measure', 'compare', 'analyze', 'fix', 'loop', 'baseline', 'counters')]
+    [ValidateSet('build', 'verify', 'measure', 'compare', 'analyze', 'fix', 'loop', 'baseline', 'counters', 'metadata')]
     [string]$Phase,
 
     [Parameter(Mandatory)]
@@ -48,7 +48,9 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $LogPath) {
-    $LogPath = Join-Path $repoRoot 'sample-api' 'results' 'hone.jsonl'
+    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
+    $config = Import-PowerShellDataFile -Path $ConfigPath
+    $LogPath = Join-Path $repoRoot $config.Api.ResultsPath 'hone.jsonl'
 }
 
 # Ensure the output directory exists

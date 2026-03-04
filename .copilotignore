@@ -1,0 +1,21 @@
+# ─────────────────────────────────────────────────────────────
+# .copilotignore — Hide performance-issue metadata from AI agents
+# ─────────────────────────────────────────────────────────────
+# This file prevents GitHub Copilot (code completions, Chat, and CLI)
+# from indexing files that document intentional performance issues.
+# The agentic loop should discover bottlenecks through measurement,
+# not by reading hints in documentation.
+
+# Performance-issue registry (human-only reference)
+sample-api/.perf-issues.md
+
+# Copilot analysis artifacts (prompts/responses between iterations)
+sample-api/results/**/copilot-prompt.md
+sample-api/results/**/copilot-response.md
+
+# Optimization metadata (contains explicit issue descriptions)
+sample-api/results/metadata/optimization-queue.md
+sample-api/results/metadata/optimization-log.md
+
+# Root cause analysis docs (contain issue descriptions from prior runs)
+sample-api/results/**/root-cause.md

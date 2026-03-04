@@ -46,6 +46,9 @@ param(
 
     [PSCustomObject]$PreviousCounterMetrics,
 
+    # Per-run metrics array from Invoke-ScaleTests for variance analysis
+    [array]$RunMetrics,
+
     [string]$ConfigPath,
 
     [int]$Iteration = 0
@@ -171,6 +174,45 @@ $improvementPct = if ($baselineP95 -gt 0) {
     [math]::Round((($baselineP95 - $p95Current) / $baselineP95) * 100, 1)
 } else { 0 }
 
+# ── Variance analysis (across measured runs within this iteration) ──────────
+$varianceInfo = $null
+if ($RunMetrics -and $RunMetrics.Count -gt 1) {
+    $p95Values = $RunMetrics | ForEach-Object { $_.HttpReqDuration.P95 }
+    $mean = ($p95Values | Measure-Object -Average).Average
+    $sumSquares = ($p95Values | ForEach-Object { ($_ - $mean) * ($_ - $mean) } | Measure-Object -Sum).Sum
+    $stdDev = [math]::Sqrt($sumSquares / $p95Values.Count)
+    $cv = if ($mean -gt 0) { $stdDev / $mean } else { 0 }
+    $range = ($p95Values | Measure-Object -Maximum -Minimum)
+
+    $varianceInfo = [ordered]@{
+        Runs     = $p95Values.Count
+        P95Values = $p95Values | ForEach-Object { [math]::Round($_, 2) }
+        Mean     = [math]::Round($mean, 2)
+        StdDev   = [math]::Round($stdDev, 2)
+        CV       = [math]::Round($cv * 100, 1)   # coefficient of variation as percentage
+        Min      = [math]::Round($range.Minimum, 2)
+        Max      = [math]::Round($range.Maximum, 2)
+        Range    = [math]::Round($range.Maximum - $range.Minimum, 2)
+    }
+
+    $cvLevel = if ($cv -gt 0.15) { 'warning' } elseif ($cv -gt 0.10) { 'warning' } else { 'info' }
+    $cvMessage = "Run variance: CV=$([math]::Round($cv * 100, 1))% | " +
+        "p95 range: $([math]::Round($range.Minimum, 1))ms—$([math]::Round($range.Maximum, 1))ms | " +
+        "stddev: $([math]::Round($stdDev, 1))ms ($($p95Values.Count) runs)"
+
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+        -Phase 'compare' -Level $cvLevel -Message $cvMessage `
+        -Iteration $Iteration `
+        -Data @{ cv = [math]::Round($cv * 100, 1); stdDev = [math]::Round($stdDev, 2); runs = $p95Values.Count }
+
+    if ($cv -gt 0.10) {
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'compare' -Level 'warning' `
+            -Message "High measurement variance (CV > 10%) — comparison results may be unreliable" `
+            -Iteration $Iteration
+    }
+}
+
 $result = [ordered]@{
     Improved           = $anyImproved -or $tiebreakerUsed
     Regression         = $anyRegressed
@@ -179,6 +221,7 @@ $result = [ordered]@{
     EfficiencyImproved = $efficiencyImproved
     TiebreakerUsed     = $tiebreakerUsed
     EfficiencyDeltas   = $efficiencyDeltas
+    Variance           = $varianceInfo
     Deltas             = [ordered]@{
         P95Latency = [ordered]@{
             Current    = $p95Current

@@ -26,8 +26,8 @@ if (-not $ConfigPath) {
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
 $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
-$resultsDir = Join-Path $repoRoot $config.Logging.OutputPath
-$trxPath = Join-Path $resultsDir "e2e-results-iteration-$Iteration.trx"
+$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+$trxPath = Join-Path $resultsDir "e2e-results.trx"
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'verify' -Level 'info' -Message "Running E2E tests: $testProjectPath" `

@@ -123,13 +123,7 @@ This kicks off the agentic optimization cycle. Watch the console output for buil
 
 ## What to Expect
 
-On the first run, the sample API has intentional performance issues:
-- N+1 query patterns in the products endpoint
-- Missing database indexes
-- No response caching
-- Large unbounded result sets
-
-The Hone loop will detect these through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
+On the first run, the Hone loop will analyze the sample API's performance characteristics through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
 
 ## Troubleshooting
 

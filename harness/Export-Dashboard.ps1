@@ -43,7 +43,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 $tolerances = $config.Tolerances
 
 if (-not $ResultsPath) {
-    $ResultsPath = Join-Path $repoRoot $config.ScaleTest.OutputPath
+    $ResultsPath = Join-Path $repoRoot $config.Api.ResultsPath
 }
 
 if (-not $OutputPath) {
@@ -60,9 +60,9 @@ if (-not (Test-Path $baselinePath)) {
 
 $baseline = Get-Content $baselinePath -Raw | ConvertFrom-Json
 
-# Collect all iterations
-$iterationFiles = Get-ChildItem -Path $ResultsPath -Filter 'k6-summary-iteration-*.json' |
-    Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
+# Collect all iterations from iteration-* subdirectories
+$iterationDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'iteration-*' |
+    Sort-Object { [int]($_.Name -replace 'iteration-', '') }
 
 $allData = @()
 
@@ -80,11 +80,13 @@ $allData += @{
     errRate   = [math]::Round(($baseline.HttpReqFailed.Rate) * 100, 2)
 }
 
-foreach ($file in $iterationFiles) {
-    $iterNum = [int]($file.BaseName -replace '.*-(\d+)$', '$1')
+foreach ($dir in $iterationDirs) {
+    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+    $summaryFile = Join-Path $dir.FullName 'k6-summary.json'
+    if (-not (Test-Path $summaryFile)) { continue }
     if ($iterNum -eq 0) { continue }
 
-    $raw = Get-Content $file.FullName -Raw | ConvertFrom-Json
+    $raw = Get-Content $summaryFile -Raw | ConvertFrom-Json
 
     $allData += @{
         iteration = $iterNum
@@ -102,13 +104,13 @@ foreach ($file in $iterationFiles) {
 
 # ── Counter data (summary) ──────────────────────────────────────────────────
 
-$counterFiles = Get-ChildItem -Path $ResultsPath -Filter 'dotnet-counters-iteration-*.json' -ErrorAction SilentlyContinue |
-    Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
-
 $counterData = @()
-foreach ($cf in $counterFiles) {
-    $iterNum = [int]($cf.BaseName -replace '.*-(\d+)$', '$1')
-    $raw = Get-Content $cf.FullName -Raw | ConvertFrom-Json
+foreach ($dir in $iterationDirs) {
+    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+    $cf = Join-Path $dir.FullName 'dotnet-counters.json'
+    if (-not (Test-Path $cf)) { continue }
+
+    $raw = Get-Content $cf -Raw | ConvertFrom-Json
 
     $counterData += @{
         iteration        = $iterNum
@@ -127,14 +129,14 @@ foreach ($cf in $counterFiles) {
 
 # ── Counter time-series data (from CSV) ────────────────────────────────────
 
-$counterCsvFiles = Get-ChildItem -Path $ResultsPath -Filter 'dotnet-counters-iteration-*.csv' -ErrorAction SilentlyContinue |
-    Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
-
 $counterTimeSeries = @{}
 
-foreach ($csvFile in $counterCsvFiles) {
-    $iterNum = [int]($csvFile.BaseName -replace '.*-(\d+)$', '$1')
-    $csvContent = Get-Content $csvFile.FullName -Raw
+foreach ($dir in $iterationDirs) {
+    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+    $csvFile = Join-Path $dir.FullName 'dotnet-counters.csv'
+    if (-not (Test-Path $csvFile)) { continue }
+
+    $csvContent = Get-Content $csvFile -Raw
 
     if ([string]::IsNullOrWhiteSpace($csvContent)) { continue }
 
@@ -235,15 +237,15 @@ foreach ($sbFile in $scenarioBaselineFiles) {
         errRate   = [math]::Round(($sbRaw.HttpReqFailed.Rate) * 100, 2)
     }
 
-    # Find iteration results for this scenario
-    $scenarioIterFiles = Get-ChildItem -Path $ResultsPath -Filter "k6-summary-$scenarioName-iteration-*.json" -ErrorAction SilentlyContinue |
-        Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
-
-    foreach ($sf in $scenarioIterFiles) {
-        $sIterNum = [int]($sf.BaseName -replace '.*-(\d+)$', '$1')
+    # Find iteration results for this scenario from iteration subdirectories
+    foreach ($dir in $iterationDirs) {
+        $sIterNum = [int]($dir.Name -replace 'iteration-', '')
         if ($sIterNum -eq 0) { continue }
 
-        $sRaw = Get-Content $sf.FullName -Raw | ConvertFrom-Json
+        $sf = Join-Path $dir.FullName "k6-summary-$scenarioName.json"
+        if (-not (Test-Path $sf)) { continue }
+
+        $sRaw = Get-Content $sf -Raw | ConvertFrom-Json
         $scenarioEntries += @{
             iteration = $sIterNum
             label     = "Iteration $sIterNum"

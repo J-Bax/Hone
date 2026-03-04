@@ -18,17 +18,27 @@
 
         # Seconds to wait for API to become healthy after start
         StartupTimeout  = 90
+
+        # Directory for all performance results (relative to repo root)
+        ResultsPath     = 'sample-api/results'
+
+        # Directory for optimization metadata (log + queue) (relative to repo root)
+        MetadataPath    = 'sample-api/results/metadata'
     }
 
     # ── Performance Tolerances ───────────────────────────────────
     # Instead of absolute targets, the loop accepts any improvement
     # and rejects regressions.  It stops when no metric can be improved.
     Tolerances = @{
-        # Minimum improvement (any single metric) to accept an iteration (0.01 = 1%)
-        MinImprovementPct = 0.01
+        # Maximum regression allowed per metric before rejecting (0.10 = 10%)
+        # Pure steady-state measurement (no ramp/setup contamination) with
+        # median-of-5 runs, GC settling, and 3s cooldowns between runs.
+        # Re-evaluate after baselining if CV drops below 8%.
+        MaxRegressionPct  = 0.10
 
-        # Maximum regression allowed per metric before rejecting (0.02 = 2%)
-        MaxRegressionPct  = 0.02
+        # Minimum improvement (any single metric) to accept an iteration (0.03 = 3%)
+        # Must exceed the noise floor to be meaningful.
+        MinImprovementPct = 0.03
 
         # Stop after this many consecutive iterations with no improvement
         StaleIterationsBeforeStop = 2
@@ -58,12 +68,22 @@
         # JSON file listing all scenarios and their metadata
         ScenarioRegistryPath = 'sample-api/scale-tests/thresholds.json'
 
-        # Path to store k6 JSON summary output
-        OutputPath   = 'sample-api/results'
-
         # Additional k6 CLI arguments
         ExtraArgs    = @()
-    }
+        # ── Warmup ──────────────────────────────────────────
+        # Run a short 1-VU warmup pass before the measured run to ensure
+        # the DB is seeded, EF Core model is compiled, and JIT is primed.
+        WarmupEnabled      = $true
+        WarmupScenarioPath = 'sample-api/scale-tests/scenarios/warmup.js'
+
+        # ── Multi-run averaging ─────────────────────────────
+        # Run the primary scenario this many times and take the median
+        # of the results.  Reduces noise from run-to-run variance.
+        MeasuredRuns = 5
+
+        # Seconds to pause between consecutive measured runs.
+        # Allows GC, thread pool, and TCP TIME_WAIT connections to settle.
+        CooldownSeconds = 3    }
 
     # ── .NET Performance Counters ───────────────────────────────
     DotnetCounters = @{
@@ -93,9 +113,6 @@
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
-        # Directory for log files (relative to repo root)
-        OutputPath = 'sample-api/results'
-
         # Log level: 'verbose', 'info', 'warning', 'error'
         Level      = 'info'
     }

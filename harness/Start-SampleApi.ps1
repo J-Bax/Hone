@@ -65,6 +65,15 @@ $result = [ordered]@{
 }
 
 if ($healthy) {
+    # Elevate process priority to reduce OS scheduling jitter from background tasks
+    try {
+        $apiProcess.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::High
+        Write-Verbose "API process priority elevated to High"
+    }
+    catch {
+        Write-Verbose "Could not elevate API process priority: $_"
+    }
+
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' -Message "API is healthy at $baseUrl (took ${elapsed}s)"
 }

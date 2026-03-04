@@ -34,7 +34,7 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
 if (-not $ResultsPath) {
-    $ResultsPath = Join-Path $repoRoot $config.ScaleTest.OutputPath
+    $ResultsPath = Join-Path $repoRoot $config.Api.ResultsPath
 }
 
 # ── Load all result files ───────────────────────────────────────────────────
@@ -47,40 +47,35 @@ if (-not (Test-Path $baselinePath)) {
 
 $baseline = Get-Content $baselinePath -Raw | ConvertFrom-Json
 
-# Find iteration summaries (k6-summary-iteration-*.json files)
-$iterationFiles = Get-ChildItem -Path $ResultsPath -Filter 'k6-summary-iteration-*.json' |
-    Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
+# Find iteration summaries from iteration-* subdirectories
+$iterationDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'iteration-*' -ErrorAction SilentlyContinue |
+    Sort-Object { [int]($_.Name -replace 'iteration-', '') }
 
-# Parse each iteration's metrics from the same format as baseline
+# Parse each iteration's metrics
 $iterations = @()
-foreach ($file in $iterationFiles) {
-    $iterNum = [int]($file.BaseName -replace '.*-(\d+)$', '$1')
+foreach ($dir in $iterationDirs) {
+    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+    $summaryFile = Join-Path $dir.FullName 'k6-summary.json'
+    if (-not (Test-Path $summaryFile)) { continue }
 
-    # Look for a corresponding parsed metrics file first
-    $metricsFile = Join-Path $ResultsPath "metrics-iteration-$iterNum.json"
-    if (Test-Path $metricsFile) {
-        $metrics = Get-Content $metricsFile -Raw | ConvertFrom-Json
-    }
-    else {
-        # Parse from the raw k6 summary
-        $raw = Get-Content $file.FullName -Raw | ConvertFrom-Json
-        $metrics = [PSCustomObject]@{
-            Iteration       = $iterNum
-            HttpReqDuration = [PSCustomObject]@{
-                Avg = $raw.metrics.http_req_duration.avg
-                P50 = $raw.metrics.http_req_duration.med
-                P90 = $raw.metrics.http_req_duration.'p(90)'
-                P95 = $raw.metrics.http_req_duration.'p(95)'
-                P99 = $raw.metrics.http_req_duration.'p(99)'
-                Max = $raw.metrics.http_req_duration.max
-            }
-            HttpReqs        = [PSCustomObject]@{
-                Count = $raw.metrics.http_reqs.count
-                Rate  = $raw.metrics.http_reqs.rate
-            }
-            HttpReqFailed   = [PSCustomObject]@{
-                Rate = $raw.metrics.http_req_failed.value ?? 0
-            }
+    # Parse from the raw k6 summary
+    $raw = Get-Content $summaryFile -Raw | ConvertFrom-Json
+    $metrics = [PSCustomObject]@{
+        Iteration       = $iterNum
+        HttpReqDuration = [PSCustomObject]@{
+            Avg = $raw.metrics.http_req_duration.avg
+            P50 = $raw.metrics.http_req_duration.med
+            P90 = $raw.metrics.http_req_duration.'p(90)'
+            P95 = $raw.metrics.http_req_duration.'p(95)'
+            P99 = $raw.metrics.http_req_duration.'p(99)'
+            Max = $raw.metrics.http_req_duration.max
+        }
+        HttpReqs        = [PSCustomObject]@{
+            Count = $raw.metrics.http_reqs.count
+            Rate  = $raw.metrics.http_reqs.rate
+        }
+        HttpReqFailed   = [PSCustomObject]@{
+            Rate = $raw.metrics.http_req_failed.value ?? 0
         }
     }
 
@@ -269,15 +264,17 @@ if ($scenarioBaselineFiles.Count -gt 0) {
         Write-Host ("{0,$($sColWidths.Err)}" -f $sbErr) -NoNewline -ForegroundColor White
         Write-Host ("{0,$($sColWidths.Delta)}" -f '—') -ForegroundColor DarkGray
 
-        # Find iteration results for this scenario
-        $scenarioIterFiles = Get-ChildItem -Path $ResultsPath -Filter "k6-summary-$scenarioName-iteration-*.json" -ErrorAction SilentlyContinue |
-            Sort-Object { [int]($_.BaseName -replace '.*-(\d+)$', '$1') }
-
-        foreach ($sf in $scenarioIterFiles) {
-            $sIterNum = [int]($sf.BaseName -replace '.*-(\d+)$', '$1')
+        # Find iteration results for this scenario from iteration subdirectories
+        $scenarioIterCount = 0
+        foreach ($dir in $iterationDirs) {
+            $sIterNum = [int]($dir.Name -replace 'iteration-', '')
             if ($sIterNum -eq 0) { continue }
 
-            $sRaw = Get-Content $sf.FullName -Raw | ConvertFrom-Json
+            $sf = Join-Path $dir.FullName "k6-summary-$scenarioName.json"
+            if (-not (Test-Path $sf)) { continue }
+
+            $scenarioIterCount++
+            $sRaw = Get-Content $sf -Raw | ConvertFrom-Json
             $sP95 = [math]::Round($sRaw.metrics.http_req_duration.'p(95)', 2)
             $sRPS = [math]::Round($sRaw.metrics.http_reqs.rate, 1)
             $sErr = Format-Pct ($sRaw.metrics.http_req_failed.value ?? 0)
@@ -293,7 +290,7 @@ if ($scenarioBaselineFiles.Count -gt 0) {
             Write-Host ("{0,$($sColWidths.Delta)}" -f $sDelta.Text) -ForegroundColor $sDelta.Color
         }
 
-        if ($scenarioIterFiles.Count -eq 0) {
+        if ($scenarioIterCount -eq 0) {
             Write-Host "  " -NoNewline
             Write-Host '    No iteration data yet' -ForegroundColor DarkGray
         }

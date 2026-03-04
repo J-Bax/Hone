@@ -25,6 +25,12 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
         # Seconds to wait for API to become healthy after start
         StartupTimeout  = 90
+
+        # Directory for all performance results (relative to repo root)
+        ResultsPath     = 'sample-api/results'
+
+        # Directory for optimization metadata (log + queue) (relative to repo root)
+        MetadataPath    = 'sample-api/results/metadata'
     }
 
     # ── Performance Tolerances ───────────────────────────────────
@@ -63,9 +69,6 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
         # JSON file listing all scenarios and their metadata
         ScenarioRegistryPath = 'sample-api/scale-tests/thresholds.json'
 
-        # Path to store k6 JSON summary output
-        OutputPath   = 'sample-api/results'
-
         # Additional k6 CLI arguments
         ExtraArgs    = @()
     }
@@ -98,9 +101,6 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
-        # Directory for log files (relative to repo root)
-        OutputPath = 'sample-api/results'
-
         # Log level: 'verbose', 'info', 'warning', 'error'
         Level      = 'info'
     }
@@ -161,9 +161,18 @@ Path to the primary k6 JavaScript scenario file used for optimization measuremen
 
 Path to the JSON file listing all available scenarios and their metadata (descriptions, file paths, thresholds, and `use_for_optimization` flags). Used by `Invoke-AllScaleTests.ps1` to run the full diagnostic suite during baseline collection.
 
-### ScaleTest.OutputPath
+### Api.ResultsPath
 
-Directory where k6 JSON summary files are written.
+Directory where all performance results are stored (relative to repo root). Baselines and k6 summaries are committed; counters and operational files are gitignored. Each iteration's artifacts are stored in an `iteration-{N}/` subdirectory.
+
+### Api.MetadataPath
+
+Directory for optimization metadata (relative to repo root). Defaults to `sample-api/results/metadata`. Contains two auto-generated, git-tracked markdown files:
+
+- **`optimization-log.md`** — append-only ledger recording each optimization proposal with its iteration, target file, summary, and outcome (improved / regressed / stale / pending).
+- **`optimization-queue.md`** — ranked list of potential optimizations discovered by Copilot. Items start unchecked (`- [ ]`) and are marked `- [x]` when tried, with a back-reference to the iteration and outcome.
+
+Each iteration also produces a `root-cause.md` in its subfolder (`iteration-{N}/root-cause.md`), containing a concise root cause analysis with the performance issue, rationale, and proposed fix details.
 
 ### ScaleTest.ExtraArgs
 

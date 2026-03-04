@@ -58,7 +58,7 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 ## Important Design Decisions
 
-- The sample API intentionally contains suboptimal patterns (N+1 queries, missing indexes, no caching) to give the agentic loop real optimization targets
+- The sample API is the optimization target — the agentic loop discovers performance issues through measurement, not hints
 - E2E tests use `WebApplicationFactory` so they don't require a running server
 - Performance results are stored as JSON in `sample-api/results/` for comparison across iterations
 - Each optimization attempt is made on a separate git branch for easy rollback

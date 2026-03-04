@@ -46,8 +46,8 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 # Resolve output path
 if (-not $OutputPath) {
-    $outputDir = Join-Path $repoRoot $config.ScaleTest.OutputPath
-    $OutputPath = Join-Path $outputDir "dotnet-counters-iteration-$Iteration.csv"
+    $outputDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+    $OutputPath = Join-Path $outputDir 'dotnet-counters.csv'
 }
 
 $outputDir = Split-Path -Parent $OutputPath
@@ -99,7 +99,7 @@ try {
     $counterProcess = Start-Process -FilePath 'dotnet-counters' `
         -ArgumentList $counterArgs `
         -PassThru -WindowStyle Hidden `
-        -RedirectStandardError (Join-Path $outputDir "dotnet-counters-stderr-$Iteration.log")
+        -RedirectStandardError (Join-Path $outputDir 'dotnet-counters-stderr.log')
 
     # Give it a moment to attach
     Start-Sleep -Seconds 2

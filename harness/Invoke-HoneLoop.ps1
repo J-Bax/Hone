@@ -60,6 +60,41 @@ if ($effCfg -and $effCfg.Enabled) {
 }
 Write-Information '' -InformationAction Continue
 
+# ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
+if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
+    # Auto-add common install location before failing
+    $k6Default = Join-Path $env:ProgramFiles 'k6'
+    if (Test-Path (Join-Path $k6Default 'k6.exe')) {
+        $env:PATH = "$k6Default;$env:PATH"
+    } else {
+        Write-Error 'k6 is not on PATH — install k6 or add its directory to PATH before running the optimization loop'
+        return
+    }
+}
+
+# ── Prerequisite check: gh must be on PATH ───────────────────────────────────
+if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
+    # Auto-add common install location before failing
+    $ghDefault = Join-Path $env:ProgramFiles 'GitHub CLI'
+    if (Test-Path (Join-Path $ghDefault 'gh.exe')) {
+        $env:PATH = "$ghDefault;$env:PATH"
+    } else {
+        Write-Error 'gh is not on PATH — install GitHub CLI or add its directory to PATH before running the optimization loop'
+        return
+    }
+}
+
+# ── Ensure GH_TOKEN is set for gh copilot (built-in command needs explicit token)
+if (-not $env:GH_TOKEN) {
+    $ghToken = gh auth token 2>$null
+    if ($ghToken) {
+        $env:GH_TOKEN = $ghToken
+    } else {
+        Write-Error 'gh is not authenticated — run ''gh auth login'' before running the optimization loop'
+        return
+    }
+}
+
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message "Hone loop starting (max $maxIter iterations)"
 
@@ -83,7 +118,7 @@ Write-Information '' -InformationAction Continue
     }
 
 # ── Run metadata tracking ───────────────────────────────────────────────────
-$runMetadataPath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'run-metadata.json'
+$runMetadataPath = Join-Path $repoRoot $config.Api.ResultsPath 'run-metadata.json'
 $loopStartedAt = Get-Date -Format 'o'
 
 if (Test-Path $runMetadataPath) {
@@ -103,7 +138,7 @@ else {
 }
 
 # ── Load baseline ───────────────────────────────────────────────────────────
-$baselinePath = Join-Path $repoRoot $config.ScaleTest.OutputPath 'baseline.json'
+$baselinePath = Join-Path $repoRoot $config.Api.ResultsPath 'baseline.json'
 
 if (-not (Test-Path $baselinePath)) {
     Write-Information 'No baseline found. Running Get-PerformanceBaseline.ps1 first...' -InformationAction Continue
@@ -121,6 +156,7 @@ Write-Information "Baseline loaded: p95=$($baselineMetrics.HttpReqDuration.P95)m
 # ── Iteration Loop ──────────────────────────────────────────────────────────
 $previousMetrics = $null
 $previousCounterMetrics = $null
+$previousRcaExplanation = ''
 $exitReason = 'max_iterations'
 $bestIteration = 0
 $bestP95 = $baselineMetrics.HttpReqDuration.P95
@@ -223,6 +259,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         -PreviousMetrics $previousMetrics `
         -CurrentCounterMetrics $currentCounterMetrics `
         -PreviousCounterMetrics $previousCounterMetrics `
+        -RunMetrics $scaleResult.RunMetrics `
         -ConfigPath $ConfigPath `
         -Iteration $iteration
 
@@ -233,6 +270,14 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         $d.RPS.Current, $d.RPS.ChangePct, `
         [math]::Round($d.ErrorRate.Current * 100, 2), $d.ErrorRate.ChangePct, `
         $comparison.ImprovementPct) -InformationAction Continue
+
+    # Display variance info if available
+    if ($comparison.Variance) {
+        $v = $comparison.Variance
+        $cvLabel = if ($v.CV -gt 10) { '⚠' } else { '✓' }
+        Write-Information ("  $cvLabel Variance: CV={0}% | range: {1}ms—{2}ms | stddev: {3}ms ({4} runs)" -f `
+            $v.CV, $v.Min, $v.Max, $v.StdDev, $v.Runs) -InformationAction Continue
+    }
 
     if ($comparison.Regression) {
         $exitReason = 'regression'
@@ -282,23 +327,106 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             -ComparisonResult $comparison `
             -CounterMetrics $currentCounterMetrics `
             -Iteration $iteration `
-            -ConfigPath $ConfigPath
+            -ConfigPath $ConfigPath `
+            -PreviousRcaExplanation $previousRcaExplanation
 
         if ($analysisResult.Success) {
             Write-Information "  Copilot response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
-            Write-Information '  → Review the suggestion and apply manually, or extend Apply-Suggestion.ps1 for auto-apply' -InformationAction Continue
 
-            # NOTE: Auto-apply requires parsing Copilot's free-form response.
-            # For the initial version, we log the suggestion and continue.
-            # The Apply-Suggestion.ps1 script is ready for when parsing is implemented.
+            # ── Generate root cause analysis document ──────────────────────
+            $rcaResult = & (Join-Path $PSScriptRoot 'Export-IterationRCA.ps1') `
+                -CopilotResponse $analysisResult.Response `
+                -CurrentMetrics $currentMetrics `
+                -BaselineMetrics $baselineMetrics `
+                -ComparisonResult $comparison `
+                -Iteration $iteration `
+                -ConfigPath $ConfigPath
+
+            if ($rcaResult.Success) {
+                Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
+            }
+
+            # ── Auto-apply: single scoped fix ──────────────────────────────
+            # The RCA parser extracts the file path and code block from the
+            # Copilot response. We apply exactly ONE file change per iteration
+            # to keep each optimization isolated and easy to reason about.
+            $applySuccess = $false
+            if ($rcaResult.Success -and $rcaResult.FilePath -and $rcaResult.CodeBlock) {
+                $targetFile = $rcaResult.FilePath.Trim()
+                # Normalise: ensure it starts with 'sample-api/'
+                if ($targetFile -notmatch '^sample-api[\\/]') {
+                    $targetFile = "sample-api/$targetFile"
+                }
+
+                $fullTargetPath = Join-Path $repoRoot $targetFile
+                if (Test-Path (Split-Path $fullTargetPath -Parent)) {
+                    Write-Information "  Applying fix to: $targetFile" -InformationAction Continue
+
+                    $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
+                        -FilePath $targetFile `
+                        -NewContent $rcaResult.CodeBlock `
+                        -Description $rcaResult.Explanation.Substring(0, [Math]::Min(120, $rcaResult.Explanation.Length)) `
+                        -Iteration $iteration `
+                        -ConfigPath $ConfigPath
+
+                    if ($applyResult.Success) {
+                        $applySuccess = $true
+                        Write-Information "  ✓ Fix committed on branch: $($applyResult.BranchName)" -InformationAction Continue
+                    }
+                    else {
+                        Write-Warning "  Fix application failed: $($applyResult.Description)"
+                    }
+                }
+                else {
+                    Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
+                }
+            }
+            else {
+                Write-Information '  → Could not parse actionable file path or code from Copilot response.' -InformationAction Continue
+                Write-Information '    Review copilot-response.md and apply manually if desired.' -InformationAction Continue
+            }
+
+            # ── Update optimization metadata ───────────────────────────────
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Iteration $iteration `
+                -Summary $rcaResult.Explanation `
+                -FilePath $rcaResult.FilePath `
+                -Outcome $(if ($applySuccess) { 'pending' } else { 'stale' }) `
+                -ConfigPath $ConfigPath
+
+            if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
+                & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                    -Action 'AddQueue' `
+                    -Iteration $iteration `
+                    -Opportunities $analysisResult.AdditionalOpportunities `
+                    -ConfigPath $ConfigPath
+
+                Write-Information "  Queued $($analysisResult.AdditionalOpportunities.Count) additional optimization opportunities" -InformationAction Continue
+            }
         }
         else {
             Write-Warning '  Copilot analysis failed — continuing to next iteration anyway'
         }
     }
 
+    # ── Update outcome for previous iteration's optimization ───────────────
+    if ($iteration -gt 1) {
+        $prevOutcome = if ($comparison.Regression) { 'regressed' }
+                       elseif ($comparison.Improved -or $comparison.TiebreakerUsed) { 'improved' }
+                       else { 'stale' }
+
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'MarkTried' `
+            -Iteration ($iteration - 1) `
+            -Summary $previousRcaExplanation `
+            -Outcome $prevOutcome `
+            -ConfigPath $ConfigPath
+    }
+
     $previousMetrics = $currentMetrics
     $previousCounterMetrics = $currentCounterMetrics
+    $previousRcaExplanation = if ($rcaResult) { $rcaResult.Explanation } else { '' }
 
     # ── Record iteration metadata ──────────────────────────────────────────────
     $iterationMeta = [ordered]@{
