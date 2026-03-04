@@ -111,23 +111,14 @@ if ($warmupEnabled) {
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
         & k6 @warmupArgs 2>&1 | Out-Null
 
-        # Trigger server-side GC so the heap is clean before measured runs
-        $gcEndpoint = $config.Api.GcEndpoint
-        if ($gcEndpoint) {
-            try {
-                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-            } catch {
-                Write-Verbose "GC endpoint not available — skipping post-warmup GC"
-            }
-        }
-
         # Cooldown after warmup — let GC, thread pool, and TCP connections settle
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'info' `
-            -Message "Warmup complete — GC triggered, cooling down ${cooldown}s" `
-            -Iteration $Iteration
-        Start-Sleep -Seconds $cooldown
+        & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
+            -BaseUrl $baseUrl `
+            -GcEndpoint $config.Api.GcEndpoint `
+            -CooldownSeconds $cooldown `
+            -Iteration $Iteration `
+            -Reason 'after warmup'
     }
     else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -198,22 +189,12 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
     # Cooldown between runs (skip before the first run)
     if ($run -gt 1 -and $measuredRuns -gt 1) {
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
-
-        # Trigger server-side GC so heap pressure from the previous run doesn't bleed over
-        $gcEndpoint = $config.Api.GcEndpoint
-        if ($gcEndpoint) {
-            try {
-                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-            } catch {
-                Write-Verbose "GC endpoint not available — skipping forced GC"
-            }
-        }
-
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'info' `
-            -Message "Cooldown ${cooldown}s between runs" `
-            -Iteration $Iteration
-        Start-Sleep -Seconds $cooldown
+        & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
+            -BaseUrl $baseUrl `
+            -GcEndpoint $config.Api.GcEndpoint `
+            -CooldownSeconds $cooldown `
+            -Iteration $Iteration `
+            -Reason 'between runs'
     }
 
     if ($measuredRuns -gt 1) {

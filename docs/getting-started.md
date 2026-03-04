@@ -14,15 +14,16 @@ Ensure the following tools are installed and available on your `PATH`:
 | k6 | 0.47+ | `k6 version` | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `gh --version` | `winget install GitHub.cli` |
 
-### Required Extensions
+### Required Tools
+
+The standalone GitHub Copilot CLI must be installed separately:
 
 ```powershell
-# Install the GitHub Copilot CLI extension
-gh extension install github/gh-copilot
-
 # Verify it's installed
-gh copilot --version
+copilot --version
 ```
+
+See https://docs.github.com/copilot/how-tos/copilot-cli for installation instructions.
 
 ### Verify Authentication
 
@@ -39,14 +40,14 @@ gh auth login
 After cloning the repo, run the setup script to install and verify all dependencies in one step:
 
 ```powershell
-git clone https://github.com/your-org/hone.git
-cd hone
+git clone https://github.com/J-Bax/Hone.git
+cd Hone
 
 # Install everything via winget
 .\Setup-DevEnvironment.ps1
 ```
 
-The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, the gh-copilot extension, and the `dotnet-counters` global tool. It also starts LocalDB and restores NuGet packages.
+The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, and the `dotnet-counters` global tool. It also verifies the standalone `copilot` CLI is on PATH, starts LocalDB, and restores NuGet packages.
 
 > **Note:** Run in an elevated (Administrator) terminal for winget installs. Restart your terminal afterwards to pick up new `PATH` entries.
 
@@ -57,8 +58,9 @@ If you prefer to install dependencies individually, follow the steps below.
 ### 1. Clone the Repository
 
 ```powershell
-git clone https://github.com/your-org/hone.git
-cd hone
+git clone https://github.com/J-Bax/Hone.git
+cd Hone
+git submodule update --init --recursive
 ```
 
 ### 2. Verify LocalDB
@@ -149,10 +151,12 @@ Get-Command k6
 ### GitHub Copilot CLI Issues
 
 ```powershell
-# Re-authenticate
-gh auth refresh
+# Verify the standalone copilot CLI is installed and on PATH
+copilot --version
 
-# Reinstall the extension
-gh extension remove gh-copilot
-gh extension install github/gh-copilot
+# If not found, install from:
+# https://docs.github.com/copilot/how-tos/copilot-cli
+
+# Re-authenticate (copilot CLI uses GH_TOKEN)
+gh auth refresh
 ```

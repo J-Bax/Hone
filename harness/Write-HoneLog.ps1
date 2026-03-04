@@ -78,5 +78,5 @@ switch ($Level) {
     'verbose' { Write-Verbose $Message }
     'info'    { Write-Information $Message -InformationAction Continue }
     'warning' { Write-Warning $Message }
-    'error'   { Write-Error $Message }
+    'error'   { Write-Warning "[ERROR] $Message" }
 }

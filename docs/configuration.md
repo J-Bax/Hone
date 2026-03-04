@@ -14,6 +14,12 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
         # Path to the API project directory (relative to repo root)
         ProjectPath     = 'sample-api/SampleApi'
 
+        # Subdirectories to scan for source code context (relative to ProjectPath)
+        SourceCodePaths = @('Controllers')
+
+        # File pattern for source files to include in analysis prompts
+        SourceFileGlob  = '*.cs'
+
         # Path to the E2E test project directory (relative to repo root)
         TestProjectPath = 'sample-api/SampleApi.Tests'
 
@@ -22,6 +28,9 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
         # Health check endpoint (GET, must return 200)
         HealthEndpoint  = '/health'
+
+        # Optional endpoint (POST) to trigger server-side GC between runs
+        GcEndpoint      = '/diag/gc'
 
         # Seconds to wait for API to become healthy after start
         StartupTimeout  = 90
@@ -37,11 +46,15 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
     # Instead of absolute targets, the loop accepts any improvement
     # and rejects regressions.  It stops when no metric can be improved.
     Tolerances = @{
-        # Minimum improvement (any single metric) to accept an iteration (0.01 = 1%)
-        MinImprovementPct = 0.01
+        # Maximum regression allowed per metric before rejecting (0.10 = 10%)
+        # Pure steady-state measurement (no ramp/setup contamination) with
+        # median-of-5 runs, GC settling, and 3s cooldowns between runs.
+        # Re-evaluate after baselining if CV drops below 8%.
+        MaxRegressionPct  = 0.10
 
-        # Maximum regression allowed per metric before rejecting (0.02 = 2%)
-        MaxRegressionPct  = 0.02
+        # Minimum improvement (any single metric) to accept an iteration (0.03 = 3%)
+        # Must exceed the noise floor to be meaningful.
+        MinImprovementPct = 0.03
 
         # Stop after this many consecutive iterations with no improvement
         StaleIterationsBeforeStop = 2
@@ -71,6 +84,20 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
         # Additional k6 CLI arguments
         ExtraArgs    = @()
+        # ── Warmup ──────────────────────────────────────────
+        # Run a short 1-VU warmup pass before the measured run to ensure
+        # the application is fully warmed up before measured runs.
+        WarmupEnabled      = $true
+        WarmupScenarioPath = 'sample-api/scale-tests/scenarios/warmup.js'
+
+        # ── Multi-run averaging ─────────────────────────────
+        # Run the primary scenario this many times and take the median
+        # of the results.  Reduces noise from run-to-run variance.
+        MeasuredRuns = 5
+
+        # Seconds to pause between consecutive measured runs.
+        # Allows GC, thread pool, and TCP TIME_WAIT connections to settle.
+        CooldownSeconds = 3
     }
 
     # ── .NET Performance Counters ───────────────────────────────
@@ -97,6 +124,17 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
         # Git branch prefix for optimization branches
         BranchPrefix  = 'hone/iteration'
+    }
+
+    # ── Copilot CLI ─────────────────────────────────────────────
+    Copilot = @{
+        # Default AI model for all agents (see 'copilot --help' for choices)
+        Model = 'claude-opus-4.6'
+
+        # Per-agent model overrides (null = use default Model above)
+        AnalysisModel       = $null
+        ClassificationModel = 'claude-haiku-4.5'   # faster for binary scope decisions
+        FixModel            = $null
     }
 
     # ── Logging ─────────────────────────────────────────────────
@@ -129,17 +167,29 @@ The URL where the API listens. Passed to k6 as the `BASE_URL` environment variab
 
 Relative path appended to `BaseUrl` for startup health checks. The harness polls this endpoint until it returns HTTP 200 or the `StartupTimeout` is exceeded.
 
+### Api.GcEndpoint
+
+Optional endpoint (POST) to trigger server-side garbage collection between runs. Called between measured runs to reduce GC noise in measurements. Defaults to `/diag/gc`.
+
+### Api.SourceCodePaths
+
+Array of subdirectories (relative to `ProjectPath`) to scan when gathering source code context for Copilot analysis prompts. Defaults to `@('Controllers')`.
+
+### Api.SourceFileGlob
+
+Glob pattern for source files to include in analysis prompts. Only files matching this pattern inside `SourceCodePaths` are sent as context. Defaults to `*.cs`.
+
 ### Api.StartupTimeout
 
 Maximum number of seconds to wait for the API to become healthy after `dotnet run` is started. Default is 90 seconds. If the timeout is exceeded, the iteration is aborted.
 
 ### Tolerances.MinImprovementPct
 
-Minimum relative improvement required in any single metric (p95 latency, RPS, or error rate) to accept an iteration. Expressed as a decimal (e.g., `0.01` = 1%). If no metric improves by at least this amount, the iteration is considered stale.
+Minimum relative improvement required in any single metric (p95 latency, RPS, or error rate) to accept an iteration. Expressed as a decimal (e.g., `0.03` = 3%). Must exceed the measurement noise floor to be meaningful. If no metric improves by at least this amount, the iteration is considered stale.
 
 ### Tolerances.MaxRegressionPct
 
-Maximum allowed regression per metric before rejecting an iteration. Expressed as a decimal (e.g., `0.02` = 2%). If any metric regresses beyond this threshold, the optimization branch is rolled back.
+Maximum allowed regression per metric before rejecting an iteration. Expressed as a decimal (e.g., `0.10` = 10%). The tolerance is set relatively high because the harness uses pure steady-state measurement with median-of-5 runs, GC settling, and cooldowns between runs. If any metric regresses beyond this threshold, the optimization branch is rolled back.
 
 ### Tolerances.StaleIterationsBeforeStop
 
@@ -177,6 +227,38 @@ Each iteration also produces a `root-cause.md` in its subfolder (`iteration-{N}/
 ### ScaleTest.ExtraArgs
 
 Array of additional command-line arguments passed to `k6 run`. For example: `@('--vus', '100', '--duration', '60s')`.
+
+### ScaleTest.WarmupEnabled
+
+Toggle the warmup pass before measured runs. When enabled, a short 1-VU warmup scenario is run to ensure the application (JIT, connection pools, caches) is fully warmed up before measurement begins.
+
+### ScaleTest.WarmupScenarioPath
+
+Path to the k6 scenario used for the warmup pass. Only used when `WarmupEnabled` is `$true`. Defaults to `sample-api/scale-tests/scenarios/warmup.js`.
+
+### ScaleTest.MeasuredRuns
+
+Number of times to run the primary scenario per iteration. The harness takes the median of all runs to reduce noise from run-to-run variance. Defaults to `5`.
+
+### ScaleTest.CooldownSeconds
+
+Seconds to pause between consecutive measured runs. Allows GC, the thread pool, and TCP TIME_WAIT connections to settle before the next run. Defaults to `3`.
+
+### Copilot.Model
+
+Default AI model used by all Copilot agents (analysis, classification, fix). See `copilot --help` for available model choices. Defaults to `claude-opus-4.6`.
+
+### Copilot.AnalysisModel
+
+Model override for the analysis agent. When `$null`, falls back to `Copilot.Model`.
+
+### Copilot.ClassificationModel
+
+Model override for the classification agent, which makes binary scope decisions (e.g., is this optimization in scope?). Defaults to `claude-haiku-4.5` for faster turnaround on simple decisions.
+
+### Copilot.FixModel
+
+Model override for the fix agent, which generates code changes. When `$null`, falls back to `Copilot.Model`.
 
 ### DotnetCounters.Enabled
 

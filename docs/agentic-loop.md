@@ -48,7 +48,7 @@ Iteration = 1
 │   - Baseline metrics              │   │
 │   - Delta / % change              │   │
 │   - Source code of hot paths      │   │
-│ Send to: gh copilot suggest       │   │
+│ Send to: copilot CLI               │   │
 │ Parse response                    │   │
 └───────────────┬───────────────────┘   │
                 ▼                       │
@@ -145,7 +145,7 @@ Compares the current iteration's metrics against the baseline (from `Get-Perform
 
 ### Phase 5: Analyze (Copilot)
 
-**Script**: `Invoke-CopilotAnalysis.ps1`
+**Script**: `Invoke-AnalysisAgent.ps1`
 
 Constructs a detailed prompt for GitHub Copilot CLI that includes:
 

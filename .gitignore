@@ -55,6 +55,12 @@ Desktop.ini
 .DS_Store
 
 # ----- Hone Results -----
+# NOTE: sample-api/ is a git submodule with its own .gitignore.
+# The rules below do NOT take effect for the parent repo because git
+# delegates ignore rules inside submodules to the submodule's own
+# .gitignore. They are kept here for documentation purposes so
+# contributors understand the intended ignore policy for results.
+#
 # Performance results are stored per-run in sample-api/results/.
 # Baselines, k6 summaries, and run metadata are committed for review.
 # Counters, Copilot logs, dashboard, and operational files are gitignored.

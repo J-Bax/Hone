@@ -195,7 +195,7 @@ if ($RunMetrics -and $RunMetrics.Count -gt 1) {
         Range    = [math]::Round($range.Maximum - $range.Minimum, 2)
     }
 
-    $cvLevel = if ($cv -gt 0.15) { 'warning' } elseif ($cv -gt 0.10) { 'warning' } else { 'info' }
+    $cvLevel = if ($cv -gt 0.15) { 'error' } elseif ($cv -gt 0.10) { 'warning' } else { 'info' }
     $cvMessage = "Run variance: CV=$([math]::Round($cv * 100, 1))% | " +
         "p95 range: $([math]::Round($range.Minimum, 1))ms—$([math]::Round($range.Maximum, 1))ms | " +
         "stddev: $([math]::Round($stdDev, 1))ms ($($p95Values.Count) runs)"

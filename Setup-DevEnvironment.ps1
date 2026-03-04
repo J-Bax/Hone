@@ -183,33 +183,13 @@ if ($packagesInstalled) {
 }
 
 Write-Step "Checking GitHub Copilot CLI"
-if (Test-CommandExists 'gh') {
-    # In gh >= 2.74, copilot is a built-in command (no extension needed).
-    $ghVersionRaw = & gh --version 2>$null | Select-Object -First 1
-    $copilotHelp = & gh copilot --help 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "gh copilot built-in command available ($ghVersionRaw)"
-    }
-    else {
-        # Older gh — try the extension as a fallback
-        $extensions = & gh extension list 2>$null
-        if ($extensions -match 'copilot' -and -not $Force) {
-            Write-Ok "gh-copilot extension installed"
-        }
-        else {
-            try {
-                & gh extension install github/gh-copilot 2>$null
-                Write-Ok "gh-copilot extension installed"
-            }
-            catch {
-                Write-Fail "Could not enable gh copilot. Upgrade gh or run: gh extension install github/gh-copilot"
-                $allSucceeded = $false
-            }
-        }
-    }
+if (Test-CommandExists 'copilot') {
+    $copilotVer = & copilot --version 2>$null | Select-Object -First 1
+    Write-Ok "copilot CLI installed ($copilotVer)"
 }
 else {
-    Write-Skip "gh copilot (GitHub CLI not available)"
+    Write-Fail "Standalone copilot CLI not found — install it from https://docs.github.com/copilot/how-tos/copilot-cli"
+    $allSucceeded = $false
 }
 
 # ── 7. dotnet-counters global tool ─────────────────────────────────────────

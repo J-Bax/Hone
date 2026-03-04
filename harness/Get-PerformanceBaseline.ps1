@@ -15,6 +15,8 @@ param(
     [string]$ConfigPath
 )
 
+$ErrorActionPreference = 'Stop'
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {

@@ -55,7 +55,7 @@ $registry = Get-Content $registryPath -Raw | ConvertFrom-Json
 
 # ── Iterate scenarios ───────────────────────────────────────────────────────
 
-$results = @()
+$results = [System.Collections.Generic.List[object]]::new()
 $scenarioIndex = 0
 
 foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
@@ -69,23 +69,12 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     # ── Cooldown + GC between scenarios ──────────────────────────────────
     if ($scenarioIndex -gt 0) {
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
-
-        # Trigger server-side GC so heap pressure from the previous scenario doesn't bleed over
-        $baseUrl = $config.Api.BaseUrl
-        $gcEndpoint = $config.Api.GcEndpoint
-        if ($gcEndpoint) {
-            try {
-                Invoke-RestMethod -Uri "$baseUrl$gcEndpoint" -Method Post -TimeoutSec 5 -ErrorAction Stop | Out-Null
-            } catch {
-                Write-Verbose 'GC endpoint not available — skipping forced GC between scenarios'
-            }
-        }
-
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'info' `
-            -Message "Cooldown ${cooldown}s between scenarios" `
-            -Iteration $Iteration
-        Start-Sleep -Seconds $cooldown
+        & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
+            -BaseUrl $config.Api.BaseUrl `
+            -GcEndpoint $config.Api.GcEndpoint `
+            -CooldownSeconds $cooldown `
+            -Iteration $Iteration `
+            -Reason 'between scenarios'
     }
     $scenarioIndex++
 
@@ -121,7 +110,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     $success = $result -and $result.Success
     $metrics = if ($result) { $result.Metrics } else { $null }
 
-    $results += [PSCustomObject][ordered]@{
+    $results.Add([PSCustomObject][ordered]@{
         ScenarioName       = $name
         Description        = $scenario.description
         UseForOptimization = [bool]$scenario.use_for_optimization
@@ -129,11 +118,11 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         Metrics            = $metrics
         CounterMetrics     = if ($result) { $result.CounterMetrics } else { $null }
         SummaryPath        = if ($result) { $result.SummaryPath } else { $null }
-    }
+    })
 
     $status = if ($success) { 'OK' } else { 'FAIL' }
     $p95 = if ($metrics) { "$($metrics.HttpReqDuration.P95)ms" } else { 'N/A' }
     Write-Information "  [$status] $name — p95: $p95" -InformationAction Continue
 }
 
-return $results
+return ,$results.ToArray()

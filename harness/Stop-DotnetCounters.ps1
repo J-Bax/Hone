@@ -89,9 +89,6 @@ try {
         return $null
     }
 
-    # Group by provider and counter name, calculate aggregates
-    $grouped = $rows | Group-Object -Property 'Provider', 'Counter Name'
-
     # Helper to extract a counter's stats
     function Get-CounterStats {
         param([string]$Provider, [string]$CounterName)

@@ -59,54 +59,14 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
     -Phase 'analyze' -Level 'info' -Message 'Preparing analysis agent prompt' `
     -Iteration $Iteration
 
-# ── Read source code context ────────────────────────────────────────────────
-$apiProjectPath = Join-Path $repoRoot $config.Api.ProjectPath
-$sourceGlob = if ($config.Api.SourceFileGlob) { $config.Api.SourceFileGlob } else { '*.*' }
-$sourcePaths = if ($config.Api.SourceCodePaths) { $config.Api.SourceCodePaths } else { @('.') }
+# ── Build analysis context (source code, counters, history) ─────────────────
+$analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
+    -Config $config -RepoRoot $repoRoot `
+    -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation
 
-$sourceContext = foreach ($subPath in $sourcePaths) {
-    $searchDir = Join-Path $apiProjectPath $subPath
-    if (Test-Path $searchDir) {
-        Get-ChildItem -Path $searchDir -Filter $sourceGlob -Recurse | ForEach-Object {
-            "// === $($_.Name) ===`n$(Get-Content $_.FullName -Raw)"
-        }
-    }
-}
-
-# ── Build counter metrics context ───────────────────────────────────────────
-$counterContext = ''
-if ($CounterMetrics) {
-    $cpuAvg = if ($CounterMetrics.Runtime.CpuUsage) { "$($CounterMetrics.Runtime.CpuUsage.Avg)%" } else { 'N/A' }
-    $heapMax = if ($CounterMetrics.Runtime.GcHeapSizeMB) { "$($CounterMetrics.Runtime.GcHeapSizeMB.Max)MB" } else { 'N/A' }
-    $gen2 = if ($CounterMetrics.Runtime.Gen2Collections) { $CounterMetrics.Runtime.Gen2Collections.Last } else { 'N/A' }
-    $threads = if ($CounterMetrics.Runtime.ThreadPoolThreads) { $CounterMetrics.Runtime.ThreadPoolThreads.Max } else { 'N/A' }
-    $counterContext = @"
-
-## Runtime Counters
-- CPU avg: $cpuAvg
-- GC heap max: $heapMax
-- Gen2 collections: $gen2
-- Thread pool max threads: $threads
-"@
-}
-
-# ── Build optimization history context ───────────────────────────────────────
-$historyContext = ''
-$metadataDir = Join-Path $repoRoot $config.Api.MetadataPath
-$logPath   = Join-Path $metadataDir 'optimization-log.md'
-$queuePath = Join-Path $metadataDir 'optimization-queue.md'
-
-if (Test-Path $logPath) {
-    $logContent = Get-Content $logPath -Raw
-    $historyContext += "`n## Previously Tried Optimizations`n$logContent`n"
-}
-if (Test-Path $queuePath) {
-    $queueContent = Get-Content $queuePath -Raw
-    $historyContext += "`n## Known Optimization Queue`n$queueContent`n"
-}
-if ($PreviousRcaExplanation) {
-    $historyContext += "`n## Last Iteration's Fix`n$PreviousRcaExplanation`n"
-}
+$sourceContext  = $analysisContext.SourceContext
+$counterContext = $analysisContext.CounterContext
+$historyContext = $analysisContext.HistoryContext
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) { $ComparisonResult.ImprovementPct } else { '0' }
@@ -128,7 +88,7 @@ $counterContext
 $historyContext
 
 ## Source Code
-$($sourceContext -join "`n`n")
+$sourceContext
 
 Respond with JSON only. No markdown, no code blocks around the JSON.
 "@

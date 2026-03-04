@@ -46,9 +46,10 @@ $testOutput = dotnet test $testProjectPath `
 $testExitCode = $LASTEXITCODE
 
 # Parse the output for test counts
-$totalMatch = ($testOutput | Out-String) -match 'Total tests:\s*(\d+)'
-$passedMatch = ($testOutput | Out-String) -match 'Passed:\s*(\d+)'
-$failedMatch = ($testOutput | Out-String) -match 'Failed:\s*(\d+)'
+$testOutputString = $testOutput | Out-String
+$totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
+$passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
+$failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
 
 $result = [ordered]@{
     Success     = ($testExitCode -eq 0)
@@ -57,7 +58,7 @@ $result = [ordered]@{
     PassedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
     FailedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
     TrxPath     = $trxPath
-    Output      = ($testOutput | Out-String)
+    Output      = $testOutputString
 }
 
 $logData = @{

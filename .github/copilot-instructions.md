@@ -10,7 +10,7 @@ Hone is an **agentic performance optimization harness** that automatically impro
 - **Target API**: .NET 6 Web API with Entity Framework Core 6 and SQL Server LocalDB
 - **Load Testing**: k6 (Grafana) with JavaScript scenario scripts
 - **E2E Testing**: xUnit with `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory)
-- **AI Agent**: GitHub Copilot CLI (`gh copilot suggest`) for optimization brainstorming
+- **AI Agent**: GitHub Copilot CLI (standalone `copilot` command, Claude Opus 4.6) for optimization analysis
 - **Platform**: Windows-first, PowerShell-native
 
 ## Key Directories
@@ -52,7 +52,7 @@ Hone is an **agentic performance optimization harness** that automatically impro
 1. **Build** → `dotnet build`
 2. **Verify** → `dotnet test` (E2E, must pass 100%)
 3. **Measure** → `k6 run` (capture p95 latency, RPS, error rate)
-4. **Analyze** → `gh copilot suggest` with perf context prompt
+4. **Analyze** → `copilot --model claude-opus-4.6` with perf context prompt
 5. **Fix** → Apply suggestion on a new git branch
 6. **Repeat** → Until targets met or max iterations reached
 
