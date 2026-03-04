@@ -350,8 +350,31 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             # The RCA parser extracts the file path and code block from the
             # Copilot response. We apply exactly ONE file change per iteration
             # to keep each optimization isolated and easy to reason about.
+            #
+            # Architecture-level changes are queued for manual approval instead
+            # of being auto-applied.
             $applySuccess = $false
-            if ($rcaResult.Success -and $rcaResult.FilePath -and $rcaResult.CodeBlock) {
+            $isArchitecture = ($rcaResult.ChangeScope -eq 'architecture')
+
+            if ($isArchitecture -and $rcaResult.Success) {
+                Write-Information '  ⚠ Architecture-level change detected — queuing for manual review' -InformationAction Continue
+                Write-Information "    Scope: $($rcaResult.ChangeScope) | File: $($rcaResult.FilePath)" -InformationAction Continue
+                Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
+
+                & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                    -Phase 'fix' -Level 'info' `
+                    -Message "Architecture change queued (not applied): $($rcaResult.Explanation.Substring(0, [Math]::Min(100, $rcaResult.Explanation.Length)))" `
+                    -Iteration $iteration
+
+                # Add the architecture suggestion to the queue
+                & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                    -Action 'AddQueue' `
+                    -Iteration $iteration `
+                    -Opportunities @($rcaResult.Explanation) `
+                    -Scopes @('architecture') `
+                    -ConfigPath $ConfigPath
+            }
+            elseif ($rcaResult.Success -and $rcaResult.FilePath -and $rcaResult.CodeBlock) {
                 $targetFile = $rcaResult.FilePath.Trim()
                 # Normalise: ensure it starts with 'sample-api/'
                 if ($targetFile -notmatch '^sample-api[\\/]') {
@@ -396,10 +419,18 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
                 -ConfigPath $ConfigPath
 
             if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
+                # Parse scope tags from opportunity text (e.g. "[ARCHITECTURE] ..." or "[NARROW] ...")
+                $oppScopes = @()
+                foreach ($opp in $analysisResult.AdditionalOpportunities) {
+                    if ($opp -match '^\[ARCHITECTURE\]') { $oppScopes += 'architecture' }
+                    else { $oppScopes += 'narrow' }
+                }
+
                 & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
                     -Action 'AddQueue' `
                     -Iteration $iteration `
                     -Opportunities $analysisResult.AdditionalOpportunities `
+                    -Scopes $oppScopes `
                     -ConfigPath $ConfigPath
 
                 Write-Information "  Queued $($analysisResult.AdditionalOpportunities.Count) additional optimization opportunities" -InformationAction Continue

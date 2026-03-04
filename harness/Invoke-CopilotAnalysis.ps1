@@ -97,7 +97,7 @@ if (Test-Path $logPath) {
 }
 if (Test-Path $queuePath) {
     $queueContent = Get-Content $queuePath -Raw
-    $historyContext += "`n## Known Optimization Queue`n$queueContent`n"
+    $historyContext += "`n## Known Optimization Queue`nItems marked [ARCHITECTURE] require manual [APPROVED] tag before implementation.`n$queueContent`n"
 }
 if ($PreviousRcaExplanation) {
     $historyContext += "`n## Last Iteration's Fix`n$PreviousRcaExplanation`n"
@@ -132,12 +132,25 @@ $($sourceContext -join "`n`n")
    lower error rate) WITHOUT regressing any other metric.
 5. I need a measurable improvement from the current values — there are no fixed
    targets, just make it better.
+6. You MUST preserve all existing functionality. Do not remove, rename, or alter
+   the behaviour of any public API endpoint, response schema, or data contract.
+   Performance optimizations must be invisible to API consumers.
+7. Classify your suggestion as NARROW or ARCHITECTURE:
+   - NARROW = single-file change that only modifies implementation internals
+     (query tuning, caching, algorithm swap, in-memory optimization, index addition).
+   - ARCHITECTURE = schema migration, new dependency/package, multi-file
+     restructuring, endpoint contract change, or infrastructure change.
+   If in doubt, classify as ARCHITECTURE.
+   Items marked [ARCHITECTURE] in the optimization queue below require manual
+   approval before implementation. Only suggest implementing an [ARCHITECTURE]
+   item if it is also marked [APPROVED].
 
 Respond with EXACTLY these numbered sections:
 1. The file path to modify (relative to sample-api/, e.g. a relative path under the project directory)
 2. A brief explanation of the single change and which metric it should improve
 3. The complete new file content (the FULL file, not a diff)
-4. Two to three additional optimization opportunities NOT YET TRIED, ranked by expected impact (one line each, prefixed with "- ")
+4. Two to three additional optimization opportunities NOT YET TRIED, ranked by expected impact (one line each, prefixed with "- [NARROW] " or "- [ARCHITECTURE] ")
+5. Scope: NARROW or ARCHITECTURE (one word only)
 "@
 
 # Save the prompt for audit

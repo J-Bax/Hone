@@ -65,6 +65,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 $filePath = ''
 $explanation = ''
 $codeBlock = ''
+$changeScope = 'architecture'   # safe default — requires manual approval
 
 try {
     # Split on numbered section headers. Handles various markdown styles:
@@ -104,6 +105,15 @@ try {
         else {
             # No fenced block — use the raw section as the code
             $codeBlock = $rawCode
+        }
+    }
+    if ($sections.Count -ge ($offset + 5)) {
+        $rawScope = ($sections[$offset + 4]).Trim().ToUpper()
+        if ($rawScope -match '\bNARROW\b') {
+            $changeScope = 'narrow'
+        }
+        elseif ($rawScope -match '\bARCHITECTURE\b') {
+            $changeScope = 'architecture'
         }
     }
 }
@@ -151,6 +161,7 @@ $(if ($ComparisonResult.EfficiencyDeltas) {
 ## Root Cause / Rationale
 
 $(if ($filePath) { "**Target file:** ``$filePath```n" })
+**Scope:** ``$changeScope``
 $explanation
 
 ## Proposed Fix
@@ -182,4 +193,5 @@ $rca | Out-File -FilePath $rcaPath -Encoding utf8
     FilePath    = $filePath
     Explanation = $explanation
     CodeBlock   = $codeBlock
+    ChangeScope = $changeScope
 }

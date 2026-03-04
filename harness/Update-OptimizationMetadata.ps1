@@ -48,6 +48,8 @@ param(
 
     [string[]]$Opportunities,
 
+    [string[]]$Scopes,
+
     [string]$ConfigPath
 )
 
@@ -116,10 +118,17 @@ switch ($Action) {
             return
         }
 
-        $newEntries = foreach ($opp in $Opportunities) {
-            $cleaned = $opp.Trim().TrimStart('-', '*', ' ')
+        $newEntries = for ($i = 0; $i -lt $Opportunities.Count; $i++) {
+            $cleaned = $Opportunities[$i].Trim().TrimStart('-', '*', ' ')
+            # Strip any existing scope tags the model may have included in the text
+            $cleaned = $cleaned -replace '^\[(NARROW|ARCHITECTURE)\]\s*', ''
             if ($cleaned.Length -gt 0) {
-                "- [ ] $cleaned"
+                $scope = if ($Scopes -and $i -lt $Scopes.Count) { $Scopes[$i] } else { $null }
+                if ($scope -eq 'architecture') {
+                    "- [ ] [ARCHITECTURE] $cleaned"
+                } else {
+                    "- [ ] $cleaned"
+                }
             }
         }
 
