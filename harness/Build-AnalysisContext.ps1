@@ -1,10 +1,11 @@
 <#
 .SYNOPSIS
-    Builds the source code, counter metrics, and history context for analysis prompts.
+    Builds the file paths, counter metrics, and history context for analysis prompts.
 
 .DESCRIPTION
-    Reads source files, formats .NET counter metrics, and gathers optimization history
-    into a structured object suitable for prompt construction.
+    Collects source file paths, formats .NET counter metrics, and gathers optimization history
+    into a structured object suitable for prompt construction. Source file contents are NOT
+    included — the analysis agent reads them directly via its own tools.
 
 .PARAMETER Config
     Imported harness configuration hashtable.
@@ -31,16 +32,16 @@ param(
     [string]$PreviousRcaExplanation
 )
 
-# ── Source code context ──────────────────────────────────────────────────────
+# ── Source file paths (agent explores files itself) ──────────────────────────
 $apiProjectPath = Join-Path $RepoRoot $Config.Api.ProjectPath
 $sourceGlob = if ($Config.Api.SourceFileGlob) { $Config.Api.SourceFileGlob } else { '*.*' }
 $sourcePaths = if ($Config.Api.SourceCodePaths) { $Config.Api.SourceCodePaths } else { @('.') }
 
-$sourceContext = foreach ($subPath in $sourcePaths) {
+$sourceFilePaths = foreach ($subPath in $sourcePaths) {
     $searchDir = Join-Path $apiProjectPath $subPath
     if (Test-Path $searchDir) {
         Get-ChildItem -Path $searchDir -Filter $sourceGlob -Recurse | ForEach-Object {
-            "// === $($_.Name) ===`n$(Get-Content $_.FullName -Raw)"
+            $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
         }
     }
 }
@@ -82,7 +83,7 @@ if ($PreviousRcaExplanation) {
 
 # ── Return structured result ─────────────────────────────────────────────────
 [PSCustomObject]@{
-    SourceContext  = ($sourceContext -join "`n`n")
-    CounterContext = $counterContext
-    HistoryContext = $historyContext
+    SourceFilePaths = @($sourceFilePaths)
+    CounterContext  = $counterContext
+    HistoryContext  = $historyContext
 }

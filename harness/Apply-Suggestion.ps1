@@ -62,7 +62,8 @@ try {
     # Create and switch to a new branch inside the submodule
     Push-Location $submoduleDir
 
-    git checkout -b $branchName 2>&1 | Out-Null
+    # Always branch from master so iteration PRs only contain iteration-specific changes
+    git checkout -b $branchName master 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         # Branch might already exist, try switching to it
         git checkout $branchName 2>&1 | Out-Null

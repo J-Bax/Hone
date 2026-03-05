@@ -192,6 +192,11 @@ $bestIteration = 0
 $bestP95 = $baselineMetrics.HttpReqDuration.P95
 $staleCount = 0
 
+# Ensure the submodule starts on master so iteration branches fork from master
+Push-Location (Join-Path $repoRoot 'sample-api')
+git checkout master 2>&1 | Out-Null
+Pop-Location
+
 for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     $iterationStartedAt = Get-Date -Format 'o'
@@ -514,6 +519,31 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
         Write-Information '[7/7] Publishing (push + PR)...' -InformationAction Continue
 
+        # Update metadata BEFORE the amend so entries appear in the commit
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary $analysisResult.Explanation `
+            -FilePath $analysisResult.FilePath `
+            -Outcome 'improved' `
+            -ConfigPath $ConfigPath
+
+        if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
+            $oppDescriptions = @($analysisResult.AdditionalOpportunities | ForEach-Object { $_.description })
+            $oppScopes = @($analysisResult.AdditionalOpportunities | ForEach-Object {
+                if ($_.scope -eq 'architecture') { 'architecture' } else { 'narrow' }
+            })
+
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddQueue' `
+                -Iteration $iteration `
+                -Opportunities $oppDescriptions `
+                -Scopes $oppScopes `
+                -ConfigPath $ConfigPath
+
+            Write-Information "  Queued $($oppDescriptions.Count) additional optimization opportunities" -InformationAction Continue
+        }
+
         # Amend the commit to include post-fix artifacts (k6 summaries, comparison data)
         Push-Location (Join-Path $repoRoot 'sample-api')
         $iterationDir = Join-Path (Join-Path $repoRoot 'sample-api') 'results' "iteration-$iteration"
@@ -636,15 +666,6 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         }
 
         Pop-Location
-
-        # Update metadata with improvement outcome
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddTried' `
-            -Iteration $iteration `
-            -Summary $analysisResult.Explanation `
-            -FilePath $analysisResult.FilePath `
-            -Outcome 'improved' `
-            -ConfigPath $ConfigPath
     }
     else {
         # No improvement and no regression — stale
@@ -670,8 +691,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         }
     }
 
-    # Queue additional optimization opportunities from the analysis
-    if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
+    # Queue additional opportunities for non-improved outcomes (improved queues before its amend commit)
+    if ($iterationOutcome -ne 'improved' -and $analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
         # Analysis agent returns JSON objects with .description and .scope fields
         $oppDescriptions = @($analysisResult.AdditionalOpportunities | ForEach-Object { $_.description })
         $oppScopes = @($analysisResult.AdditionalOpportunities | ForEach-Object {

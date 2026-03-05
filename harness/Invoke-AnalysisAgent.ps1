@@ -64,12 +64,14 @@ $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
     -Config $config -RepoRoot $repoRoot `
     -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation
 
-$sourceContext  = $analysisContext.SourceContext
-$counterContext = $analysisContext.CounterContext
-$historyContext = $analysisContext.HistoryContext
+$sourceFilePaths = $analysisContext.SourceFilePaths
+$counterContext  = $analysisContext.CounterContext
+$historyContext  = $analysisContext.HistoryContext
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) { $ComparisonResult.ImprovementPct } else { '0' }
+
+$fileList = ($sourceFilePaths | ForEach-Object { "- $_" }) -join "`n"
 
 $prompt = @"
 Analyze this Web API's performance and identify the single highest-impact optimization.
@@ -87,8 +89,11 @@ Analyze this Web API's performance and identify the single highest-impact optimi
 $counterContext
 $historyContext
 
-## Source Code
-$sourceContext
+## Source Files
+The following source files are available for analysis (paths relative to repo root).
+Read the files that are relevant to identifying performance bottlenecks.
+
+$fileList
 
 Respond with JSON only. No markdown, no code blocks around the JSON.
 "@
