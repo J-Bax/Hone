@@ -130,8 +130,12 @@ try {
     $responsePath = Join-Path $iterDir 'analysis-response.json'
     $responseText | Out-File -FilePath $responsePath -Encoding utf8
 
-    # Parse JSON — strip any wrapping markdown code fences if present
+    # Parse JSON — the agent may output exploration text before the JSON response.
+    # Strip code fences, then extract the first complete JSON object ({...}).
     $jsonText = $responseText -replace '(?s)^```(?:json)?\s*', '' -replace '(?s)\s*```$', ''
+    if ($jsonText -match '(?s)(\{.+\})') {
+        $jsonText = $Matches[1]
+    }
     $parsed = $jsonText | ConvertFrom-Json
 
     $result = [ordered]@{
