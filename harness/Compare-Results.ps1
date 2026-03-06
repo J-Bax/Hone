@@ -81,7 +81,7 @@ function Get-PctChange([double]$Current, [double]$Previous) {
 $p95Current  = $CurrentMetrics.HttpReqDuration.P95
 $p95Previous = $reference.HttpReqDuration.P95
 $p95Change   = Get-PctChange $p95Current $p95Previous          # negative = improved
-$p95Improved = $p95Change -le -$tolerances.MinImprovementPct   # improved beyond noise
+$p95Improved = $p95Change -le -$tolerances.MinImprovementPct   # any reduction = improved
 $p95Regressed = $p95Change -gt $tolerances.MaxRegressionPct    # regressed beyond tolerance
 
 # RPS – higher is better

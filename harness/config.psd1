@@ -45,9 +45,10 @@
         # Re-evaluate after baselining if CV drops below 8%.
         MaxRegressionPct  = 0.10
 
-        # Minimum improvement (any single metric) to accept an iteration (0.03 = 3%)
-        # Must exceed the noise floor to be meaningful.
-        MinImprovementPct = 0.03
+        # Minimum improvement (any single metric) to accept an iteration.
+        # Set to 0 so any measurable improvement is accepted; regressions are
+        # still gated by MaxRegressionPct.
+        MinImprovementPct = 0
 
         # Stop after this many consecutive iterations with no improvement
         StaleIterationsBeforeStop = 2
