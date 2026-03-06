@@ -121,7 +121,7 @@
     # ── Agentic Loop ───────────────────────────────────────────
     Loop = @{
         # Maximum number of optimization iterations
-        MaxIterations = 5
+        MaxIterations = 999
 
         # Git branch prefix for optimization branches
         BranchPrefix  = 'hone/iteration'
