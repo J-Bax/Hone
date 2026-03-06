@@ -6,6 +6,82 @@ The Hone agentic loop is a fully automated optimization cycle. It runs as a sing
 
 ## Loop Lifecycle
 
+The loop supports two modes: **stacked diffs** (default) and **legacy**. In stacked mode, iterations form a linear chain where each branches from the previous. In legacy mode, each iteration branches from `master`.
+
+### Stacked Diffs Mode (default)
+
+```
+START
+  │
+  ▼
+Load config.psd1
+  │
+  ▼
+currentBranch = master
+  │
+  ├───────────────────────────────────────────────────────┐
+  ▼                                                       │
+┌─── PHASE 1: ANALYZE ─────────────────────────────────┐  │
+│ Build context prompt, call copilot CLI               │  │
+│ Classify scope (NARROW vs ARCHITECTURE)              │  │
+│ ► Architecture → queue for manual review, continue   │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 2: FIX ────────────────────────────────────┐  │
+│ Generate fix, create branch from currentBranch       │  │
+│ Apply code change, commit                            │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 3: BUILD ──────────────────────────────────┐  │
+│ dotnet build                                         │  │
+│ ► Fail → revert code, push branch, continue          │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 4: VERIFY ────────────────────────────────┐   │
+│ dotnet test (E2E)                                    │  │
+│ ► Fail → revert code, push branch, continue          │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 5: MEASURE ───────────────────────────────┐   │
+│ Start API → k6 run → Stop API                        │  │
+│ Parse JSON results                                   │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 6: COMPARE ───────────────────────────────┐   │
+│ Compare vs. baseline / previous iteration            │  │
+└───────────────┬──────────────────────────────────────┘  │
+                ▼                                         │
+┌─── PHASE 7: PUBLISH or REVERT ─────────────────────┐   │
+│ ► Improved → push, create stacked PR, continue       │  │
+│ ► Regression → revert code, push branch, continue    │  │
+│ ► Stale → revert code, push branch, continue         │  │
+│ ► MaxConsecutiveFailures → EXIT                      │  │
+└───────────────┬──────────────────────────────────────┘  │
+                │                                         │
+                ▼                                         │
+          currentBranch = this iteration                   │
+          Iteration++                                     │
+                │                                         │
+                └─────────────────────────────────────────┘
+```
+
+#### Branch Chain Example
+
+```
+master
+  └── hone/iteration-1  (improved ✓ → PR #12, base=master)
+        └── hone/iteration-2  (regressed ✗ → code reverted, pushed)
+              └── hone/iteration-3  (stale ✗ → code reverted, pushed)
+                    └── hone/iteration-4  (improved ✓ → PR #15, base=iteration-1)
+                          └── hone/iteration-5  (improved ✓ → PR #18, base=iteration-4)
+```
+
+PRs only show the incremental change between successful iterations. Failed iterations' reverted code is invisible in the diff. Each PR's `--base` points to the last successful iteration branch.
+
+### Legacy Mode
+
+Set `StackedDiffs = $false` in config to use legacy mode, which preserves the original behavior:
+
 ```
 START
   │
@@ -127,14 +203,16 @@ Compares the current iteration's metrics against the baseline (from `Get-Perform
 
 **Decisions made**:
 
-| Condition | Action |
-|-----------|--------|
-| All thresholds met | Exit loop — success |
-| P95 latency increased > 10% from previous iteration | Rollback branch, abort — regression detected |
-| Error rate exceeds threshold | Rollback branch, abort — reliability regression |
-| No performance change but CPU or working set reduced ≥ 5% | Continue (efficiency tiebreaker) — reset stale count |
-| Iteration count = max iterations | Exit loop — limit reached |
-| Otherwise | Continue to Analyze phase |
+| Condition | Stacked Mode | Legacy Mode |
+|-----------|-------------|-------------|
+| All thresholds met | Exit loop — success | Exit loop — success |
+| P95 latency increased > 10% | Revert code, push branch, continue | Rollback branch, abort |
+| Error rate exceeds threshold | Revert code, push branch, continue | Rollback branch, abort |
+| No performance change but CPU or working set reduced ≥ 5% | Accept (efficiency tiebreaker) — reset failure count | Accept (efficiency tiebreaker) — reset stale count |
+| MaxConsecutiveFailures reached | Exit loop — max failures | N/A |
+| StaleIterationsBeforeStop reached | N/A | Exit loop — no improvement |
+| Iteration count = max iterations | Exit loop — limit reached | Exit loop — limit reached |
+| Otherwise | Continue to next iteration | Continue to Analyze phase |
 
 > **Efficiency tiebreaker**: When performance metrics (p95, RPS, error rate) are flat — no
 > improvement and no regression — the loop checks OS-level resource usage. If average CPU
@@ -161,20 +239,40 @@ The prompt asks Copilot to suggest a specific, targeted code change to improve p
 
 **Script**: `Apply-Suggestion.ps1`
 
-1. Creates a new git branch: `hone/iteration-{N}`
+1. Creates a new git branch: `hone/iteration-{N}` (from `currentBranch` in stacked mode, or `master` in legacy mode)
 2. Applies the code changes suggested by Copilot
 3. Commits with a descriptive message including the iteration number and targeted metric
 
 The loop then increments the iteration counter and returns to Phase 1 (Build).
 
+### Phase 7: Publish or Revert (Stacked Mode)
+
+**Script**: `Revert-IterationCode.ps1` (for failed iterations)
+
+In stacked diffs mode, this phase handles three outcomes:
+
+- **Improved**: Amend commit with artifacts, push branch, create PR with `--base` set to the last successful iteration branch. Continue immediately (fire-and-forget).
+- **Regressed/Stale**: Call `Revert-IterationCode.ps1` to undo the code change while preserving iteration artifacts (k6 results, RCA, metadata). Push the branch for the record. Increment the failure counter and continue.
+
+The revert script restores the modified file via `git checkout HEAD~1 -- <file>`, stages the revert plus any iteration artifacts, and commits with a descriptive message. The branch is pushed to origin so the failed attempt is preserved remotely.
+
 ## Exit Conditions
+
+### Stacked Diffs Mode
 
 | Exit | Meaning | Result |
 |------|---------|--------|
-| **Success** | All performance thresholds met | Final branch has all optimizations |
-| **Regression** | An optimization broke functionality or degraded performance | Previous branch is the best |
-| **No Improvement** | No performance or efficiency gain for consecutive iterations | Best iteration branch identified in summary |
-| **Limit** | Max iterations reached without meeting all targets | Best iteration branch identified in summary |
+| **Max Consecutive Failures** | Too many consecutive failures (stale + regression) | PR stack contains all successful iterations |
+| **Limit** | Max iterations reached | PR stack contains all successful iterations |
+| **PR Rejected** | A PR was closed without merging (when WaitForMerge is on) | Loop stops |
+
+### Legacy Mode
+
+| Exit | Meaning | Result |
+|------|---------|--------|
+| **Regression** | An optimization degraded performance | Previous branch is the best |
+| **No Improvement** | No gain for consecutive iterations | Best iteration branch identified |
+| **Limit** | Max iterations reached | Best iteration branch identified |
 | **Build Error** | Code doesn't compile | Manual intervention needed |
 
 > **Note**: Efficiency-only improvements (CPU or working set reduction with flat performance)

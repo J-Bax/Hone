@@ -18,6 +18,10 @@
 .PARAMETER Iteration
     Current iteration number.
 
+.PARAMETER BaseBranch
+    The branch to fork from.  Defaults to 'master' (legacy mode).
+    In stacked-diffs mode, pass the previous iteration's branch name.
+
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 #>
@@ -33,6 +37,8 @@ param(
     [string]$Description,
 
     [int]$Iteration = 0,
+
+    [string]$BaseBranch = 'master',
 
     [string]$ConfigPath
 )
@@ -62,8 +68,8 @@ try {
     # Create and switch to a new branch inside the submodule
     Push-Location $submoduleDir
 
-    # Always branch from master so iteration PRs only contain iteration-specific changes
-    git checkout -b $branchName master 2>&1 | Out-Null
+    # Branch from the specified base (master in legacy mode, previous iteration in stacked mode)
+    git checkout -b $branchName $BaseBranch 2>&1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         # Branch might already exist, try switching to it
         git checkout $branchName 2>&1 | Out-Null

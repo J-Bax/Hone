@@ -57,6 +57,7 @@ The core of Hone. A set of PowerShell scripts that orchestrate the optimization 
 | `Invoke-ClassificationAgent.ps1` | Calls the hone-classifier agent to determine optimization scope (NARROW vs ARCHITECTURE) |
 | `Invoke-FixAgent.ps1` | Calls the hone-fixer agent to generate optimized file content |
 | `Apply-Suggestion.ps1` | Creates a branch and applies suggested changes |
+| `Revert-IterationCode.ps1` | Reverts code on failed iterations while preserving artifacts |
 | `Invoke-Cooldown.ps1` | Triggers server-side GC and sleeps for a cooldown period between test runs |
 | `Reset-Database.ps1` | Drops and recreates the sample API database for clean state |
 | `Export-Dashboard.ps1` | Generates an interactive HTML dashboard with Chart.js visualizations |
@@ -187,7 +188,7 @@ Performance results directory. Baselines, k6 summaries, and run metadata are com
 
 1. **Harness is separate from the target** — The PowerShell scripts don't embed API-specific logic. They invoke external tools (`dotnet`, `k6`, `gh`) and parse their output.
 
-2. **Every iteration is a git branch** — Easy to compare, rollback, or cherry-pick individual optimizations.
+2. **Every iteration is a git branch** — In stacked diffs mode (default), iterations form a linear chain. Successful iterations get PRs that diff against the previous success. Failed iterations have code reverted but artifacts preserved. In legacy mode, each iteration branches from master.
 
 3. **E2E tests are the safety net** — No optimization is accepted if it breaks functionality.
 

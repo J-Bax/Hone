@@ -59,6 +59,11 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
         # Stop after this many consecutive iterations with no improvement
         StaleIterationsBeforeStop = 2
 
+        # Stop after this many consecutive unsuccessful iterations
+        # (stale + regression combined).  Used by stacked-diffs mode.
+        # Falls back to StaleIterationsBeforeStop when not set.
+        MaxConsecutiveFailures = 10
+
         # ── Efficiency Tiebreaker ────────────────────────────────
         # When performance metrics are flat (no improvement, no regression),
         # accept the iteration if OS-level resource usage decreased.
@@ -124,6 +129,20 @@ All harness configuration lives in `harness/config.psd1`, a PowerShell data file
 
         # Git branch prefix for optimization branches
         BranchPrefix  = 'hone/iteration'
+
+        # Stacked diffs: each iteration branches from the previous one,
+        # forming a linear chain.  PRs compare N+1 against the last
+        # successful iteration instead of master.
+        # When $false (legacy mode): each iteration branches from master
+        # and PRs target master directly.
+        StackedDiffs  = $true
+
+        # When $false the loop creates PRs and continues immediately
+        # (fire-and-forget).  When $true the loop blocks until each PR
+        # is merged before starting the next iteration.
+        # In stacked mode $false is recommended; $true is the legacy
+        # behaviour when StackedDiffs = $false.
+        WaitForMerge  = $false
     }
 
     # ── Copilot CLI ─────────────────────────────────────────────
@@ -284,6 +303,23 @@ Maximum number of build-verify-measure-analyze-fix cycles. The loop stops after 
 ### Loop.BranchPrefix
 
 Git branch naming prefix. Each iteration creates a branch named `{BranchPrefix}-{N}` (e.g., `hone/iteration-1`).
+
+### Loop.StackedDiffs
+
+When `$true` (default), iterations form a **linear branch chain**. Each iteration branches from the previous one (whether it succeeded or failed). Successful iterations get PRs that compare against the last successful iteration branch. Failed iterations have their code reverted but their artifacts preserved, and the branch is pushed for the record.
+
+When `$false` (legacy mode), each iteration branches from `master`, PRs target `master`, and the loop waits for merge between iterations.
+
+### Loop.WaitForMerge
+
+Controls whether the loop blocks waiting for each PR to be merged before starting the next iteration.
+
+- `$false` (default) — Fire-and-forget: create the PR and continue immediately. Recommended with `StackedDiffs = $true`.
+- `$true` — Block until the PR is merged or closed. This is the legacy behavior when `StackedDiffs = $false`.
+
+### Tolerances.MaxConsecutiveFailures
+
+Maximum consecutive unsuccessful iterations (stale + regression combined) before the loop stops. Used in stacked-diffs mode where regressions no longer immediately abort the loop. Falls back to `StaleIterationsBeforeStop` when not set. Default is `10`.
 
 ## Overriding at Runtime
 

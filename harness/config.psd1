@@ -53,6 +53,12 @@
         # Stop after this many consecutive iterations with no improvement
         StaleIterationsBeforeStop = 2
 
+        # Stop after this many consecutive unsuccessful iterations
+        # (stale + regression combined).  Used by stacked-diffs mode where
+        # regressions no longer immediately abort the loop.
+        # Falls back to StaleIterationsBeforeStop when not set.
+        MaxConsecutiveFailures = 10
+
         # ── Efficiency Tiebreaker ────────────────────────────────
         # When performance metrics are flat (no improvement, no regression),
         # accept the iteration if OS-level resource usage decreased.
@@ -119,6 +125,20 @@
 
         # Git branch prefix for optimization branches
         BranchPrefix  = 'hone/iteration'
+
+        # Stacked diffs: each iteration branches from the previous one,
+        # forming a linear chain.  PRs compare N+1 against the last
+        # successful iteration instead of master.
+        # When $false (legacy mode): each iteration branches from master
+        # and PRs target master directly.
+        StackedDiffs  = $true
+
+        # When $false the loop creates PRs and continues immediately
+        # (fire-and-forget).  When $true the loop blocks until each PR
+        # is merged before starting the next iteration.
+        # In stacked mode $false is recommended; $true is the legacy
+        # behaviour when StackedDiffs = $false.
+        WaitForMerge  = $false
     }
 
     # ── Copilot CLI ─────────────────────────────────────────────

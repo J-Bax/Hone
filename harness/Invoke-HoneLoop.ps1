@@ -11,8 +11,14 @@
     4. Verify correctness with E2E tests
     5. Start the API and measure performance with k6
     6. Compare results against baseline — confirm improvement
-    7. If validated: push branch + create PR; if not: rollback
-    Exits when max iterations reached, regression detected, or no improvement.
+    7. If validated: push branch + create PR; if not: revert + continue
+
+    Supports two modes:
+    - Stacked diffs (default): iterations form a linear branch chain.
+      Successful iterations get PRs comparing against the last success.
+      Failed iterations are reverted in-place and preserved for the record.
+    - Legacy: each iteration branches from master, PRs target master,
+      loop blocks waiting for merge between iterations.
 
 .PARAMETER MaxIterations
     Override max iterations from config.
@@ -38,15 +44,17 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 function Undo-IterationBranch {
     <#
     .SYNOPSIS
-        Rolls back to master and deletes the iteration branch.
+        Rolls back to a target branch and deletes the iteration branch.
+        Used in legacy (non-stacked) mode only.
     #>
     param(
         [Parameter(Mandatory)][string]$BranchName,
-        [Parameter(Mandatory)][string]$RepoRoot
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [string]$RestoreBranch = 'master'
     )
     try {
         Push-Location (Join-Path $RepoRoot 'sample-api')
-        git checkout master 2>&1 | Out-Null
+        git checkout $RestoreBranch 2>&1 | Out-Null
         git branch -D $BranchName 2>&1 | Out-Null
         Pop-Location
     }
@@ -67,6 +75,13 @@ if ($MaxIterations -gt 0) { $config.Loop.MaxIterations = $MaxIterations }
 
 $maxIter = $config.Loop.MaxIterations
 $tolerances = $config.Tolerances
+$stackedDiffs = if ($config.Loop.ContainsKey('StackedDiffs')) { $config.Loop.StackedDiffs } else { $false }
+$waitForMerge = if ($config.Loop.ContainsKey('WaitForMerge')) { $config.Loop.WaitForMerge } else { $true }
+$maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures')) {
+    $tolerances.MaxConsecutiveFailures
+} else {
+    $tolerances.StaleIterationsBeforeStop
+}
 
 # ── Banner ──────────────────────────────────────────────────────────────────
 Write-Information '' -InformationAction Continue
@@ -78,6 +93,13 @@ Write-Information "  Max iterations:       $maxIter" -InformationAction Continue
 Write-Information "  Min improvement:      $([math]::Round($tolerances.MinImprovementPct * 100, 1))% (any metric)" -InformationAction Continue
 Write-Information "  Max regression:       $([math]::Round($tolerances.MaxRegressionPct * 100, 1))% (per metric)" -InformationAction Continue
 Write-Information "  Stale iter stop:      $($tolerances.StaleIterationsBeforeStop) consecutive" -InformationAction Continue
+$modeLabel = if ($stackedDiffs) { 'stacked diffs (linear chain)' } else { 'legacy (each off master)' }
+$mergeLabel = if ($waitForMerge) { 'yes (blocks)' } else { 'no (fire-and-forget)' }
+Write-Information "  Mode:                 $modeLabel" -InformationAction Continue
+Write-Information "  Wait for PR merge:    $mergeLabel" -InformationAction Continue
+if ($stackedDiffs) {
+    Write-Information "  Max consec. failures: $maxConsecutiveFailures" -InformationAction Continue
+}
 $effCfg = $tolerances.Efficiency
 if ($effCfg -and $effCfg.Enabled) {
     Write-Information "  Efficiency tiebreak:  CPU $([math]::Round($effCfg.MinCpuReductionPct * 100))% / WorkingSet $([math]::Round($effCfg.MinWorkingSetReductionPct * 100))% min reduction" -InformationAction Continue
@@ -191,8 +213,17 @@ $exitReason = 'max_iterations'
 $bestIteration = 0
 $bestP95 = $baselineMetrics.HttpReqDuration.P95
 $staleCount = 0
+$consecutiveFailures = 0
 
-# Ensure the submodule starts on master so iteration branches fork from master
+# Stacked-diffs state: track the branch chain and PR stack
+$currentBranch = 'master'
+$lastSuccessfulBranch = 'master'
+$prChain = @()
+$branchChain = @('master')
+$failedIterations = @()
+$successCount = 0
+
+# Ensure the submodule starts on master so iteration branches fork correctly
 Push-Location (Join-Path $repoRoot 'sample-api')
 git checkout master 2>&1 | Out-Null
 Pop-Location
@@ -354,11 +385,15 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     Write-Information "  Applying fix to: $targetFile" -InformationAction Continue
 
+    # Determine the base branch for this iteration
+    $baseBranch = if ($stackedDiffs) { $currentBranch } else { 'master' }
+
     $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
         -FilePath $targetFile `
         -NewContent $fixResult.CodeBlock `
         -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
         -Iteration $iteration `
+        -BaseBranch $baseBranch `
         -ConfigPath $ConfigPath
 
     if (-not $applyResult.Success) {
@@ -374,12 +409,44 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
 
     if (-not $buildResult.Success) {
-        $exitReason = 'build_failure'
-        Write-Error "Build failed at iteration $iteration — rolling back"
+        if ($stackedDiffs) {
+            Write-Warning "Build failed at iteration $iteration — reverting and continuing"
 
-        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
+            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+                -BranchName $branchName `
+                -FilePath $targetFile `
+                -Iteration $iteration `
+                -Outcome 'regressed' `
+                -Description 'Build failure' `
+                -ConfigPath $ConfigPath
 
-        break
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Iteration $iteration `
+                -Summary "Build failure: $($analysisResult.Explanation)" `
+                -FilePath $analysisResult.FilePath `
+                -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'build_failure' }
+            $consecutiveFailures++
+            $staleCount++
+
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                $exitReason = 'max_consecutive_failures'
+                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                break
+            }
+            continue
+        }
+        else {
+            $exitReason = 'build_failure'
+            Write-Error "Build failed at iteration $iteration — rolling back"
+            Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            break
+        }
     }
 
     # ── Phase 4: Verify (E2E Tests) ────────────────────────────────────────
@@ -388,12 +455,44 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         -ConfigPath $ConfigPath -Iteration $iteration
 
     if (-not $testResult.Success) {
-        $exitReason = 'test_failure'
-        Write-Warning "E2E tests failed at iteration $iteration — rolling back"
+        if ($stackedDiffs) {
+            Write-Warning "E2E tests failed at iteration $iteration — reverting and continuing"
 
-        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
+            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+                -BranchName $branchName `
+                -FilePath $targetFile `
+                -Iteration $iteration `
+                -Outcome 'regressed' `
+                -Description 'E2E test failure' `
+                -ConfigPath $ConfigPath
 
-        break
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Iteration $iteration `
+                -Summary "Test failure: $($analysisResult.Explanation)" `
+                -FilePath $analysisResult.FilePath `
+                -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'test_failure' }
+            $consecutiveFailures++
+            $staleCount++
+
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                $exitReason = 'max_consecutive_failures'
+                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                break
+            }
+            continue
+        }
+        else {
+            $exitReason = 'test_failure'
+            Write-Warning "E2E tests failed at iteration $iteration — rolling back"
+            Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            break
+        }
     }
 
     # ── Phase 5: Measure (Scale Tests) ─────────────────────────────────────
@@ -489,11 +588,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     if ($comparison.Regression) {
         $iterationOutcome = 'regressed'
-        $exitReason = 'regression'
         Write-Warning "  Regression detected: $($comparison.RegressionDetail)"
-        Write-Warning "  Rolling back to previous state"
-
-        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
 
         # Update metadata with regression outcome
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
@@ -504,11 +599,41 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             -Outcome 'regressed' `
             -ConfigPath $ConfigPath
 
-        break
+        if ($stackedDiffs) {
+            Write-Warning "  Reverting code change, preserving artifacts"
+
+            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+                -BranchName $branchName `
+                -FilePath $targetFile `
+                -Iteration $iteration `
+                -Outcome 'regressed' `
+                -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
+                -ConfigPath $ConfigPath
+
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'regressed' }
+            $consecutiveFailures++
+            $staleCount++
+
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                $exitReason = 'max_consecutive_failures'
+                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                break
+            }
+        }
+        else {
+            $exitReason = 'regression'
+            Write-Warning "  Rolling back to previous state"
+            Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            break
+        }
     }
     elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
         $iterationOutcome = 'improved'
         $staleCount = 0
+        $consecutiveFailures = 0
+        $successCount++
 
         if ($comparison.TiebreakerUsed) {
             Write-Information '  ↑ Efficiency improvement (tiebreaker) — publishing' -InformationAction Continue
@@ -568,9 +693,40 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             -Message "Branch pushed to origin: $branchName" `
             -Iteration $iteration
 
+        # Determine PR base: stacked mode uses lastSuccessfulBranch; legacy uses master
+        $prBaseBranch = if ($stackedDiffs) { $lastSuccessfulBranch } else { 'master' }
+
+        # Build PR body with stack context
+        $stackNote = ''
+        if ($stackedDiffs -and $prChain.Count -gt 0) {
+            $stackParts = @('`master`')
+            foreach ($pr in $prChain) {
+                $stackParts += "PR #$($pr.Number) (iteration-$($pr.Iteration))"
+            }
+            $stackParts += "**this PR** (iteration-$iteration)"
+            $stackLine = $stackParts -join ' → '
+
+            $failedBetween = @($failedIterations | Where-Object {
+                $_.Iteration -gt ($prChain[-1].Iteration) -and $_.Iteration -lt $iteration
+            })
+            $failedNote = ''
+            if ($failedBetween.Count -gt 0) {
+                $failedList = ($failedBetween | ForEach-Object { "$($_.Iteration) ($($_.Reason))" }) -join ', '
+                $failedNote = "`n`n> **Note:** Iterations $failedList were attempted but their code changes were reverted. See their branches for details."
+            }
+
+            $stackNote = @"
+
+**Stack:** $stackLine
+
+**Base:** ``$prBaseBranch`` (review only the incremental change)$failedNote
+
+"@
+        }
+
         $prBody = @"
 ## Hone Iteration $iteration
-
+$stackNote
 **Optimization:** $($analysisResult.Explanation.Substring(0, [Math]::Min(200, $analysisResult.Explanation.Length)))
 
 **File changed:** ``$($analysisResult.FilePath)``
@@ -586,11 +742,10 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
 ---
 *Auto-generated by the Hone agentic optimization harness.*
-*Review the changes, then merge to continue the optimization loop.*
 "@
 
         $prUrl = gh pr create `
-            --base master `
+            --base $prBaseBranch `
             --head $branchName `
             --title "hone(iteration-$iteration): $($analysisResult.Explanation.Substring(0, [Math]::Min(80, $analysisResult.Explanation.Length)))" `
             --body $prBody 2>&1
@@ -603,16 +758,25 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
                 -Phase 'fix' -Level 'info' `
                 -Message "Pull request created: $prUrl" `
                 -Iteration $iteration `
-                -Data @{ prUrl = "$prUrl"; prNumber = $prNumber }
+                -Data @{ prUrl = "$prUrl"; prNumber = $prNumber; baseBranch = $prBaseBranch }
 
-            Write-Information "  ✓ Pull request created: $prUrl" -InformationAction Continue
+            Write-Information "  ✓ Pull request created: $prUrl (base: $prBaseBranch)" -InformationAction Continue
         }
         else {
             Write-Warning "  Failed to create pull request: $prUrl"
         }
 
-        # If more iterations remain, wait for PR to be merged before continuing
-        if ($prNumber -and $iteration -lt $maxIter) {
+        # Update stacked-diffs state
+        $lastSuccessfulBranch = $branchName
+        $currentBranch = $branchName
+        $branchChain += $branchName
+        if ($prNumber) {
+            $prChain += [PSCustomObject]@{ Number = $prNumber; Iteration = $iteration; Url = "$prUrl" }
+        }
+
+        # Wait for PR merge if configured (legacy mode or explicit opt-in)
+        $shouldWait = $waitForMerge -and $prNumber -and ($iteration -lt $maxIter)
+        if ($shouldWait) {
             Write-Information '' -InformationAction Continue
             Write-Information '  ⏳ Waiting for PR to be reviewed and merged...' -InformationAction Continue
             Write-Information '     Merge the PR in GitHub to continue the optimization loop.' -InformationAction Continue
@@ -632,10 +796,13 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
                         -Message "PR #$prNumber merged at $($prState.mergedAt)" `
                         -Iteration $iteration
 
-                    # Update local master to include the merged changes
-                    git fetch origin master 2>&1 | Out-Null
-                    git checkout master 2>&1 | Out-Null
-                    git merge origin/master --ff-only 2>&1 | Out-Null
+                    if (-not $stackedDiffs) {
+                        # Legacy mode: update local master
+                        git fetch origin master 2>&1 | Out-Null
+                        git checkout master 2>&1 | Out-Null
+                        git merge origin/master --ff-only 2>&1 | Out-Null
+                        $currentBranch = 'master'
+                    }
                     break
                 }
                 elseif ($prState.state -eq 'CLOSED') {
@@ -646,7 +813,10 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
                         -Message "PR #$prNumber closed without merge" `
                         -Iteration $iteration
 
-                    git checkout master 2>&1 | Out-Null
+                    if (-not $stackedDiffs) {
+                        git checkout master 2>&1 | Out-Null
+                        $currentBranch = 'master'
+                    }
                     $exitReason = 'pr_rejected'
                     break
                 }
@@ -670,12 +840,8 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     else {
         # No improvement and no regression — stale
         $staleCount++
-        Write-Information "  ─ No improvement (stale $staleCount / $($tolerances.StaleIterationsBeforeStop))" -InformationAction Continue
+        $consecutiveFailures++
 
-        # Rollback the fix since it didn't help
-        Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot
-
-        # Update metadata with stale outcome
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
             -Iteration $iteration `
@@ -684,10 +850,37 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             -Outcome 'stale' `
             -ConfigPath $ConfigPath
 
-        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
-            $exitReason = 'no_improvement'
-            Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
-            break
+        if ($stackedDiffs) {
+            Write-Information "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)" -InformationAction Continue
+
+            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+                -BranchName $branchName `
+                -FilePath $targetFile `
+                -Iteration $iteration `
+                -Outcome 'stale' `
+                -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
+                -ConfigPath $ConfigPath
+
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'stale' }
+
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                $exitReason = 'max_consecutive_failures'
+                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                break
+            }
+        }
+        else {
+            Write-Information "  ─ No improvement (stale $staleCount / $($tolerances.StaleIterationsBeforeStop))" -InformationAction Continue
+
+            Undo-IterationBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+
+            if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
+                $exitReason = 'no_improvement'
+                Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
+                break
+            }
         }
     }
 
@@ -714,6 +907,9 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $previousRcaExplanation = if ($analysisResult) { $analysisResult.Explanation } else { '' }
 
     # ── Record iteration metadata ──────────────────────────────────────────────
+    $iterationPrNumber = if ($iterationOutcome -eq 'improved' -and $prNumber) { $prNumber } else { $null }
+    $iterationPrUrl = if ($iterationOutcome -eq 'improved' -and $prNumber -and $prUrl) { "$prUrl" } else { $null }
+
     $iterationMeta = [ordered]@{
         Iteration   = $iteration
         StartedAt   = $iterationStartedAt
@@ -723,6 +919,10 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         P95         = $currentMetrics.HttpReqDuration.P95
         RPS         = [math]::Round($currentMetrics.HttpReqs.Rate, 1)
         Outcome     = $iterationOutcome
+        BranchName  = $branchName
+        BaseBranch  = if ($stackedDiffs) { $baseBranch } else { 'master' }
+        PrNumber    = $iterationPrNumber
+        PrUrl       = $iterationPrUrl
     }
 
     # Append to the in-memory iterations list
@@ -745,6 +945,7 @@ Write-Information '╚═══════════════════�
 Write-Information '' -InformationAction Continue
 Write-Information "  Exit reason:     $exitReason" -InformationAction Continue
 Write-Information "  Iterations run:  $iteration" -InformationAction Continue
+Write-Information "  Successful:      $successCount / $iteration" -InformationAction Continue
 Write-Information "  Best p95:        ${bestP95}ms (iteration $bestIteration)" -InformationAction Continue
 Write-Information "  Baseline p95:    $($baselineMetrics.HttpReqDuration.P95)ms" -InformationAction Continue
 
@@ -752,6 +953,37 @@ $totalImprovement = if ($baselineMetrics.HttpReqDuration.P95 -gt 0) {
     [math]::Round((($baselineMetrics.HttpReqDuration.P95 - $bestP95) / $baselineMetrics.HttpReqDuration.P95) * 100, 1)
 } else { 0 }
 Write-Information "  Total improvement: ${totalImprovement}% (p95 vs baseline)" -InformationAction Continue
+
+if ($stackedDiffs) {
+    Write-Information '' -InformationAction Continue
+
+    # Branch chain display
+    $chainDisplay = ($branchChain | ForEach-Object {
+        $branch = $_
+        $failed = $failedIterations | Where-Object {
+            "$($config.Loop.BranchPrefix)-$($_.Iteration)" -eq $branch
+        }
+        if ($failed) { "$branch ✗" } else { "$branch ✓" }
+    }) -join ' → '
+    Write-Information "  Branch chain:" -InformationAction Continue
+    Write-Information "    $chainDisplay" -InformationAction Continue
+
+    # PR stack display
+    if ($prChain.Count -gt 0) {
+        $prDisplay = ($prChain | ForEach-Object { "PR #$($_.Number) (iteration-$($_.Iteration))" }) -join ' → '
+        Write-Information '' -InformationAction Continue
+        Write-Information "  PR stack (reviewable):" -InformationAction Continue
+        Write-Information "    $prDisplay" -InformationAction Continue
+    }
+
+    # Failed iterations display
+    if ($failedIterations.Count -gt 0) {
+        $failDisplay = ($failedIterations | ForEach-Object { "$($_.Iteration) ($($_.Reason))" }) -join ', '
+        Write-Information '' -InformationAction Continue
+        Write-Information "  Failed iterations: $failDisplay" -InformationAction Continue
+    }
+}
+
 Write-Information '' -InformationAction Continue
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -762,17 +994,27 @@ Write-Information '' -InformationAction Continue
         iterations    = $iteration
         bestP95       = $bestP95
         bestIteration = $bestIteration
+        successCount  = $successCount
+        prChain       = @($prChain | ForEach-Object { $_.Number })
     }
 
 # ── Finalize run metadata ────────────────────────────────────────────────────
 $runMetadata | Add-Member -NotePropertyName LoopCompletedAt -NotePropertyValue (Get-Date -Format 'o') -Force
+if ($stackedDiffs) {
+    $runMetadata | Add-Member -NotePropertyName PrChain -NotePropertyValue @($prChain | ForEach-Object { $_.Number }) -Force
+    $runMetadata | Add-Member -NotePropertyName FullBranchChain -NotePropertyValue $branchChain -Force
+}
 $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
 
 # Return summary object
 [PSCustomObject][ordered]@{
-    ExitReason    = $exitReason
-    Iterations    = $iteration
-    BestP95       = $bestP95
-    BestIteration = $bestIteration
-    BaselineP95   = $baselineMetrics.HttpReqDuration.P95
+    ExitReason        = $exitReason
+    Iterations        = $iteration
+    SuccessCount      = $successCount
+    BestP95           = $bestP95
+    BestIteration     = $bestIteration
+    BaselineP95       = $baselineMetrics.HttpReqDuration.P95
+    PrChain           = @($prChain | ForEach-Object { $_.Number })
+    FullBranchChain   = $branchChain
+    FailedIterations  = @($failedIterations | ForEach-Object { $_.Iteration })
 }
