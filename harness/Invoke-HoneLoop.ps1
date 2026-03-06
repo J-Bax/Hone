@@ -275,9 +275,11 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     if (-not $analysisResult.Success) {
         Write-Warning '  Analysis agent failed — skipping iteration'
         $staleCount++
-        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
-            $exitReason = 'no_improvement'
-            Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
+        if ($stackedDiffs) { $consecutiveFailures++ }
+        $maxFailures = if ($stackedDiffs) { $maxConsecutiveFailures } else { $tolerances.StaleIterationsBeforeStop }
+        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
+            $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
+            Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
             break
         }
         continue
@@ -346,9 +348,10 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
     if ($skipIteration) {
         $staleCount++
-        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop) {
-            $exitReason = 'no_improvement'
-            Write-Information '  Stopping: no improvement for consecutive iterations' -InformationAction Continue
+        if ($stackedDiffs) { $consecutiveFailures++ }
+        if ($staleCount -ge $tolerances.StaleIterationsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
+            $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
+            Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
             break
         }
         continue
@@ -367,6 +370,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     if (-not $fixResult.Success -or -not $fixResult.CodeBlock) {
         Write-Warning '  Fix agent failed to generate code — skipping iteration'
         $staleCount++
+        if ($stackedDiffs) { $consecutiveFailures++ }
         continue
     }
 
@@ -380,6 +384,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     if (-not (Test-Path (Split-Path $fullTargetPath -Parent))) {
         Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
         $staleCount++
+        if ($stackedDiffs) { $consecutiveFailures++ }
         continue
     }
 
@@ -399,6 +404,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     if (-not $applyResult.Success) {
         Write-Warning "  Fix application failed: $($applyResult.Description)"
         $staleCount++
+        if ($stackedDiffs) { $consecutiveFailures++ }
         continue
     }
 
@@ -412,13 +418,17 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         if ($stackedDiffs) {
             Write-Warning "Build failed at iteration $iteration — reverting and continuing"
 
-            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+            $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
                 -BranchName $branchName `
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'regressed' `
                 -Description 'Build failure' `
                 -ConfigPath $ConfigPath
+
+            if (-not $revertResult.Success) {
+                Write-Warning "  Revert failed: $($revertResult.Outcome)"
+            }
 
             & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
                 -Action 'AddTried' `
@@ -458,13 +468,17 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         if ($stackedDiffs) {
             Write-Warning "E2E tests failed at iteration $iteration — reverting and continuing"
 
-            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+            $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
                 -BranchName $branchName `
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'regressed' `
                 -Description 'E2E test failure' `
                 -ConfigPath $ConfigPath
+
+            if (-not $revertResult.Success) {
+                Write-Warning "  Revert failed: $($revertResult.Outcome)"
+            }
 
             & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
                 -Action 'AddTried' `
@@ -504,9 +518,47 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
 
     if (-not $apiResult.Success) {
-        $exitReason = 'api_start_failure'
-        Write-Error "API failed to start at iteration $iteration. Aborting."
-        break
+        if ($stackedDiffs) {
+            Write-Warning "API failed to start at iteration $iteration — reverting and continuing"
+
+            $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+                -BranchName $branchName `
+                -FilePath $targetFile `
+                -Iteration $iteration `
+                -Outcome 'regressed' `
+                -Description 'API start failure' `
+                -ConfigPath $ConfigPath
+
+            if (-not $revertResult.Success) {
+                Write-Warning "  Revert failed: $($revertResult.Outcome)"
+            }
+
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Iteration $iteration `
+                -Summary "API start failure: $($analysisResult.Explanation)" `
+                -FilePath $analysisResult.FilePath `
+                -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'api_start_failure' }
+            $consecutiveFailures++
+            $staleCount++
+
+            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                $exitReason = 'max_consecutive_failures'
+                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                break
+            }
+            continue
+        }
+        else {
+            $exitReason = 'api_start_failure'
+            Write-Error "API failed to start at iteration $iteration. Aborting."
+            break
+        }
     }
 
     try {
@@ -514,18 +566,59 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
             -ConfigPath $ConfigPath -Iteration $iteration
 
         if (-not $scaleResult.Success) {
-            $exitReason = 'scale_test_failure'
-            Write-Error "Scale tests failed at iteration $iteration. Aborting."
-            break
+            if (-not $stackedDiffs) {
+                $exitReason = 'scale_test_failure'
+                Write-Error "Scale tests failed at iteration $iteration. Aborting."
+                break
+            }
+            # Stacked mode: flag for revert after API is stopped (below finally)
+            Write-Warning "Scale tests failed at iteration $iteration — will revert after cleanup"
         }
-
-        # Run additional (diagnostic) scenarios
-        Write-Information '      Running additional scenarios...' -InformationAction Continue
-        $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-            -ConfigPath $ConfigPath -Iteration $iteration -SkipPrimary
+        else {
+            # Run additional (diagnostic) scenarios only on success
+            Write-Information '      Running additional scenarios...' -InformationAction Continue
+            $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
+                -ConfigPath $ConfigPath -Iteration $iteration -SkipPrimary
+        }
     }
     finally {
         & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
+    }
+
+    # Handle scale test failure in stacked mode (after API is stopped)
+    if ($stackedDiffs -and (-not $scaleResult.Success)) {
+        $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+            -BranchName $branchName `
+            -FilePath $targetFile `
+            -Iteration $iteration `
+            -Outcome 'regressed' `
+            -Description 'Scale test failure' `
+            -ConfigPath $ConfigPath
+
+        if (-not $revertResult.Success) {
+            Write-Warning "  Revert failed: $($revertResult.Outcome)"
+        }
+
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Iteration $iteration `
+            -Summary "Scale test failure: $($analysisResult.Explanation)" `
+            -FilePath $analysisResult.FilePath `
+            -Outcome 'regressed' `
+            -ConfigPath $ConfigPath
+
+        $currentBranch = $branchName
+        $branchChain += $branchName
+        $failedIterations += [PSCustomObject]@{ Iteration = $iteration; Reason = 'scale_test_failure' }
+        $consecutiveFailures++
+        $staleCount++
+
+        if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+            $exitReason = 'max_consecutive_failures'
+            Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+            break
+        }
+        continue
     }
 
     $currentMetrics = $scaleResult.Metrics
@@ -602,13 +695,17 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
         if ($stackedDiffs) {
             Write-Warning "  Reverting code change, preserving artifacts"
 
-            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+            $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
                 -BranchName $branchName `
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'regressed' `
                 -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
                 -ConfigPath $ConfigPath
+
+            if (-not $revertResult.Success) {
+                Write-Warning "  Revert failed: $($revertResult.Outcome)"
+            }
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -853,13 +950,17 @@ $stackNote
         if ($stackedDiffs) {
             Write-Information "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)" -InformationAction Continue
 
-            & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
+            $revertResult = & (Join-Path $PSScriptRoot 'Revert-IterationCode.ps1') `
                 -BranchName $branchName `
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'stale' `
                 -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
                 -ConfigPath $ConfigPath
+
+            if (-not $revertResult.Success) {
+                Write-Warning "  Revert failed: $($revertResult.Outcome)"
+            }
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -902,8 +1003,13 @@ $stackNote
         Write-Information "  Queued $($oppDescriptions.Count) additional optimization opportunities" -InformationAction Continue
     }
 
-    $previousMetrics = $currentMetrics
-    $previousCounterMetrics = $currentCounterMetrics
+    # Only update metrics reference on successful iterations.
+    # After a regression/stale revert, the code is back to the previous state
+    # so the reference metrics should remain from the last successful iteration.
+    if ($iterationOutcome -eq 'improved') {
+        $previousMetrics = $currentMetrics
+        $previousCounterMetrics = $currentCounterMetrics
+    }
     $previousRcaExplanation = if ($analysisResult) { $analysisResult.Explanation } else { '' }
 
     # ── Record iteration metadata ──────────────────────────────────────────────

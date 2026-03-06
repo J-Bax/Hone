@@ -102,6 +102,14 @@ try {
 
     # Push the branch so the failed attempt is preserved remotely
     git push -u origin $BranchName 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Failed to push branch '$BranchName' to origin (exit code $LASTEXITCODE) — revert is local only"
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'fix' -Level 'warning' `
+            -Message "git push failed for revert branch: $BranchName (exit code $LASTEXITCODE)" `
+            -Iteration $Iteration
+    }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'info' `
