@@ -26,22 +26,22 @@ Each iteration is a self-contained cycle of 5 phases:
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
         M1["Stress-test with k6"]
-        M2["Capture p95, RPS, error rate"]
-        M3["Run per-scenario benchmarks"]
+        M2["Capture p95, RPS, errors"]
+        M3["Run scenario benchmarks"]
         M1 --> M2 --> M3
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        A1["Agent examines metrics"]
-        A2["Agent reads source code"]
-        A3["Proposes theoretical fix"]
+        A1["Examine metrics"]
+        A2["Read source code"]
+        A3["Propose theoretical fix"]
         A1 --> A2 --> A3
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
         E1["Create git branch"]
-        E2["Generate optimized code"]
-        E3["Apply change, build, commit"]
+        E2["Generate new code"]
+        E3["Apply, build, commit"]
         E1 --> E2 --> E3
     end
 
@@ -54,8 +54,8 @@ flowchart TD
 
     subgraph PUBLISH["📦 5. Publish"]
         P1["Improved → create PR"]
-        P2["Regressed → revert code"]
-        P3["Preserve all artifacts"]
+        P2["Regressed → revert"]
+        P3["Preserve artifacts"]
     end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
