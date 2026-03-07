@@ -24,11 +24,39 @@ Each iteration is a self-contained cycle of 5 phases:
 
 ```mermaid
 flowchart TD
-    MEASURE["<b>1. Measure</b><br/>Stress-test with k6<br/>Capture p95, RPS, error rate<br/>Run per-scenario benchmarks"]
-    ANALYZE["<b>2. Analyze</b><br/>Agent examines metrics + source<br/>Identifies highest-impact bottleneck<br/>Proposes a theoretical fix"]
-    EXPERIMENT["<b>3. Experiment</b><br/>Branch, generate optimized code<br/>Apply change, build, commit"]
-    VERIFY["<b>4. Verify</b><br/>E2E tests — no regressions<br/>Stress-test — confirm improvement<br/>Compare vs baseline"]
-    PUBLISH["<b>5. Publish</b><br/>Improved → PR with benchmarks<br/>Regressed → revert, preserve artifacts"]
+    subgraph MEASURE["📊 1. Measure"]
+        M1["Stress-test with k6"]
+        M2["Capture p95, RPS, error rate"]
+        M3["Run per-scenario benchmarks"]
+        M1 --> M2 --> M3
+    end
+
+    subgraph ANALYZE["🧠 2. Analyze"]
+        A1["Agent examines metrics"]
+        A2["Agent reads source code"]
+        A3["Proposes theoretical fix"]
+        A1 --> A2 --> A3
+    end
+
+    subgraph EXPERIMENT["🧪 3. Experiment"]
+        E1["Create git branch"]
+        E2["Generate optimized code"]
+        E3["Apply change, build, commit"]
+        E1 --> E2 --> E3
+    end
+
+    subgraph VERIFY["✅ 4. Verify"]
+        V1["Run E2E tests"]
+        V2["Stress-test again"]
+        V3["Compare vs baseline"]
+        V1 --> V2 --> V3
+    end
+
+    subgraph PUBLISH["📦 5. Publish"]
+        P1["Improved → create PR"]
+        P2["Regressed → revert code"]
+        P3["Preserve all artifacts"]
+    end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
 
