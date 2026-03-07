@@ -24,22 +24,22 @@ Each iteration is a self-contained cycle of 7 phases:
 
 ```mermaid
 flowchart TD
-    ANALYZE["<b>1. Analyze</b><br/>Build prompt with metrics + source context<br/>Call copilot CLI → get optimization suggestion<br/>Classify scope (NARROW vs ARCHITECTURE)<br/><i>Architecture changes are queued, not applied</i>"]
-    FIX["<b>2. Fix</b><br/>Create git branch from current position<br/>Generate optimized code, apply change, commit"]
-    BUILD["<b>3. Build</b><br/>dotnet build<br/><i>Failure → revert code, push branch, continue</i>"]
-    VERIFY["<b>4. Verify</b><br/>dotnet test (E2E suite)<br/><i>Failure → revert code, push branch, continue</i>"]
-    MEASURE["<b>5. Measure</b><br/>Start API → k6 run (median of N runs) → Stop API<br/>Capture p95 latency, RPS, error rate<br/>Run diagnostic stress scenarios"]
-    COMPARE["<b>6. Compare</b><br/>Compare vs. previous iteration and baseline<br/>Decision: improved / regressed / stale"]
+    MEASURE["<b>1. Measure</b><br/>Start API → k6 run (median of N runs) → Stop API<br/>Capture p95 latency, RPS, error rate<br/>Run diagnostic stress scenarios"]
+    COMPARE["<b>2. Compare</b><br/>Compare vs. previous iteration and baseline<br/>Decision: improved / regressed / stale"]
+    ANALYZE["<b>3. Analyze</b><br/>Build prompt with metrics + source context<br/>Call copilot CLI → get optimization suggestion<br/>Classify scope (NARROW vs ARCHITECTURE)<br/><i>Architecture changes are queued, not applied</i>"]
+    FIX["<b>4. Fix</b><br/>Create git branch from current position<br/>Generate optimized code, apply change, commit"]
+    BUILD["<b>5. Build</b><br/>dotnet build<br/><i>Failure → revert code, push branch, continue</i>"]
+    VERIFY["<b>6. Verify</b><br/>dotnet test (E2E suite)<br/><i>Failure → revert code, push branch, continue</i>"]
     PUBLISH["<b>7. Publish or Revert</b><br/>Improved → push branch, create PR, continue<br/>Regressed → revert code, push branch, continue<br/>Stale → revert code, push branch, continue"]
 
-    ANALYZE --> FIX --> BUILD --> VERIFY --> MEASURE --> COMPARE --> PUBLISH
+    MEASURE --> COMPARE --> ANALYZE --> FIX --> BUILD --> VERIFY --> PUBLISH
 
+    style MEASURE fill:#f5a623,color:#fff
+    style COMPARE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
     style FIX fill:#e74c3c,color:#fff
     style BUILD fill:#4a90d9,color:#fff
     style VERIFY fill:#50c878,color:#fff
-    style MEASURE fill:#f5a623,color:#fff
-    style COMPARE fill:#f5a623,color:#fff
     style PUBLISH fill:#2c3e50,color:#fff
 ```
 
