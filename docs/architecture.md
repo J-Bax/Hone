@@ -24,11 +24,11 @@ Each iteration is a self-contained cycle of 5 phases:
 
 ```mermaid
 flowchart TD
-    MEASURE["<b>1. Measure</b><br/>Stress-test the API with k6 (median of N runs)<br/>Capture p95 latency, RPS, error rate<br/>Run per-scenario diagnostic benchmarks<br/>Collect .NET runtime counters (CPU, GC, memory)"]
-    ANALYZE["<b>2. Analyze</b><br/>Agent examines measurements and source code<br/>Identifies highest-impact bottleneck<br/>Produces a theoretical fix proposal<br/>Classifies scope (narrow vs architecture)"]
-    EXPERIMENT["<b>3. Experiment</b><br/>Create git branch for this iteration<br/>Agent generates optimized code<br/>Apply change, build, commit"]
-    VERIFY["<b>4. Verify</b><br/>Run E2E tests — assert no functional regressions<br/>Stress-test again — confirm improvements are real<br/>Compare metrics vs previous iteration and baseline<br/>Decision: improved / regressed / stale"]
-    PUBLISH["<b>5. Publish</b><br/>Improved → push branch, create PR with benchmarks<br/>Regressed → revert code, preserve artifacts<br/>Stale → revert code, preserve artifacts"]
+    MEASURE["<b>1. Measure</b><br/>Stress-test with k6<br/>Capture p95, RPS, error rate<br/>Run per-scenario benchmarks"]
+    ANALYZE["<b>2. Analyze</b><br/>Agent examines metrics + source<br/>Identifies highest-impact bottleneck<br/>Proposes a theoretical fix"]
+    EXPERIMENT["<b>3. Experiment</b><br/>Branch, generate optimized code<br/>Apply change, build, commit"]
+    VERIFY["<b>4. Verify</b><br/>E2E tests — no regressions<br/>Stress-test — confirm improvement<br/>Compare vs baseline"]
+    PUBLISH["<b>5. Publish</b><br/>Improved → PR with benchmarks<br/>Regressed → revert, preserve artifacts"]
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
 
