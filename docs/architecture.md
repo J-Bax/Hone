@@ -22,45 +22,25 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 
 Each iteration is a self-contained cycle of 7 phases:
 
-```
-  ┌─── 1. ANALYZE ──────────────────────────────────────────┐
-  │ Build prompt with metrics + source context              │
-  │ Call copilot CLI → get optimization suggestion          │
-  │ Classify scope (NARROW vs ARCHITECTURE)                 │
-  │   → Architecture changes are queued, not applied        │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 2. FIX ──────────────────────────────────────────────┐
-  │ Create git branch from current position                 │
-  │ Generate optimized code, apply change, commit           │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 3. BUILD ─────────────────────────────────────────────┐
-  │ dotnet build                                             │
-  │   → Failure: revert code, push branch, continue          │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 4. VERIFY ────────────────────────────────────────────┐
-  │ dotnet test (E2E suite)                                  │
-  │   → Failure: revert code, push branch, continue          │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 5. MEASURE ───────────────────────────────────────────┐
-  │ Start API → k6 run (median of N runs) → Stop API        │
-  │ Capture p95 latency, RPS, error rate                     │
-  │ Run diagnostic stress scenarios                          │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 6. COMPARE ───────────────────────────────────────────┐
-  │ Compare vs. previous iteration and baseline              │
-  │ Decision: improved / regressed / stale                   │
-  └──────────────────────────┬──────────────────────────────┘
-                             ▼
-  ┌─── 7. PUBLISH or REVERT ─────────────────────────────────┐
-  │ Improved  → push branch, create PR, continue             │
-  │ Regressed → revert code, push branch, continue           │
-  │ Stale     → revert code, push branch, continue           │
-  └──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    ANALYZE["<b>1. Analyze</b><br/>Build prompt with metrics + source context<br/>Call copilot CLI → get optimization suggestion<br/>Classify scope (NARROW vs ARCHITECTURE)<br/><i>Architecture changes are queued, not applied</i>"]
+    FIX["<b>2. Fix</b><br/>Create git branch from current position<br/>Generate optimized code, apply change, commit"]
+    BUILD["<b>3. Build</b><br/>dotnet build<br/><i>Failure → revert code, push branch, continue</i>"]
+    VERIFY["<b>4. Verify</b><br/>dotnet test (E2E suite)<br/><i>Failure → revert code, push branch, continue</i>"]
+    MEASURE["<b>5. Measure</b><br/>Start API → k6 run (median of N runs) → Stop API<br/>Capture p95 latency, RPS, error rate<br/>Run diagnostic stress scenarios"]
+    COMPARE["<b>6. Compare</b><br/>Compare vs. previous iteration and baseline<br/>Decision: improved / regressed / stale"]
+    PUBLISH["<b>7. Publish or Revert</b><br/>Improved → push branch, create PR, continue<br/>Regressed → revert code, push branch, continue<br/>Stale → revert code, push branch, continue"]
+
+    ANALYZE --> FIX --> BUILD --> VERIFY --> MEASURE --> COMPARE --> PUBLISH
+
+    style ANALYZE fill:#9b59b6,color:#fff
+    style FIX fill:#e74c3c,color:#fff
+    style BUILD fill:#4a90d9,color:#fff
+    style VERIFY fill:#50c878,color:#fff
+    style MEASURE fill:#f5a623,color:#fff
+    style COMPARE fill:#f5a623,color:#fff
+    style PUBLISH fill:#2c3e50,color:#fff
 ```
 
 ## Decision Logic
@@ -81,13 +61,20 @@ When performance is flat but OS-level resource usage (CPU or working set) decrea
 
 In the default stacked diffs mode, iterations form a **linear branch chain**. Each iteration branches from the previous one, regardless of outcome.
 
-```
-master
-  └── hone/iteration-1  (improved ✓ → PR #12, base=master)
-        └── hone/iteration-2  (regressed ✗ → code reverted, pushed)
-              └── hone/iteration-3  (improved ✓ → PR #15, base=iteration-1)
-                    └── hone/iteration-4  (stale ✗ → code reverted, pushed)
-                          └── hone/iteration-5  (improved ✓ → PR #18, base=iteration-3)
+```mermaid
+graph TD
+    M["master"] --> I1["hone/iteration-1<br/>✅ improved → PR #12"]
+    I1 --> I2["hone/iteration-2<br/>❌ regressed → reverted"]
+    I2 --> I3["hone/iteration-3<br/>✅ improved → PR #15<br/><i>base=iteration-1</i>"]
+    I3 --> I4["hone/iteration-4<br/>❌ stale → reverted"]
+    I4 --> I5["hone/iteration-5<br/>✅ improved → PR #18<br/><i>base=iteration-3</i>"]
+
+    style M fill:#333,color:#fff
+    style I1 fill:#50c878,color:#fff
+    style I2 fill:#e74c3c,color:#fff
+    style I3 fill:#50c878,color:#fff
+    style I4 fill:#e74c3c,color:#fff
+    style I5 fill:#50c878,color:#fff
 ```
 
 - **Successful iterations** get PRs that diff against the last successful branch — reviewers see only the incremental optimization.
