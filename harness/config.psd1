@@ -45,6 +45,13 @@
         # Re-evaluate after baselining if CV drops below 8%.
         MaxRegressionPct  = 0.10
 
+        # Minimum absolute p95 delta (in milliseconds) to consider a regression
+        # meaningful.  Prevents false positives on fast-baseline scenarios where
+        # normal measurement noise (±2-3ms) can appear as a large percentage
+        # swing.  A regression is only flagged when BOTH the percentage threshold
+        # AND this absolute threshold are exceeded.
+        MinAbsoluteP95DeltaMs = 5
+
         # Minimum improvement (any single metric) to accept an iteration.
         # Set to 0 so any measurable improvement is accepted; regressions are
         # still gated by MaxRegressionPct.

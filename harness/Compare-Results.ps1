@@ -82,7 +82,13 @@ $p95Current  = $CurrentMetrics.HttpReqDuration.P95
 $p95Previous = $reference.HttpReqDuration.P95
 $p95Change   = Get-PctChange $p95Current $p95Previous          # negative = improved
 $p95Improved = $p95Change -le -$tolerances.MinImprovementPct   # any reduction = improved
-$p95Regressed = $p95Change -gt $tolerances.MaxRegressionPct    # regressed beyond tolerance
+# Regression requires BOTH percentage AND absolute delta thresholds.
+# This prevents false positives on fast-baseline scenarios where ±2-3ms
+# noise appears as a large percentage swing.
+$p95AbsoluteDelta = $p95Current - $p95Previous
+$minAbsDelta = if ($tolerances.MinAbsoluteP95DeltaMs) { $tolerances.MinAbsoluteP95DeltaMs } else { 0 }
+$p95Regressed = ($p95Change -gt $tolerances.MaxRegressionPct) -and
+                ($p95AbsoluteDelta -gt $minAbsDelta)
 
 # RPS – higher is better
 $rpsCurrent  = $CurrentMetrics.HttpReqs.Rate
