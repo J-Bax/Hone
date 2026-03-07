@@ -33,23 +33,24 @@ flowchart TD
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        A1["Examine metrics"]
-        A2["Read source code"]
-        A3["Propose theoretical fix"]
-        A1 --> A2 --> A3
+        SRC["Source code"]
+        A1["Identify bottlenecks"]
+        M2 -.-> A1
+        M3 -.-> A1
+        SRC -.-> A1
+        A1 --> A2["Propose optimization"]
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        E1["Create git branch"]
-        E2["Generate new code"]
-        E3["Apply, build, commit"]
-        E1 --> E2 --> E3
+        E1["Create experiment branch"]
+        E2["Implement fix"]
+        E1 --> E2
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        V1["Run E2E tests"]
-        V2["Stress-test again"]
-        V3["Compare vs baseline"]
+        V1["Functional validation"]
+        V2["Stress-test"]
+        V3["Accept if metrics improve"]
         V1 --> V2 --> V3
     end
 
