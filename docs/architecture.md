@@ -25,10 +25,11 @@ Each iteration is a self-contained cycle of 5 phases:
 ```mermaid
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        M1["Stress-test with k6"]
-        M2["Capture p95, RPS, errors"]
-        M3["Run scenario benchmarks"]
-        M1 --> M2 --> M3
+        M1["Run scenario stress tests (k6)"]
+        M2["API metrics (p95, RPS, errors)"]
+        M3["Efficiency metrics (CPU, GC, memory)"]
+        M1 -.-> M2
+        M1 -.-> M3
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
