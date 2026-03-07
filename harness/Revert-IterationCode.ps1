@@ -95,7 +95,12 @@ try {
     }
 
     $shortDesc = if ($Description) {
-        $Description.Substring(0, [Math]::Min(120, $Description.Length))
+        if ($Description.Length -le 120) { $Description }
+        else {
+            $trunc = $Description.Substring(0, 120)
+            $lastSp = $trunc.LastIndexOf(' ')
+            if ($lastSp -gt 60) { $trunc.Substring(0, $lastSp) + '…' } else { $trunc + '…' }
+        }
     } else { $Outcome }
 
     git commit -m "hone(iteration-$Iteration): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null

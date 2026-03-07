@@ -64,6 +64,25 @@ function Undo-IterationBranch {
     }
 }
 
+function Limit-String {
+    <#
+    .SYNOPSIS
+        Truncates a string at the last word boundary before MaxLength,
+        appending "…" when truncated.
+    #>
+    param(
+        [string]$Text,
+        [int]$MaxLength = 120
+    )
+    if (-not $Text -or $Text.Length -le $MaxLength) { return $Text }
+    $truncated = $Text.Substring(0, $MaxLength)
+    $lastSpace = $truncated.LastIndexOf(' ')
+    if ($lastSpace -gt ($MaxLength * 0.5)) {
+        return $truncated.Substring(0, $lastSpace) + '…'
+    }
+    return $truncated + '…'
+}
+
 if (-not $ConfigPath) {
     $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
 }
@@ -324,7 +343,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'fix' -Level 'info' `
-            -Message "Architecture change queued (not applied): $($analysisResult.Explanation.Substring(0, [Math]::Min(100, $analysisResult.Explanation.Length)))" `
+            -Message "Architecture change queued (not applied): $(Limit-String $analysisResult.Explanation 100)" `
             -Iteration $iteration
 
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
@@ -396,7 +415,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
     $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
         -FilePath $targetFile `
         -NewContent $fixResult.CodeBlock `
-        -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
+        -Description (Limit-String $analysisResult.Explanation 120) `
         -Iteration $iteration `
         -BaseBranch $baseBranch `
         -ConfigPath $ConfigPath
@@ -700,7 +719,7 @@ for ($iteration = 1; $iteration -le $maxIter; $iteration++) {
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'regressed' `
-                -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
+                -Description (Limit-String $analysisResult.Explanation 120) `
                 -ConfigPath $ConfigPath
 
             if (-not $revertResult.Success) {
@@ -860,7 +879,7 @@ $scenarioTable
         $prBody = @"
 ## Hone Iteration $iteration
 $stackNote
-**Optimization:** $($analysisResult.Explanation.Substring(0, [Math]::Min(200, $analysisResult.Explanation.Length)))
+**Optimization:** $($analysisResult.Explanation)
 
 **File changed:** ``$($analysisResult.FilePath)``
 
@@ -880,7 +899,7 @@ $scenarioBreakdown
         $prUrl = gh pr create `
             --base $prBaseBranch `
             --head $branchName `
-            --title "hone(iteration-$iteration): $($analysisResult.Explanation.Substring(0, [Math]::Min(80, $analysisResult.Explanation.Length)))" `
+            --title "hone(iteration-$iteration): $(Limit-String $analysisResult.Explanation 120)" `
             --body $prBody 2>&1
 
         $prNumber = $null
@@ -991,7 +1010,7 @@ $scenarioBreakdown
                 -FilePath $targetFile `
                 -Iteration $iteration `
                 -Outcome 'stale' `
-                -Description $analysisResult.Explanation.Substring(0, [Math]::Min(120, $analysisResult.Explanation.Length)) `
+                -Description (Limit-String $analysisResult.Explanation 120) `
                 -ConfigPath $ConfigPath
 
             if (-not $revertResult.Success) {

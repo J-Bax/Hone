@@ -21,7 +21,7 @@ no code blocks wrapping it. The JSON must have this exact structure:
 ```
 {
   "filePath": "SampleApi/Controllers/ExampleController.cs",
-  "explanation": "Brief description of what to optimize and which metric it should improve",
+  "explanation": "1-2 complete sentences describing what to optimize and which metric it should improve. Do not leave sentences unfinished.",
   "additionalOpportunities": [
     { "description": "Brief description of another opportunity", "scope": "narrow" },
     { "description": "Brief description of another opportunity", "scope": "architecture" }
