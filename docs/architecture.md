@@ -25,39 +25,32 @@ Each iteration is a self-contained cycle of 5 phases:
 ```mermaid
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        M1["Run scenario stress tests (k6)"]
-        M2["API metrics (p95, RPS, errors)"]
-        M3["Efficiency metrics (CPU, GC, memory)"]
-        M1 -.-> M2
-        M1 -.-> M3
+        direction TB
+        M1["Run stress tests (k6)"]
+        M1 -.-> M2["API metrics (p95, RPS, errors)"]
+        M1 -.-> M3["Efficiency (CPU, GC, memory)"]
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        SRC["Source code"]
-        A1["Identify bottlenecks"]
-        M2 -.-> A1
-        M3 -.-> A1
-        SRC -.-> A1
-        A1 --> A2["Propose optimization"]
+        direction TB
+        A1["Metrics + source code"]
+        A1 --> A2["Identify bottlenecks"]
+        A2 --> A3["Propose optimization"]
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        E1["Create experiment branch"]
-        E2["Implement fix"]
-        E1 --> E2
+        direction LR
+        E1["Create branch"] --> E2["Implement fix"]
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        V1["Functional validation"]
-        V2["Stress-test"]
-        V3["Accept if metrics improve"]
-        V1 --> V2 --> V3
+        direction LR
+        V1["Functional tests"] --> V2["Stress-test"] --> V3["Accept if improved"]
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        P1["Improved → create PR"]
-        P2["Regressed → revert"]
-        P3["Preserve artifacts"]
+        direction LR
+        P1["Create PR or revert"] --> P2["Preserve artifacts"]
     end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
