@@ -2,45 +2,41 @@
 
 ## Overview
 
-Hone is an agentic performance optimization system. A set of PowerShell scripts (the "harness") orchestrate a closed-loop cycle: analyze bottlenecks with AI, apply a fix, build, verify correctness, measure performance, and decide whether to keep or revert the change. The target API is treated as a **blackbox** — Hone only requires buildable source, a functional test suite, and k6 stress tests.
+Hone is an agentic performance optimization system. A set of PowerShell scripts (the "harness") orchestrate a closed-loop cycle: stress-test the API to find bottlenecks, analyze the measurements with AI to propose a fix, experiment by implementing the fix, verify that it actually works (functionally and performance-wise), then publish the results. The target API is treated as a **blackbox** — Hone only requires buildable source, a functional test suite, and k6 stress tests.
 
 ## Design Principles
 
 1. **Harness is separate from the target.** The PowerShell scripts contain no API-specific logic. They invoke external tools (`dotnet`, `k6`, `copilot`, `git`) and parse their output. Any API that provides the required contracts can be optimized.
 
-2. **The target API is a blackbox.** Hone does not understand the API's internals. It requires three contracts: (1) a buildable source project, (2) a functional test suite acting as a regression gate, and (3) k6 stress test scenarios producing measurable metrics.
+2. **The target API is a blackbox.** Hone builds its own understanding of the API's internals by analyzing the source code during the optimization process. It requires three contracts: (1) a buildable source project, (2) a functional test suite acting as a regression gate, and (3) stress test scenarios producing measurable metrics to find hot spots.
 
-3. **E2E tests are the safety net.** No optimization is accepted if it breaks functionality. Every code change must pass 100% of tests before performance is even measured.
+3. **Measure first, then think.** Every iteration starts with measurement. You can't optimize what you haven't measured. The agent analyzes real stress test data — not guesses.
 
-4. **Relative improvement, not absolute targets.** The loop accepts any measurable improvement and rejects regressions beyond a configured tolerance. It stops when the optimization surface is exhausted.
+4. **Relative improvement, not absolute targets.** The loop accepts any measurable performance improvement and rejects regressions beyond a configured tolerance. It stops when the optimization surface is exhausted.
 
-5. **Every iteration is a git branch.** Code changes are isolated on branches. Successful iterations produce PRs; failed iterations are reverted but preserved for the record.
+5. **Every iteration is a git branch.** Code changes are isolated on branches. Successful iterations produce PRs; failed iterations are reverted but preserve the experiment and measurement artifacts for the record.
 
 6. **Structured data everywhere.** PowerShell objects, JSON metrics, typed results. No string parsing when avoidable.
 
 ## Single Iteration Flow
 
-Each iteration is a self-contained cycle of 7 phases:
+Each iteration is a self-contained cycle of 5 phases:
 
 ```mermaid
 flowchart TD
-    MEASURE["<b>1. Measure</b><br/>Start API → k6 run (median of N runs) → Stop API<br/>Capture p95 latency, RPS, error rate<br/>Run diagnostic stress scenarios"]
-    COMPARE["<b>2. Compare</b><br/>Compare vs. previous iteration and baseline<br/>Decision: improved / regressed / stale"]
-    ANALYZE["<b>3. Analyze</b><br/>Build prompt with metrics + source context<br/>Call copilot CLI → get optimization suggestion<br/>Classify scope (NARROW vs ARCHITECTURE)<br/><i>Architecture changes are queued, not applied</i>"]
-    FIX["<b>4. Fix</b><br/>Create git branch from current position<br/>Generate optimized code, apply change, commit"]
-    BUILD["<b>5. Build</b><br/>dotnet build<br/><i>Failure → revert code, push branch, continue</i>"]
-    VERIFY["<b>6. Verify</b><br/>dotnet test (E2E suite)<br/><i>Failure → revert code, push branch, continue</i>"]
-    PUBLISH["<b>7. Publish or Revert</b><br/>Improved → push branch, create PR, continue<br/>Regressed → revert code, push branch, continue<br/>Stale → revert code, push branch, continue"]
+    MEASURE["<b>1. Measure</b><br/>Stress-test the API with k6 (median of N runs)<br/>Capture p95 latency, RPS, error rate<br/>Run per-scenario diagnostic benchmarks<br/>Collect .NET runtime counters (CPU, GC, memory)"]
+    ANALYZE["<b>2. Analyze</b><br/>Agent examines measurements and source code<br/>Identifies highest-impact bottleneck<br/>Produces a theoretical fix proposal<br/>Classifies scope (narrow vs architecture)"]
+    EXPERIMENT["<b>3. Experiment</b><br/>Create git branch for this iteration<br/>Agent generates optimized code<br/>Apply change, build, commit"]
+    VERIFY["<b>4. Verify</b><br/>Run E2E tests — assert no functional regressions<br/>Stress-test again — confirm improvements are real<br/>Compare metrics vs previous iteration and baseline<br/>Decision: improved / regressed / stale"]
+    PUBLISH["<b>5. Publish</b><br/>Improved → push branch, create PR with benchmarks<br/>Regressed → revert code, preserve artifacts<br/>Stale → revert code, preserve artifacts"]
 
-    MEASURE --> COMPARE --> ANALYZE --> FIX --> BUILD --> VERIFY --> PUBLISH
+    MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
 
     style MEASURE fill:#f5a623,color:#fff
-    style COMPARE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
-    style FIX fill:#e74c3c,color:#fff
-    style BUILD fill:#4a90d9,color:#fff
+    style EXPERIMENT fill:#e74c3c,color:#fff
     style VERIFY fill:#50c878,color:#fff
-    style PUBLISH fill:#2c3e50,color:#fff
+    style PUBLISH fill:#4a90d9,color:#fff
 ```
 
 ## Decision Logic

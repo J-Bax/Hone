@@ -6,17 +6,17 @@ Hone is a PowerShell-driven harness that automatically optimizes API performance
 
 ```mermaid
 graph LR
-    MEASURE["📊 Measure<br/>(k6)"] --> ANALYZE["🧠 Analyze<br/>(Copilot)"]
-    ANALYZE --> FIX["🔧 Fix<br/>(Apply)"]
-    FIX --> BUILD["🔨 Build"]
-    BUILD --> VERIFY["✅ Verify<br/>(E2E Tests)"]
-    VERIFY --> MEASURE
+    MEASURE["📊 Measure"] --> ANALYZE["🧠 Analyze"]
+    ANALYZE --> EXPERIMENT["🧪 Experiment"]
+    EXPERIMENT --> VERIFY["✅ Verify"]
+    VERIFY --> PUBLISH["📦 Publish"]
+    PUBLISH --> MEASURE
 
     style MEASURE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
-    style FIX fill:#e74c3c,color:#fff
-    style BUILD fill:#4a90d9,color:#fff
+    style EXPERIMENT fill:#e74c3c,color:#fff
     style VERIFY fill:#50c878,color:#fff
+    style PUBLISH fill:#4a90d9,color:#fff
 ```
 
 ## Prerequisites
