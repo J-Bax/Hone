@@ -74,7 +74,7 @@ $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) {
 $fileList = ($sourceFilePaths | ForEach-Object { "- $_" }) -join "`n"
 
 $prompt = @"
-Analyze this Web API's performance and identify the top 3-5 optimization opportunities, ranked by expected impact.
+Analyze this Web API's performance and identify 1-3 optimization opportunities ranked by expected impact. For each, provide a detailed root-cause analysis with evidence (code snippets + line references, not full files), theory, proposed fixes, and expected impact.
 
 ## Current Performance (Experiment $Experiment)
 - p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
@@ -140,14 +140,22 @@ try {
 
     # Support both new format ({opportunities: [...]}) and legacy ({filePath, explanation, additionalOpportunities}).
     if ($parsed.opportunities) {
-        # New multi-opportunity format
-        $opportunities = @($parsed.opportunities)
+        # New multi-opportunity format — normalize each item to have all expected fields
+        $opportunities = @($parsed.opportunities | ForEach-Object {
+            [PSCustomObject]@{
+                filePath    = $_.filePath
+                title       = if ($_.title) { $_.title } else { $_.explanation }
+                explanation = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
+                scope       = if ($_.scope) { $_.scope } else { 'narrow' }
+                rootCause   = if ($_.rootCause) { $_.rootCause } else { $null }
+            }
+        })
         $primaryOpp = $opportunities[0]
         $result = [ordered]@{
             Success       = ($copilotExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
             ExitCode      = $copilotExitCode
             FilePath      = $primaryOpp.filePath
-            Explanation   = $primaryOpp.explanation
+            Explanation   = if ($primaryOpp.explanation) { $primaryOpp.explanation } else { $primaryOpp.title }
             Opportunities = $opportunities
             Prompt        = $prompt
             Response      = $responseText
@@ -159,15 +167,19 @@ try {
         # Legacy single-item format — convert to opportunities array for consistency
         $legacyOpps = @([PSCustomObject]@{
             filePath    = $parsed.filePath
+            title       = if ($parsed.title) { $parsed.title } else { $parsed.explanation }
             explanation = $parsed.explanation
             scope       = 'narrow'
+            rootCause   = $null
         })
         if ($parsed.additionalOpportunities) {
             foreach ($addl in $parsed.additionalOpportunities) {
                 $legacyOpps += [PSCustomObject]@{
                     filePath    = if ($addl.filePath) { $addl.filePath } else { $parsed.filePath }
+                    title       = if ($addl.description) { $addl.description } else { $addl.explanation }
                     explanation = if ($addl.description) { $addl.description } else { $addl.explanation }
                     scope       = if ($addl.scope) { $addl.scope } else { 'narrow' }
+                    rootCause   = $null
                 }
             }
         }

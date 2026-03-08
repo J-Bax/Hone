@@ -151,12 +151,12 @@
     # ── Copilot CLI ─────────────────────────────────────────────
     Copilot = @{
         # Default AI model for all agents (see 'copilot --help' for choices)
-        Model = 'claude-opus-4.6'
+        Model = 'claude-sonnet-4.5'
 
         # Per-agent model overrides (null = use default Model above)
-        AnalysisModel       = $null
+        AnalysisModel       = 'claude-opus-4.6'
         ClassificationModel = 'claude-haiku-4.5'   # faster for binary scope decisions
-        FixModel            = $null
+        FixModel            = 'claude-sonnet-4.6'
     }
 
     # ── Logging ─────────────────────────────────────────────────

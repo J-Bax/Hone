@@ -399,20 +399,51 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
     $changeScope = $classificationResult.Scope
     Write-Information "  Classification: $changeScope — $($classificationResult.Reasoning)" -InformationAction Continue
 
-    # Generate root cause analysis document
-    $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
-        -FilePath $analysisResult.FilePath `
-        -Explanation $analysisResult.Explanation `
-        -ChangeScope $changeScope `
-        -ScopeReasoning $classificationResult.Reasoning `
-        -CurrentMetrics $metricsForAnalysis `
-        -BaselineMetrics $baselineMetrics `
-        -ComparisonResult $comparisonForAnalysis `
-        -Experiment $experiment `
-        -ConfigPath $ConfigPath
+    # Save root-cause analysis to experiment directory.
+    # If the analyst provided a rich root-cause document, copy it (with metrics header).
+    # Otherwise, fall back to the harness-generated RCA template.
+    if ($currentItem -and $currentItem.rootCausePath -and (Test-Path $currentItem.rootCausePath)) {
+        $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$experiment"
+        if (-not (Test-Path $iterDir)) {
+            New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
+        }
 
-    if ($rcaResult.Success) {
-        Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
+        # Copy agent RCA and prepend a metrics summary header
+        $agentRca = Get-Content $currentItem.rootCausePath -Raw
+        $metricsHeader = @"
+# Root Cause Analysis — Experiment $experiment
+
+> Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Classification: $($classificationResult.Scope) — $($classificationResult.Reasoning)
+
+| Metric | Current | Baseline |
+|--------|---------|----------|
+| p95 Latency | $($metricsForAnalysis.HttpReqDuration.P95)ms | $($baselineMetrics.HttpReqDuration.P95)ms |
+| Requests/sec | $([math]::Round($metricsForAnalysis.HttpReqs.Rate, 1)) | $([math]::Round($baselineMetrics.HttpReqs.Rate, 1)) |
+| Error Rate | $([math]::Round($metricsForAnalysis.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($baselineMetrics.HttpReqFailed.Rate * 100, 2))% |
+
+---
+
+"@
+        $rcaPath = Join-Path $iterDir 'root-cause.md'
+        ($metricsHeader + $agentRca) | Out-File -FilePath $rcaPath -Encoding utf8
+        $rcaResult = [PSCustomObject]@{ Success = $true; Path = $rcaPath }
+        Write-Information "  Root cause analysis saved to: $rcaPath" -InformationAction Continue
+    }
+    else {
+        $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
+            -FilePath $analysisResult.FilePath `
+            -Explanation $analysisResult.Explanation `
+            -ChangeScope $changeScope `
+            -ScopeReasoning $classificationResult.Reasoning `
+            -CurrentMetrics $metricsForAnalysis `
+            -BaselineMetrics $baselineMetrics `
+            -ComparisonResult $comparisonForAnalysis `
+            -Experiment $experiment `
+            -ConfigPath $ConfigPath
+
+        if ($rcaResult.Success) {
+            Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
+        }
     }
 
     $isArchitecture = ($changeScope -eq 'architecture')
@@ -458,9 +489,16 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
     Write-Information '[3/5] 🧪 Experimenting (fix + build)...' -InformationAction Continue
 
     # ── Sub-agent 3: Fix ───────────────────────────────────────────────────
+    # Load root-cause document if available for this queue item
+    $rcaDocument = $null
+    if ($currentItem -and $currentItem.rootCausePath -and (Test-Path $currentItem.rootCausePath)) {
+        $rcaDocument = Get-Content $currentItem.rootCausePath -Raw
+    }
+
     $fixResult = & (Join-Path $PSScriptRoot 'Invoke-FixAgent.ps1') `
         -FilePath $analysisResult.FilePath `
         -Explanation $analysisResult.Explanation `
+        -RootCauseDocument $rcaDocument `
         -Experiment $experiment `
         -ConfigPath $ConfigPath
 
@@ -1016,13 +1054,30 @@ $scenarioTable
 "@
         }
 
+        # Include root-cause analysis in PR body if available
+        $rcaSection = ''
+        if ($rcaDocument) {
+            $rcaSection = @"
+
+### Root Cause Analysis
+
+<details>
+<summary>Click to expand full analysis</summary>
+
+$rcaDocument
+
+</details>
+
+"@
+        }
+
         $prBody = @"
 ## Hone Experiment $experiment
 $dryRunNotice$stackNote
 **Optimization:** $($analysisResult.Explanation)
 
 **File changed:** ``$($analysisResult.FilePath)``
-
+$rcaSection
 ### Performance Results
 | Metric | Baseline | After Fix | Delta |
 |--------|----------|-----------|-------|

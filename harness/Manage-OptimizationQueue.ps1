@@ -113,7 +113,7 @@ function Sync-Markdown {
             'done'        { " *(experiment $($item.triedByExperiment) — $($item.outcome))*" }
             default       { '' }
         }
-        $lines += "- [$check] **#$($item.id)** ${scopeTag}``$($item.filePath)`` — $($item.explanation)$statusNote"
+        $lines += "- [$check] **#$($item.id)** ${scopeTag}``$($item.filePath)`` — $($item.title)$statusNote"
     }
 
     ($lines -join "`n") | Out-File -FilePath $queueMdPath -Encoding utf8
@@ -129,11 +129,29 @@ switch ($Action) {
         }
 
         $items = for ($i = 0; $i -lt $Opportunities.Count; $i++) {
+            $opp = $Opportunities[$i]
+            $itemTitle = if ($opp.title) { $opp.title } elseif ($opp.explanation) { $opp.explanation } else { '' }
+
+            # Save root-cause document if the analyst provided one
+            $rcaPath = $null
+            if ($opp.rootCause) {
+                $rcaDir = Join-Path $metadataDir 'root-causes'
+                if (-not (Test-Path $rcaDir)) {
+                    New-Item -ItemType Directory -Path $rcaDir -Force | Out-Null
+                }
+                $rcaFile = Join-Path $rcaDir "rca-$($i + 1).md"
+                $rcaHeader = "# $itemTitle`n`n> **File:** ``$($opp.filePath)`` | **Scope:** $($opp.scope)`n`n"
+                ($rcaHeader + $opp.rootCause) | Out-File -FilePath $rcaFile -Encoding utf8
+                $rcaPath = $rcaFile
+            }
+
             [PSCustomObject][ordered]@{
                 id                = $i + 1
-                filePath          = $Opportunities[$i].filePath
-                explanation       = $Opportunities[$i].explanation
-                scope             = if ($Opportunities[$i].scope) { $Opportunities[$i].scope } else { 'narrow' }
+                filePath          = $opp.filePath
+                title             = $itemTitle
+                explanation       = if ($opp.explanation) { $opp.explanation } else { $itemTitle }
+                scope             = if ($opp.scope) { $opp.scope } else { 'narrow' }
+                rootCausePath     = $rcaPath
                 status            = 'pending'
                 triedByExperiment = $null
                 outcome           = $null

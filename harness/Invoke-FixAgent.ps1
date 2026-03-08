@@ -16,6 +16,11 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER RootCauseDocument
+    Optional markdown root-cause analysis document to include as context
+    for the fix agent. When provided, this gives the fixer detailed evidence,
+    theory, and proposed approaches.
+
 .PARAMETER Experiment
     Current experiment number for logging.
 #>
@@ -26,6 +31,8 @@ param(
 
     [Parameter(Mandatory)]
     [string]$Explanation,
+
+    [string]$RootCauseDocument,
 
     [string]$ConfigPath,
 
@@ -45,6 +52,17 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
     -Experiment $Experiment
 
 # ── Build the prompt ────────────────────────────────────────────────────────
+$rcaSection = ''
+if ($RootCauseDocument) {
+    $rcaSection = @"
+
+## Root Cause Analysis
+
+$RootCauseDocument
+
+"@
+}
+
 $prompt = @"
 Apply this specific optimization to the file and return the complete new file content.
 
@@ -53,7 +71,7 @@ $FilePath
 
 ## Optimization to Apply
 $Explanation
-
+$rcaSection
 Read the file at the path above (relative to sample-api/), apply ONLY the
 optimization described, and return the COMPLETE new file in a fenced code block.
 No explanation, no commentary — just the code block.
