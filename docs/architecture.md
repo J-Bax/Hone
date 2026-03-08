@@ -10,7 +10,7 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 
 2. **The target API is a blackbox.** Hone builds its own understanding of the API's internals by analyzing the source code during the optimization process. It requires three contracts: (1) a buildable source project, (2) a functional test suite acting as a regression gate, and (3) stress test scenarios producing measurable metrics to find hot spots.
 
-3. **Measure first, then think.** The baseline is established before any optimization begins, and every iteration's analysis is grounded in real stress test data — not guesses. You can't optimize what you haven't measured.
+3. **Measure first, then think.** Every iteration starts with measurement. You can't optimize what you haven't measured. The agent analyzes real stress test data — not guesses.
 
 4. **Relative improvement, not absolute targets.** The loop accepts any measurable performance improvement and rejects regressions beyond a configured tolerance. It stops when the optimization surface is exhausted.
 
@@ -20,113 +20,47 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 
 ## Single Iteration Flow
 
-Each iteration is a self-contained cycle of 7 steps across 5 logical phases. The README's high-level cycle (Measure → Analyze → Experiment → Verify → Publish) is a simplified view — below is the detailed reality.
-
-For iteration 1, baseline metrics are used as the "current" for analysis (there is no prior fix to measure). For iteration 2+, the previous iteration's post-fix metrics are used.
+Each iteration is a self-contained cycle of 5 phases:
 
 ```mermaid
 flowchart TD
-    subgraph ANALYZE["🧠 1. Analyze"]
+    subgraph MEASURE["📊 1. Measure"]
         direction TB
-        A1["Metrics + source + history"]
-        A1 --> A2["hone-analyst identifies\nhighest-impact optimization"]
+        M1["Run stress tests (k6)"]
+        M1 -.-> M2["API metrics (p95, RPS, errors)"]
+        M1 -.-> M3["Efficiency (CPU, GC, memory)"]
     end
 
-    subgraph EXPERIMENT["🧪 2. Experiment"]
+    subgraph ANALYZE["🧠 2. Analyze"]
         direction TB
-        E1["hone-classifier: NARROW or ARCHITECTURE?"]
-        E1 -->|ARCHITECTURE| EQ["Queue for manual review"]
-        E1 -->|NARROW| E2["hone-fixer generates code"]
-        E2 --> E3["Create branch + commit fix"]
-        E3 --> E4["dotnet build"]
+        A1["Metrics + source code"]
+        A1 --> A2["Identify bottlenecks"]
+        A2 --> A3["Propose optimization"]
     end
 
-    subgraph VERIFY["✅ 3. Verify"]
-        direction TB
-        V1["dotnet test (E2E)"]
+    subgraph EXPERIMENT["🧪 3. Experiment"]
+        direction LR
+        E1["Create branch"] --> E2["Implement fix"]
     end
 
-    subgraph MEASURE["📊 4. Measure"]
-        direction TB
-        M0["Reset database"]
-        M0 --> M1["Start API + dotnet-counters"]
-        M1 --> M2["Warmup scenario (1 VU)"]
-        M2 --> M3["Primary k6 scenario × N runs"]
-        M3 --> M4["Diagnostic scenarios"]
-        M4 --> M5["Select median p95"]
+    subgraph VERIFY["✅ 4. Verify"]
+        direction LR
+        V1["Functional tests"] --> V2["Stress-test"] --> V3["Accept if improved"]
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        direction TB
-        P1["Compare vs baseline/previous"]
-        P1 -->|Improved| P2["Push branch + create PR"]
-        P1 -->|Regressed/Stale| P3["Revert code, preserve artifacts"]
+        direction LR
+        P1["Create PR or revert"] --> P2["Preserve artifacts"]
     end
 
-    ANALYZE --> EXPERIMENT
-    EQ -.->|skip rest of iteration| PUBLISH
-    EXPERIMENT --> VERIFY --> MEASURE --> PUBLISH
+    MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
 
+    style MEASURE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
     style EXPERIMENT fill:#e74c3c,color:#fff
     style VERIFY fill:#50c878,color:#fff
-    style MEASURE fill:#f5a623,color:#fff
     style PUBLISH fill:#4a90d9,color:#fff
 ```
-
-## Three-Agent Pipeline
-
-The AI work is split across three specialized agents, each with a single responsibility. All agents use the standalone `copilot` CLI; the default model is configured in `config.psd1` under `Copilot.Model`, with per-agent overrides via `AnalysisModel`, `ClassificationModel`, and `FixModel`.
-
-| Agent | Script | Default Model | Input | Output |
-|-------|--------|---------------|-------|--------|
-| **hone-analyst** | `Invoke-AnalysisAgent.ps1` | `claude-opus-4.6` | Performance metrics, source file list, dotnet-counters data, optimization history | JSON: `filePath`, `explanation`, `additionalOpportunities` |
-| **hone-classifier** | `Invoke-ClassificationAgent.ps1` | `claude-haiku-4.5` | File path + optimization description | Scope: `NARROW` or `ARCHITECTURE` with reasoning |
-| **hone-fixer** | `Invoke-FixAgent.ps1` | `claude-opus-4.6` | File path + optimization description | Complete replacement file content |
-
-**Scope gating:** Only `NARROW` changes (single-file, implementation-only) proceed through the fix → build → verify → measure cycle. `ARCHITECTURE` changes (multi-file, schema, dependency, or contract changes) are added to `optimization-queue.md` but **not applied**. This prevents the autonomous loop from making risky structural changes. Architecture items can be manually tagged `[APPROVED]` in the queue to override the gate.
-
-## Optimization History
-
-Two markdown files form a feedback loop that prevents the analyst from repeating failed approaches. Both are fed into the analysis prompt via `Build-AnalysisContext.ps1`.
-
-| File | Purpose | Format |
-|------|---------|--------|
-| `optimization-log.md` | Append-only ledger of every tried optimization | Iteration, file, description, outcome (`improved` / `regressed` / `stale` / `queued`) |
-| `optimization-queue.md` | Ranked list of untried opportunities with scope tags | Checked off when tried; `[APPROVED]` overrides the architecture gate |
-
-The analyst sees the full history and queue on every iteration, so it can:
-- Avoid re-proposing optimizations that already regressed or went stale
-- Pick up queued opportunities rather than duplicating analysis work
-- Prioritize narrow-scope items that are ready to implement
-
-## Measurement Quality
-
-Measurement reliability is critical — the accept/reject decision depends on it. Several mechanisms reduce noise.
-
-**Multi-run median.** The primary k6 scenario runs N times per iteration (default 5, configurable via `ScaleTest.MeasuredRuns`). The median p95 is selected as the representative result, filtering out outlier runs.
-
-**Variance analysis.** The coefficient of variation (CV) is computed across the N runs. A CV above 10% triggers a warning in the output, signaling unreliable results. The CV, range, and standard deviation are included in PR bodies and comparison output.
-
-**Warmup.** Before measured runs, a lightweight 1-VU warmup scenario (`warmup.js`) exercises the API to warm up JIT compilation, connection pools, and thread pools. This prevents first-run penalties from contaminating measurements.
-
-**Cooldown + GC.** Between consecutive measured runs, a cooldown period (default 3s, `ScaleTest.CooldownSeconds`) allows GC, thread pool, and TCP TIME_WAIT connections to settle. If the API exposes a `/diag/gc` endpoint, the harness triggers a server-side GC collect during cooldown.
-
-**Database reset.** `Reset-Database.ps1` drops and recreates the database between iterations so every iteration starts with identical seed data — eliminating data volume drift as a confounding variable.
-
-## Multi-Scenario Testing
-
-The harness supports multiple k6 scenarios beyond the primary optimization scenario.
-
-A **scenario registry** (`scale-tests/thresholds.json`) lists all available k6 scenarios with metadata. One scenario is marked `use_for_optimization: true` — this is the primary scenario whose metrics drive accept/reject decisions.
-
-After the primary scenario completes successfully, all other registered scenarios run as **diagnostics** via `Invoke-AllScaleTests.ps1 -SkipPrimary`. These capture per-scenario metrics without influencing the accept/reject outcome.
-
-**Baselines** are captured for every scenario (stored as `baseline-{name}.json`). PR bodies include a **per-scenario breakdown table** showing each scenario's p95 delta versus its baseline, giving reviewers visibility into cross-cutting performance impact.
-
-## Run Metadata
-
-`run-metadata.json` (in the results directory) tracks machine info, baseline timing, loop start/completion timestamps, and per-iteration outcomes (timing, metrics, PR links, branch names). This supports post-hoc analysis of optimization runs across different machines or configurations.
 
 ## Decision Logic
 
