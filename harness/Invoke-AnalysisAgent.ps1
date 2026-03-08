@@ -119,6 +119,8 @@ $prompt | Out-File -FilePath $promptPath -Encoding utf8
     -Experiment $Experiment
 
 # ── Call the hone-analyst agent ─────────────────────────────────────────────
+. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
+
 try {
     $copilotModel = if ($config.Copilot -and $config.Copilot.AnalysisModel) {
         $config.Copilot.AnalysisModel
@@ -132,6 +134,8 @@ try {
     $prevEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+    $spinner = Start-Spinner -Message "Analyzing performance data ($copilotModel)"
+
     $copilotOutput = copilot --agent hone-analyst --model $copilotModel -p $prompt -s `
         --no-auto-update --no-ask-user 2>&1
     $copilotExitCode = $LASTEXITCODE
@@ -139,6 +143,10 @@ try {
     [Console]::OutputEncoding = $prevEncoding
 
     $responseText = ($copilotOutput | Out-String).Trim()
+
+    # Show brief result from agent
+    $oppPreview = if ($responseText.Length -gt 80) { $responseText.Substring(0, 80) + '…' } else { $responseText }
+    Stop-Spinner -Job $spinner -CompletionMessage "Analysis complete"
 
     # Save the response
     $responsePath = Join-Path $iterDir 'analysis-response.json'
@@ -211,22 +219,24 @@ try {
     }
 
     $oppCount = @($result.Opportunities).Count
+    $primaryFile = if ($result.FilePath) { $result.FilePath } else { '(unknown)' }
+    $primaryTitle = if ($result.Opportunities.Count -gt 0 -and $result.Opportunities[0].title) {
+        $t = $result.Opportunities[0].title
+        if ($t.Length -gt 60) { $t.Substring(0, 60) + '…' } else { $t }
+    } else { '' }
+    Write-Information "    → $oppCount opportunities found (primary: $primaryFile)" -InformationAction Continue
+    if ($primaryTitle) {
+        Write-Information "    → $primaryTitle" -InformationAction Continue
+    }
+
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'info' `
         -Message "Analysis agent returned $oppCount opportunities (primary: $($result.FilePath))" `
         -Experiment $Experiment
 }
 catch {
+    Stop-Spinner -Job $spinner -CompletionMessage $null
     $result = [ordered]@{
-        Success       = $false
-        ExitCode      = -1
-        FilePath      = $null
-        Explanation   = $null
-        Opportunities = @()
-        Prompt        = $prompt
-        Response      = "Error: $_"
-        PromptPath    = $promptPath
-        ResponsePath  = $null
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

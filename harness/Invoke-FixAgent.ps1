@@ -78,6 +78,8 @@ No explanation, no commentary — just the code block.
 "@
 
 # ── Call the hone-fixer agent ───────────────────────────────────────────────
+. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
+
 try {
     $copilotModel = if ($config.Copilot -and $config.Copilot.FixModel) {
         $config.Copilot.FixModel
@@ -91,6 +93,8 @@ try {
     $prevEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+    $spinner = Start-Spinner -Message "Generating optimized code for $FilePath"
+
     $copilotOutput = copilot --agent hone-fixer --model $copilotModel -p $prompt -s `
         --no-auto-update --no-ask-user 2>&1
     $copilotExitCode = $LASTEXITCODE
@@ -98,6 +102,8 @@ try {
     [Console]::OutputEncoding = $prevEncoding
 
     $responseText = ($copilotOutput | Out-String).Trim()
+
+    Stop-Spinner -Job $spinner -CompletionMessage "Code generation complete"
 
     # Save the response
     $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
@@ -121,6 +127,7 @@ try {
     }
 
     if ($codeBlock) {
+        Write-Information "    → Generated $($codeBlock.Length) chars for $FilePath" -InformationAction Continue
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
             -Experiment $Experiment
@@ -132,6 +139,7 @@ try {
     }
 }
 catch {
+    Stop-Spinner -Job $spinner -CompletionMessage $null
     $result = [ordered]@{
         Success      = $false
         CodeBlock    = $null

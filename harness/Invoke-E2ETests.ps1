@@ -29,6 +29,8 @@ $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
 $resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 $trxPath = Join-Path $resultsDir "e2e-results.trx"
 
+. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
+
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'verify' -Level 'info' -Message "Running E2E tests: $testProjectPath" `
     -Experiment $Experiment
@@ -37,6 +39,8 @@ $trxPath = Join-Path $resultsDir "e2e-results.trx"
 if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 }
+
+$spinner = Start-Spinner -Message 'Running E2E tests'
 
 $testOutput = dotnet test $testProjectPath `
     --configuration Release `
@@ -51,12 +55,19 @@ $totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
 $passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
 $failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
 
+$totalTests  = if ($totalMatch) { [int]$Matches[1] } else { 0 }
+$passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
+$failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
+
+$testMsg = if ($testExitCode -eq 0) { "$passedTests/$totalTests tests passed" } else { "$failedTests/$totalTests tests FAILED" }
+Stop-Spinner -Job $spinner -CompletionMessage $testMsg
+
 $result = [ordered]@{
     Success     = ($testExitCode -eq 0)
     ExitCode    = $testExitCode
-    TotalTests  = if ($totalMatch) { [int]$Matches[1] } else { 0 }
-    PassedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
-    FailedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
+    TotalTests  = $totalTests
+    PassedTests = $passedTests
+    FailedTests = $failedTests
     TrxPath     = $trxPath
     Output      = $testOutputString
 }

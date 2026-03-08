@@ -60,6 +60,8 @@ Respond with JSON only. No markdown, no code blocks around the JSON.
 "@
 
 # ── Call the hone-classifier agent ──────────────────────────────────────────
+. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
+
 try {
     $copilotModel = if ($config.Copilot -and $config.Copilot.ClassificationModel) {
         $config.Copilot.ClassificationModel
@@ -73,6 +75,8 @@ try {
     $prevEncoding = [Console]::OutputEncoding
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+    $spinner = Start-Spinner -Message 'Classifying optimization scope'
+
     $copilotOutput = copilot --agent hone-classifier --model $copilotModel -p $prompt -s `
         --no-auto-update --no-ask-user 2>&1
     $copilotExitCode = $LASTEXITCODE
@@ -80,6 +84,8 @@ try {
     [Console]::OutputEncoding = $prevEncoding
 
     $responseText = ($copilotOutput | Out-String).Trim()
+
+    Stop-Spinner -Job $spinner -CompletionMessage 'Classification complete'
 
     # Save the response
     $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
@@ -95,6 +101,8 @@ try {
 
     $scope = if ($parsed.scope -eq 'narrow') { 'narrow' } else { 'architecture' }
 
+    Write-Information "    → Scope: $scope" -InformationAction Continue
+
     $result = [ordered]@{
         Success   = ($copilotExitCode -eq 0 -and $null -ne $parsed.scope)
         Scope     = $scope
@@ -107,6 +115,7 @@ try {
         -Experiment $Experiment
 }
 catch {
+    Stop-Spinner -Job $spinner -CompletionMessage $null
     # Default to architecture on failure (safe)
     $result = [ordered]@{
         Success   = $false
