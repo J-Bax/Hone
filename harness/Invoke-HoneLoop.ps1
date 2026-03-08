@@ -118,7 +118,10 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 $bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
 Write-Information '' -InformationAction Continue
 Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-Write-Information "║  $($bannerTitle.PadLeft(40).PadRight(54))║" -InformationAction Continue
+$innerWidth = 58
+$leftPad = [Math]::Max(0, [Math]::Floor(($innerWidth - $bannerTitle.Length) / 2))
+$bannerLine = $bannerTitle.PadLeft($leftPad + $bannerTitle.Length).PadRight($innerWidth)
+Write-Information "║$bannerLine║" -InformationAction Continue
 Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
 Write-Information '' -InformationAction Continue
 if ($DryRun) {
