@@ -27,6 +27,14 @@ copilot --version
 
 See https://docs.github.com/copilot/how-tos/copilot-cli for installation instructions.
 
+### Optional Tools
+
+| Tool | Purpose | Install |
+|------|---------|---------|
+| PerfView | Deep CPU/GC/memory diagnostic profiling | Auto-downloaded by `Setup-DevEnvironment.ps1` |
+
+PerfView is downloaded automatically during setup. It requires **Administrator privileges** at runtime for kernel-level ETW tracing. If you don't need diagnostic profiling, set `Diagnostics.Enabled = $false` in `harness/config.psd1`.
+
 ### Verify Authentication
 
 ```powershell
@@ -49,9 +57,9 @@ cd Hone
 .\Setup-DevEnvironment.ps1
 ```
 
-The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, and the `dotnet-counters` global tool. It also verifies the standalone `copilot` CLI is on PATH, starts LocalDB, and restores NuGet packages.
+The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, PerfView, and the `dotnet-counters` global tool. It also verifies the standalone `copilot` CLI is on PATH, starts LocalDB, and restores NuGet packages.
 
-> **Note:** Run in an elevated (Administrator) terminal for winget installs. Restart your terminal afterwards to pick up new `PATH` entries.
+> **Note:** Run in an elevated (Administrator) terminal for winget installs and PerfView ETW support. Restart your terminal afterwards to pick up new `PATH` entries.
 
 ## Manual Setup
 

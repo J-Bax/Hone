@@ -223,7 +223,44 @@ else {
     }
 }
 
-# ── 8. Initialize LocalDB instance ─────────────────────────────────────────
+# ── 8. PerfView (diagnostic profiling) ─────────────────────────────────────
+
+Write-Step "Checking PerfView"
+$perfViewDir  = Join-Path $PSScriptRoot 'tools' 'PerfView'
+$perfViewExe  = Join-Path $perfViewDir 'PerfView.exe'
+
+if ((Test-Path $perfViewExe) -and -not $Force) {
+    Write-Ok "PerfView found at $perfViewExe"
+}
+else {
+    Write-Host "  Downloading PerfView from GitHub releases..." -ForegroundColor Gray
+    try {
+        if (-not (Test-Path $perfViewDir)) {
+            New-Item -ItemType Directory -Path $perfViewDir -Force | Out-Null
+        }
+
+        # Fetch latest release asset URL from GitHub API
+        $releaseUrl  = 'https://api.github.com/repos/microsoft/perfview/releases/latest'
+        $headers     = @{ 'User-Agent' = 'Hone-Setup' }
+        $release     = Invoke-RestMethod -Uri $releaseUrl -Headers $headers -ErrorAction Stop
+        $asset       = $release.assets | Where-Object { $_.name -eq 'PerfView.exe' } | Select-Object -First 1
+
+        if (-not $asset) {
+            throw "Could not find PerfView.exe asset in the latest release"
+        }
+
+        $downloadUrl = $asset.browser_download_url
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $perfViewExe -UseBasicParsing -ErrorAction Stop
+        Write-Ok "PerfView downloaded to $perfViewExe"
+    }
+    catch {
+        Write-Fail "Failed to download PerfView: $_"
+        Write-Host "    Manual download: https://github.com/microsoft/perfview/releases" -ForegroundColor Gray
+        $allSucceeded = $false
+    }
+}
+
+# ── 9. Initialize LocalDB instance ──────────────────────────────────────────
 
 Write-Step "Ensuring LocalDB instance 'MSSQLLocalDB' is running"
 if (Test-CommandExists 'sqllocaldb') {
@@ -240,7 +277,7 @@ else {
     Write-Skip "LocalDB instance (sqllocaldb not available)"
 }
 
-# ── 9. Initialize Git Submodules ────────────────────────────────────────────
+# ── 10. Initialize Git Submodules ────────────────────────────────────────────
 
 Write-Step "Initializing git submodules"
 if (Test-CommandExists 'git') {
@@ -269,7 +306,7 @@ else {
     $allSucceeded = $false
 }
 
-# ── 10. Restore NuGet packages ─────────────────────────────────────────────
+# ── 11. Restore NuGet packages ─────────────────────────────────────────────
 
 Write-Step "Restoring NuGet packages"
 if (Test-CommandExists 'dotnet') {
@@ -300,6 +337,11 @@ else {
     Write-Host "  Fix the failures and re-run: .\Setup-DevEnvironment.ps1" -ForegroundColor Gray
 }
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -ForegroundColor DarkGray
+
+# Remind about admin requirement for PerfView
+if (Test-Path (Join-Path $PSScriptRoot 'tools' 'PerfView' 'PerfView.exe')) {
+    Write-Host "  🔒 PerfView diagnostic profiling requires an elevated (Admin) terminal at runtime.`n" -ForegroundColor DarkYellow
+}
 
 # Remind user to refresh PATH if anything was installed
 if (-not $SkipWinget -or $Force) {

@@ -25,34 +25,37 @@ Each experiment is a self-contained cycle of 5 phases:
 ```mermaid
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        direction TB
         M1["Reference metrics"]
-        M1 -.-> M2["API metrics (p95, RPS)"]
-        M1 -.-> M3["Efficiency (CPU, memory)"]
+        M2["PerfView profiling"]
+        M3["k6 load test"]
+        M1 --- M2 --- M3
     end
 
-    subgraph ANALYZE["🧠 2. Analyze (conditional)"]
-        direction TB
-        A0{"Queue empty?"}
-        A0 -->|Yes| A1["Metrics + source code"]
-        A1 --> A2["Identify bottlenecks"]
-        A2 --> A3["Propose 3-5 optimizations → queue"]
-        A0 -->|No| A4["Skip analysis"]
+    subgraph ANALYZE["🧠 2. Analyze"]
+        A1["CPU analysis agent"]
+        A2["Memory & GC analysis agent"]
+        A3["Experiment proposal agent"]
+        A4["Classifier agent"]
+        A1 --> A3
+        A2 --> A3
+        A3 --> A4
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        direction LR
-        E1["Pick from queue"] --> E2["Classify scope"] --> E3["Implement + build"]
+        E1["Fixer agent"]
+        E2["Apply fix + build"]
+        E1 --> E2
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        direction LR
-        V1["Functional tests"] --> V2["Stress-test"] --> V3["Accept if no regression"]
+        V1["E2E tests"]
+        V2["k6 load test"]
+        V3["Accept or reject"]
+        V1 --> V2 --> V3
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        direction LR
-        P1["Create PR"] --> P2["Preserve artifacts"]
+        P1["PR or revert"]
     end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
@@ -64,11 +67,24 @@ flowchart TD
     style PUBLISH fill:#4a90d9,color:#fff
 ```
 
+### Two Separate Measurement Passes
+
+Phases 2 and 4 each run k6 load tests, but for different purposes:
+
+| | Diagnostic (Phase 2) | Evaluation (Phase 4) |
+|---|---|---|
+| **Purpose** | Deep profiling for AI analysis | Fair benchmarking for accept/reject |
+| **Runs when** | Optimization queue is empty | Every experiment |
+| **k6 passes** | 1 | 5 (median selected) |
+| **PerfView** | ✅ CPU stacks, GC events, allocations | ❌ Off |
+| **Overhead** | 5–15% (acceptable — numbers discarded) | ~1% (dotnet-counters only) |
+| **Output used for** | Analyst agent context | Accept/reject decision |
+
+This separation ensures profiling overhead never biases the metrics used to judge whether an optimization helped.
+
 ### Queue-Driven Analysis
 
-The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 3-5 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics.
-
-This design is efficient (analysis is the most expensive AI call) and ensures the loop doesn't re-analyze the entire codebase before every single code change.
+The analysis pipeline (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis pipeline runs again with fresh metrics and profiling data.
 
 ## Decision Logic
 
@@ -82,7 +98,7 @@ After measuring, the harness compares three metrics against the previous experim
 
 **Accept** if at least one metric improved and none regressed. **Reject** if any metric regressed beyond tolerance. **Stale** if nothing changed.
 
-When performance is flat but OS-level resource usage (CPU or working set) decreased, the **efficiency tiebreaker** accepts the experiment — preventing premature stops when there are genuine resource gains.
+When performance is flat but OS-level resource usage (CPU or working set) decreased, the **efficiency tiebreaker** accepts the experiment — preventing premature stops when there are genuine resource gains. The tiebreaker can be disabled or tuned via `Tolerances.Efficiency` in `config.psd1`.
 
 ## Stacked Diffs (Continuous Mode)
 
@@ -120,3 +136,63 @@ The loop stops when any of these conditions is met:
 | **Test failure** | E2E regression detected (non-stacked mode) |
 
 In stacked mode, build and test failures trigger a revert-and-continue rather than an abort, allowing the loop to recover and try different optimizations.
+
+## Diagnostic Measurement Details
+
+The diagnostic measurement pipeline (Phase 2, when queue is empty) runs a complete profiling cycle:
+
+1. **Reset database** — ensure clean seed data
+2. **Start API** — launch the .NET process
+3. **Start collectors** — all enabled collector plugins attach to the API process (PerfView ETW sessions, dotnet-counters)
+4. **Run k6** — single load-test pass using the same scenario as evaluation
+5. **Stop collectors** — detach, merge traces, export raw artifacts (ETL files, CSV)
+6. **Stop API** — clean shutdown
+7. **Export data** — convert raw artifacts to analysis-friendly formats (folded stacks, GC report JSON, counter JSON)
+8. **Run analyzers** — each analyzer plugin calls its Copilot agent with the exported data, producing a structured JSON report
+9. **Aggregate reports** — all analyzer reports are collected and injected into the main analyst agent's prompt as additional context
+
+Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15% overhead to latency/throughput, the k6 numbers from the diagnostic pass are **discarded** — they are never compared against baselines or used in accept/reject decisions. Only the profiling data (stacks, GC stats, allocations) is carried forward.
+
+## Diagnostic Plugin Architecture
+
+The diagnostic framework uses a **plugin model** for both data collection and analysis. New profiling tools can be added by dropping in a directory — no orchestrator changes needed.
+
+### Collector Plugins (`harness/collectors/<name>/`)
+
+Each collector is a self-contained directory with 4 files:
+
+| File | Purpose |
+|------|---------|
+| `collector.psd1` | Metadata: name, description, RequiresAdmin, OverheadImpact, DefaultSettings |
+| `Start-Collector.ps1` | Start data collection targeting an API process → returns handle |
+| `Stop-Collector.ps1` | Stop collection → returns raw artifact paths |
+| `Export-CollectorData.ps1` | Convert raw artifacts to analysis-friendly format |
+
+Built-in collectors: `perfview-cpu`, `perfview-gc`, `dotnet-counters`
+
+### Analyzer Plugins (`harness/analyzers/<name>/`)
+
+Each analyzer is a self-contained directory with 3 files:
+
+| File | Purpose |
+|------|---------|
+| `analyzer.psd1` | Metadata: name, RequiredCollectors, AgentName, DefaultSettings |
+| `Invoke-Analyzer.ps1` | Build prompt from collector data, call AI agent, parse response |
+| `agent.md` | Copilot agent definition (also symlinked to `.github/agents/`) |
+
+Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks), `memory-gc` (reads GC report)
+
+Each analyzer declares its `RequiredCollectors` in `analyzer.psd1`. If a required collector's data is not available (e.g., the collector is disabled or failed), the analyzer is automatically skipped with a warning — it does not block other analyzers from running.
+
+### Adding a New Plugin
+
+**New collector** (e.g., `thread-contention`):
+1. Create `harness/collectors/thread-contention/` with the 4 standard files
+2. Add settings under `Diagnostics.CollectorSettings.'thread-contention'` in `config.psd1`
+
+**New analyzer** (e.g., `thread-hotspots`):
+1. Create `harness/analyzers/thread-hotspots/` with the 3 standard files
+2. Add settings under `Diagnostics.AnalyzerSettings.'thread-hotspots'` in `config.psd1`
+3. Copy or symlink `agent.md` to `.github/agents/`
+
+The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticAnalysis.ps1`) automatically discover and run all enabled plugins.
