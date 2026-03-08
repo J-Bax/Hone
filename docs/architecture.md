@@ -25,51 +25,77 @@ Each experiment is a self-contained cycle of 5 phases:
 ```mermaid
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        direction TB
-        M1["Reference metrics"]
-        M1 -.-> M2["API metrics (p95, RPS)"]
-        M1 -.-> M3["Efficiency (CPU, memory)"]
+        M1["Use reference metrics<br/>(baseline or previous experiment)"]
     end
 
-    subgraph ANALYZE["🧠 2. Analyze (conditional)"]
-        direction TB
-        A0{"Queue empty?"}
-        A0 -->|Yes| AD["Diagnostic profiling<br/>(PerfView CPU + GC)"]
-        AD --> A1["Metrics + source code<br/>+ profiling reports"]
-        A1 --> A2["Identify bottlenecks"]
-        A2 --> A3["Propose 1-3 optimizations → queue"]
-        A0 -->|No| A4["Skip analysis"]
+    subgraph ANALYZE["🧠 2. Analyze"]
+        AQ{"Optimization<br/>queue empty?"}
+        AQ -->|No| ASKIP["Pick next item<br/>from queue"]
+        AQ -->|Yes| ADIAG
+
+        subgraph DIAG["Diagnostic Profiling"]
+            ADIAG["Start API + PerfView collectors"]
+            ADIAG --> AK6["Run k6 load test<br/>(single pass, with profiling overhead)"]
+            AK6 --> ASTOP["Stop collectors → export data"]
+            ASTOP --> ACPU["🤖 CPU Profiler agent<br/>→ hotspot report"]
+            ASTOP --> AMEM["🤖 Memory Profiler agent<br/>→ GC/allocation report"]
+        end
+
+        ACPU --> AANALYST
+        AMEM --> AANALYST
+        AANALYST["🤖 Analyst agent<br/>(metrics + source code + profiling reports)<br/>→ 1-3 ranked optimizations → queue"]
+        AANALYST --> ASKIP
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        direction LR
-        E1["Pick from queue"] --> E2["Classify scope"] --> E3["Implement + build"]
+        E1["🤖 Classifier agent<br/>(narrow vs. architecture)"]
+        E1 -->|narrow| E2["🤖 Fixer agent<br/>→ generate optimized code"]
+        E2 --> E3["Apply fix + dotnet build"]
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        direction LR
-        V1["Functional tests"] --> V2["Stress-test"] --> V3["Accept if no regression"]
+        V1["dotnet test<br/>(E2E regression gate)"]
+        V1 --> V2["Start API<br/>(no profiling tools)"]
+        V2 --> V3["k6 load test<br/>(median of 5 runs)"]
+        V3 --> V4["Compare metrics<br/>→ accept / reject / stale"]
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        direction LR
-        P1["Create PR"] --> P2["Preserve artifacts"]
+        P1{"Improved?"}
+        P1 -->|Yes| P2["Push branch + create PR"]
+        P1 -->|No| P3["Revert code change"]
     end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
+    PUBLISH -.->|"next experiment"| MEASURE
 
     style MEASURE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
+    style DIAG fill:#7d3c98,color:#fff
     style EXPERIMENT fill:#e74c3c,color:#fff
     style VERIFY fill:#50c878,color:#fff
     style PUBLISH fill:#4a90d9,color:#fff
 ```
 
+### Key Design: Two Separate Measurement Passes
+
+The diagram above shows two distinct k6 runs that serve different purposes:
+
+| | Diagnostic Measurement (Phase 2) | Evaluation Measurement (Phase 4) |
+|---|---|---|
+| **Purpose** | Deep profiling data for analysis | Fair benchmarking for accept/reject |
+| **When** | Only when optimization queue is empty | Every experiment |
+| **k6 runs** | 1 (accuracy less important) | 5 (median selected) |
+| **PerfView** | ✅ Active (CPU stacks, GC events, allocation sampling) | ❌ Not running |
+| **dotnet-counters** | Optional (via plugin) | ✅ Active (lightweight) |
+| **Overhead** | 5–15% latency impact from profiling | Minimal (~1%) |
+| **Numbers used for** | AI analysis input only | Accept/reject decisions |
+
+This separation ensures that profiling overhead never biases the metrics used to judge whether an optimization helped.
+
 ### Queue-Driven Analysis
 
 The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics and diagnostic profiling data.
-
-This design is efficient (analysis is the most expensive AI call) and ensures the loop doesn't re-analyze the entire codebase before every single code change.
 
 ## Decision Logic
 
@@ -122,22 +148,21 @@ The loop stops when any of these conditions is met:
 
 In stacked mode, build and test failures trigger a revert-and-continue rather than an abort, allowing the loop to recover and try different optimizations.
 
-## Dual-Phase Measurement
+## Diagnostic Measurement Details
 
-Hone uses two distinct measurement phases with different purposes:
+The diagnostic measurement pipeline (Phase 2, when queue is empty) runs a complete profiling cycle:
 
-### Evaluation Measurement (Phase 4: Verify)
+1. **Reset database** — ensure clean seed data
+2. **Start API** — launch the .NET process
+3. **Start collectors** — all enabled collector plugins attach to the API process (PerfView ETW sessions, dotnet-counters)
+4. **Run k6** — single load-test pass using the same scenario as evaluation
+5. **Stop collectors** — detach, merge traces, export raw artifacts (ETL files, CSV)
+6. **Stop API** — clean shutdown
+7. **Export data** — convert raw artifacts to analysis-friendly formats (folded stacks, GC report JSON, counter JSON)
+8. **Run analyzers** — each analyzer plugin calls its Copilot agent with the exported data, producing a structured JSON report
+9. **Aggregate reports** — all analyzer reports are collected and injected into the main analyst agent's prompt as additional context
 
-Fair benchmarking used for **accept/reject decisions**. Runs k6 with median-of-5 selection and lightweight dotnet-counters only. No heavy profiling tools. This is the source of truth for whether an optimization improved performance.
-
-### Diagnostic Measurement (Phase 2: Analyze)
-
-Deep profiling used **only as analysis input**. Runs PerfView ETW collection alongside a single k6 pass to capture:
-- **CPU sampling stacks** — flamegraph data showing which methods dominate CPU time
-- **GC events** — detailed garbage collection statistics (generation counts, pause times, heap sizes)
-- **Allocation tick sampling** — which types are allocated most frequently and from which call-sites
-
-Diagnostic measurement runs once per analysis cycle (when the optimization queue is empty). Since profiling tools add 5–15% overhead to latency/throughput, these numbers are **never used for regression testing** — they exist solely to give the analysis agent deeper insight into where bottlenecks live.
+Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15% overhead to latency/throughput, the k6 numbers from the diagnostic pass are **discarded** — they are never compared against baselines or used in accept/reject decisions. Only the profiling data (stacks, GC stats, allocations) is carried forward.
 
 ## Diagnostic Plugin Architecture
 
