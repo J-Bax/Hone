@@ -50,10 +50,18 @@ Write-Verbose "Delegating to Start-DotnetCounters.ps1 for PID $ProcessId → $ou
 
 $result = & $startScript @startParams
 
-return @{
-    Success = $result.Success
-    Handle  = @{
-        InnerHandle = $result
-        OutputPath  = $outputPath
+if ($result.Success) {
+    return @{
+        Success = $true
+        Handle  = @{
+            InnerHandle = $result
+            OutputPath  = $outputPath
+        }
+    }
+}
+else {
+    return @{
+        Success = $false
+        Error   = "dotnet-counters failed to start (exit code or missing tool). Check dotnet tool install --global dotnet-counters."
     }
 }

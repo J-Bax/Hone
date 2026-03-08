@@ -141,7 +141,8 @@ if ($Action -eq 'Start') {
             $handles[$c.Name] = $result.Handle
         }
         else {
-            Write-Warning "  Collector '$($c.Name)' failed to start: $($result.Error)"
+            $errMsg = if ($result.ContainsKey('Error')) { $result.Error } else { 'unknown error (no Error property returned)' }
+            Write-Warning "  Collector '$($c.Name)' failed to start: $errMsg"
             $allSuccess = $false
         }
     }

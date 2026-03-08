@@ -43,7 +43,7 @@ if (-not $perfViewExe) {
     Write-Warning 'PerfViewExePath not specified in settings'
     return @{
         Success = $false
-        Handle  = $null
+        Error   = 'PerfViewExePath not specified in settings'
     }
 }
 
@@ -57,7 +57,7 @@ if (-not (Test-Path $perfViewExe)) {
     Write-Warning "PerfView not found at: $perfViewExe"
     return @{
         Success = $false
-        Handle  = $null
+        Error   = "PerfView not found at: $perfViewExe"
     }
 }
 
@@ -105,10 +105,11 @@ try {
 
     if ($process.HasExited) {
         $exitCode = $process.ExitCode
-        Write-Warning "PerfView exited immediately with code $exitCode. Check $stderrLog for details."
+        $msg = "PerfView exited immediately with code $exitCode. Check $stderrLog for details."
+        Write-Warning $msg
         return @{
             Success = $false
-            Handle  = $null
+            Error   = $msg
         }
     }
 
@@ -124,9 +125,10 @@ try {
     }
 }
 catch {
-    Write-Warning "Failed to start PerfView GC collection: $_"
+    $msg = "Failed to start PerfView GC collection: $_"
+    Write-Warning $msg
     return @{
         Success = $false
-        Handle  = $null
+        Error   = $msg
     }
 }
