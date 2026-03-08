@@ -140,11 +140,8 @@ try {
 }
 catch {
     Stop-Spinner -Spinner $spinner -CompletionMessage $null
+    if ($_ -is [System.Management.Automation.PipelineStoppedException]) { throw }
     $result = [ordered]@{
-        Success      = $false
-        CodeBlock    = $null
-        Response     = "Error: $_"
-        ResponsePath = $null
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

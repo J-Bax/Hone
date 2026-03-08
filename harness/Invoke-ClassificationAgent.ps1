@@ -116,6 +116,7 @@ try {
 }
 catch {
     Stop-Spinner -Spinner $spinner -CompletionMessage $null
+    if ($_ -is [System.Management.Automation.PipelineStoppedException]) { throw }
     # Default to architecture on failure (safe)
     $result = [ordered]@{
         Success   = $false

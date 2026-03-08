@@ -41,26 +41,28 @@ if (-not (Test-Path $resultsDir)) {
 }
 
 $spinner = Start-Spinner -Message 'Running E2E tests'
+try {
+    $testOutput = dotnet test $testProjectPath `
+        --configuration Release `
+        --logger "trx;LogFileName=$trxPath" `
+        --verbosity normal 2>&1
 
-$testOutput = dotnet test $testProjectPath `
-    --configuration Release `
-    --logger "trx;LogFileName=$trxPath" `
-    --verbosity normal 2>&1
+    $testExitCode = $LASTEXITCODE
+}
+finally {
+    # Parse the output for test counts
+    $testOutputString = ($testOutput | Out-String)
+    $totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
+    $passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
+    $failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
 
-$testExitCode = $LASTEXITCODE
+    $totalTests  = if ($totalMatch) { [int]$Matches[1] } else { 0 }
+    $passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
+    $failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
 
-# Parse the output for test counts
-$testOutputString = $testOutput | Out-String
-$totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
-$passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
-$failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
-
-$totalTests  = if ($totalMatch) { [int]$Matches[1] } else { 0 }
-$passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
-$failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
-
-$testMsg = if ($testExitCode -eq 0) { "$passedTests/$totalTests tests passed" } else { "$failedTests/$totalTests tests FAILED" }
-Stop-Spinner -Spinner $spinner -CompletionMessage $testMsg
+    $testMsg = if ($testExitCode -eq 0) { "$passedTests/$totalTests tests passed" } else { "$failedTests/$totalTests tests FAILED" }
+    Stop-Spinner -Spinner $spinner -CompletionMessage $testMsg
+}
 
 $result = [ordered]@{
     Success     = ($testExitCode -eq 0)

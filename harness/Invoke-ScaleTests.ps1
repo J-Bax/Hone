@@ -112,8 +112,12 @@ if ($warmupEnabled) {
 
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
         $warmupSpinner = Start-Spinner -Message 'Warming up API'
-        & k6 @warmupArgs 2>&1 | Out-Null
-        Stop-Spinner -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
+        try {
+            & k6 @warmupArgs 2>&1 | Out-Null
+        }
+        finally {
+            Stop-Spinner -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
+        }
 
         # Cooldown after warmup — let GC, thread pool, and TCP connections settle
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
@@ -226,8 +230,14 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
     # Run k6
     $runLabel = if ($measuredRuns -gt 1) { "k6 run $run/$measuredRuns" } else { 'k6 scale test' }
     $runSpinner = Start-Spinner -Message $runLabel
-    $k6Output = & k6 @runArgs 2>&1
-    $k6ExitCode = $LASTEXITCODE
+    try {
+        $k6Output = & k6 @runArgs 2>&1
+        $k6ExitCode = $LASTEXITCODE
+    }
+    catch {
+        Stop-Spinner -Spinner $runSpinner -CompletionMessage $null
+        throw
+    }
 
     # Parse the JSON summary for this run
     if (Test-Path $runSummaryPath) {

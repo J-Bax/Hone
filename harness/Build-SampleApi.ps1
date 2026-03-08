@@ -29,12 +29,14 @@ $solutionPath = Join-Path $repoRoot $config.Api.SolutionPath
     -Phase 'experiment' -Level 'info' -Message "Building solution: $solutionPath"
 
 $spinner = Start-Spinner -Message 'Building solution'
-
-$buildOutput = dotnet build $solutionPath --configuration Release 2>&1
-$buildExitCode = $LASTEXITCODE
-
-$buildMsg = if ($buildExitCode -eq 0) { 'Build succeeded' } else { "Build failed (exit code $buildExitCode)" }
-Stop-Spinner -Spinner $spinner -CompletionMessage $buildMsg
+try {
+    $buildOutput = dotnet build $solutionPath --configuration Release 2>&1
+    $buildExitCode = $LASTEXITCODE
+}
+finally {
+    $buildMsg = if ($buildExitCode -eq 0) { 'Build succeeded' } else { "Build failed (exit code $buildExitCode)" }
+    Stop-Spinner -Spinner $spinner -CompletionMessage $buildMsg
+}
 
 $result = [ordered]@{
     Success    = ($buildExitCode -eq 0)
