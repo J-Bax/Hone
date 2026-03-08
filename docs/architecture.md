@@ -23,35 +23,37 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 Each experiment is a self-contained cycle of 5 phases:
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        direction TB
-        M1["Reference metrics<br/>(baseline or prev experiment)"]
+        M1["Reference metrics\n(baseline or previous experiment)"]
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        direction TB
-        A1["PerfView diagnostic profiling<br/>(CPU stacks, GC, allocations)"]
-        A1 --> A2["CPU Profiler + Memory Profiler<br/>agents → hotspot reports"]
-        A2 --> A3["Analyst agent<br/>→ optimization queue"]
+        A1["PerfView diagnostic profiling"]
+        A2["CPU Profiler agent"]
+        A3["Memory Profiler agent"]
+        A4["Analyst agent"]
+        A1 --> A2
+        A1 --> A3
+        A2 --> A4
+        A3 --> A4
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        direction TB
-        E1["Classifier agent<br/>(scope check)"]
-        E1 --> E2["Fixer agent<br/>(code generation)"]
-        E2 --> E3["Apply + build"]
+        E1["Classifier agent"]
+        E2["Fixer agent"]
+        E3["Apply fix + build"]
+        E1 --> E2 --> E3
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        direction TB
         V1["E2E tests"]
-        V1 --> V2["k6 load test<br/>(median of 5, no profiling)"]
-        V2 --> V3["Accept / reject"]
+        V2["k6 load test\n(median of 5, no profiling)"]
+        V3["Accept / reject"]
+        V1 --> V2 --> V3
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        direction TB
         P1["PR or revert"]
     end
 
