@@ -25,18 +25,18 @@ Each experiment is a self-contained cycle of 5 phases:
 ```mermaid
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
-        M1["Reference metrics\n(baseline or previous experiment)"]
+        M1["Reference metrics"]
+        M2["PerfView profiling"]
+        M3["k6 load test"]
+        M1 --- M2 --- M3
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        A1["PerfView diagnostic profiling"]
-        A2["CPU Profiler agent"]
-        A3["Memory Profiler agent"]
-        A4["Analyst agent"]
-        A1 --> A2
+        A1["CPU analysis agent"]
+        A2["Memory & GC analysis agent"]
+        A3["Experiment proposal agent"]
         A1 --> A3
-        A2 --> A4
-        A3 --> A4
+        A2 --> A3
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
@@ -48,8 +48,8 @@ flowchart TD
 
     subgraph VERIFY["✅ 4. Verify"]
         V1["E2E tests"]
-        V2["k6 load test\n(median of 5, no profiling)"]
-        V3["Accept / reject"]
+        V2["k6 load test"]
+        V3["Accept or reject"]
         V1 --> V2 --> V3
     end
 
