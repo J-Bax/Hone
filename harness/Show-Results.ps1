@@ -127,10 +127,8 @@ if (Test-Path $runMetadataPath) {
     $runMeta = Get-Content $runMetadataPath -Raw | ConvertFrom-Json
     if ($runMeta.Machine) {
         $m = $runMeta.Machine
-        Write-Host "  Machine: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$($m.MachineName)" -NoNewline -ForegroundColor White
-        Write-Host " │ " -NoNewline -ForegroundColor DarkGray
-        Write-Host "CPU: $($m.Cpu.Name) ($($m.Cpu.LogicalProcessors) cores)" -NoNewline -ForegroundColor White
+        Write-Host "  CPU:     " -NoNewline -ForegroundColor DarkGray
+        Write-Host "$($m.Cpu.Name) ($($m.Cpu.LogicalProcessors) cores)" -NoNewline -ForegroundColor White
         Write-Host " │ " -NoNewline -ForegroundColor DarkGray
         Write-Host "RAM: $($m.Memory.TotalGB)GB" -ForegroundColor White
         Write-Host "  OS:      " -NoNewline -ForegroundColor DarkGray

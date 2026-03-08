@@ -78,13 +78,43 @@ catch {
 
 # ── Operating System ────────────────────────────────────────────────────────
 
+$osPlatform = if ($IsWindows -or (-not (Test-Path variable:IsWindows))) { 'Windows' }
+              elseif ($IsLinux) { 'Linux' }
+              elseif ($IsMacOS) { 'macOS' }
+              else { 'Unknown' }
+
+# Build a major-version-only description to avoid leaking specific build numbers.
+$osMajorVersion = $osPlatform
+try {
+    $osVer = [Environment]::OSVersion.Version
+    switch ($osPlatform) {
+        'Windows' {
+            # Windows 11 starts at build 22000; earlier 10.0.* builds are Windows 10.
+            if ($osVer.Major -eq 10 -and $osVer.Build -ge 22000) {
+                $osMajorVersion = 'Windows 11'
+            }
+            elseif ($osVer.Major -eq 10) {
+                $osMajorVersion = 'Windows 10'
+            }
+            else {
+                $osMajorVersion = "Windows $($osVer.Major).$($osVer.Minor)"
+            }
+        }
+        'Linux' {
+            $osMajorVersion = "Linux $($osVer.Major).$($osVer.Minor)"
+        }
+        'macOS' {
+            $osMajorVersion = "macOS $($osVer.Major).$($osVer.Minor)"
+        }
+    }
+}
+catch {
+    Write-Verbose "Could not determine OS major version: $_"
+}
+
 $osInfo = [ordered]@{
-    Description = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
-    Platform    = if ($IsWindows -or (-not (Test-Path variable:IsWindows))) { 'Windows' }
-                  elseif ($IsLinux) { 'Linux' }
-                  elseif ($IsMacOS) { 'macOS' }
-                  else { 'Unknown' }
-    Version     = [Environment]::OSVersion.VersionString
+    Description = $osMajorVersion
+    Platform    = $osPlatform
 }
 
 # ── Runtime ─────────────────────────────────────────────────────────────────
@@ -106,12 +136,11 @@ $runtimeInfo = [ordered]@{
 # ── Assemble ────────────────────────────────────────────────────────────────
 
 $machineInfo = [PSCustomObject][ordered]@{
-    MachineName = [Environment]::MachineName
     Cpu         = [PSCustomObject]$cpuInfo
     Memory      = [PSCustomObject]$memoryInfo
     OS          = [PSCustomObject]$osInfo
     Runtime     = [PSCustomObject]$runtimeInfo
-    CollectedAt = (Get-Date -Format 'o')
+    CollectedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
 
 return $machineInfo

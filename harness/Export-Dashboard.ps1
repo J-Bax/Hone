@@ -468,7 +468,6 @@ $html = @'
     if (runMetadata && runMetadata.Machine) {
         var m = runMetadata.Machine;
         var parts = [];
-        if (m.MachineName) parts.push('<strong>' + m.MachineName + '</strong>');
         if (m.Cpu && m.Cpu.Name) parts.push('CPU: ' + m.Cpu.Name + ' (' + m.Cpu.LogicalProcessors + ' logical cores)');
         if (m.Memory && m.Memory.TotalGB) parts.push('RAM: ' + m.Memory.TotalGB + ' GB');
         if (m.OS && m.OS.Description) parts.push('OS: ' + m.OS.Description);

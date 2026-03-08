@@ -192,7 +192,6 @@ if (-not $env:GH_TOKEN) {
 
 # ── Collect machine info ────────────────────────────────────────────────────
 $machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
-Write-Information "  Machine: $($machineInfo.MachineName)" -InformationAction Continue
 Write-Information "  CPU:     $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores)" -InformationAction Continue
 Write-Information "  RAM:     $($machineInfo.Memory.TotalGB)GB" -InformationAction Continue
 Write-Information "  OS:      $($machineInfo.OS.Description)" -InformationAction Continue
@@ -201,7 +200,6 @@ Write-Information '' -InformationAction Continue
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message 'Machine info collected' `
     -Data @{
-        machineName      = $machineInfo.MachineName
         cpuName          = $machineInfo.Cpu.Name
         logicalCores     = $machineInfo.Cpu.LogicalProcessors
         physicalCores    = $machineInfo.Cpu.PhysicalCores

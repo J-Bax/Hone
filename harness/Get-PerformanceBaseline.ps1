@@ -36,7 +36,7 @@ if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
 
 # ── Collect machine info ────────────────────────────────────────────────────
 $machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
-Write-Information "Machine: $($machineInfo.MachineName) | CPU: $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores) | RAM: $($machineInfo.Memory.TotalGB)GB" -InformationAction Continue
+Write-Information "Machine: CPU: $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores) | RAM: $($machineInfo.Memory.TotalGB)GB" -InformationAction Continue
 
 # ── Step 1: Build ───────────────────────────────────────────────────────────
 $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
