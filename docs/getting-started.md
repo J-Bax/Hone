@@ -10,9 +10,11 @@ Ensure the following tools are installed and available on your `PATH`:
 |------|----------------|--------|---------|
 | PowerShell | 7.2 | `$PSVersionTable.PSVersion` | `winget install Microsoft.PowerShell` |
 | .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` |
-| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` |
+| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` ¹ |
 | k6 | 0.47+ | `k6 version` | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `gh --version` | `winget install GitHub.cli` |
+
+¹ There is no dedicated LocalDB winget package. SQL Server Express includes LocalDB, which is what the project uses via `(localdb)\MSSQLLocalDB`.
 
 ### Required Tools
 
@@ -126,6 +128,16 @@ This kicks off the agentic optimization cycle. Watch the console output for buil
 ## What to Expect
 
 On the first run, the Hone loop will analyze the sample API's performance characteristics through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
+
+After the loop completes (or between iterations), you can inspect results:
+
+```powershell
+# View results in terminal
+.\harness\Show-Results.ps1
+
+# Generate HTML dashboard
+.\harness\Export-Dashboard.ps1 -Open
+```
 
 ## Troubleshooting
 
