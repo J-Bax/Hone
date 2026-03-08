@@ -33,13 +33,16 @@ no markdown outside the code block.
 
 4. **Preserve all functionality.** Do not remove, rename, or alter the behaviour of
    any public API endpoint, response schema, or data contract. Performance
-   optimizations must be invisible to API consumers.
+   optimizations must be invisible to API consumers. Database-level changes
+   (indexes, query configuration in DbContext) are permitted as long as API
+   contracts remain unchanged.
 
 5. **Preserve code style.** Match the existing code style: indentation, naming
    conventions, comment style, using statement order.
 
 6. **No new dependencies.** Do not add `using` statements for packages that aren't
-   already referenced in the project. Do not add NuGet packages.
+   already referenced in the project. Do not add NuGet packages. Do not create
+   migration files.
 
 7. **Compilable code only.** The file must compile successfully as-is. Do not use
    placeholder comments like `// ... rest of file` — include everything.

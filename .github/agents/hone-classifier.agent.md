@@ -31,23 +31,24 @@ The JSON must have this exact structure:
 ### NARROW
 A change is NARROW if ALL of these are true:
 - Modifies only ONE file
-- Changes only implementation internals (method bodies, query logic, algorithm)
+- Changes only implementation internals (method bodies, query logic, algorithm, DbContext configuration)
 - Does NOT add or remove NuGet packages, npm packages, or other dependencies
-- Does NOT change database schema (no migrations, no new tables/columns)
+- Does NOT create migration files or new database tables
 - Does NOT change any public API endpoint route, request/response schema, or HTTP contract
 - Does NOT require changes to test files to accommodate new behavior
 - Examples: query optimization, adding `.Where()` clauses, replacing N+1 with joins,
-  adding in-memory caching, algorithm improvements, removing redundant work
+  adding in-memory caching, algorithm improvements, removing redundant work,
+  adding indexes or query configuration in DbContext `OnModelCreating`
 
 ### ARCHITECTURE
 A change is ARCHITECTURE if ANY of these are true:
 - Requires modifying more than one source file
 - Adds or removes a package/dependency
-- Changes database schema (new migration, new index via migration, new table)
+- Creates migration files, adds new database tables, or changes column types/constraints
 - Changes an API endpoint route, adds/removes endpoints, or alters response shape
 - Introduces a new architectural pattern (repository layer, middleware, etc.)
 - Requires configuration changes (appsettings.json, connection strings)
-- Examples: adding Redis caching layer, database index via migration, response pagination,
+- Examples: adding Redis caching layer, database migration files, response pagination,
   new middleware, switching ORM strategy
 
 ## Rules

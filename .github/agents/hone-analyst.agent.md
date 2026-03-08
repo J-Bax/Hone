@@ -73,6 +73,8 @@ how much. Explain the reasoning behind the estimate.
 
 6. **Preserve functionality.** Optimizations must not remove, rename, or alter the
    behaviour of any public API endpoint, response schema, or data contract.
+   Database-level changes (indexes, query configuration) are permitted as long as
+   API surface area and contracts remain unchanged.
 
 7. **Scope classification.** Each opportunity must have a `scope` of either `"narrow"` or
    `"architecture"`:
