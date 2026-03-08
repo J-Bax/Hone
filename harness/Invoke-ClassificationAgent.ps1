@@ -69,9 +69,15 @@ try {
         'claude-haiku-4.5'
     }
 
+    # Ensure UTF-8 decoding of copilot CLI output (prevents mojibake like ΓÇö for em-dash)
+    $prevEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
     $copilotOutput = copilot --agent hone-classifier --model $copilotModel -p $prompt -s `
         --no-auto-update --no-ask-user 2>&1
     $copilotExitCode = $LASTEXITCODE
+
+    [Console]::OutputEncoding = $prevEncoding
 
     $responseText = ($copilotOutput | Out-String).Trim()
 
