@@ -98,12 +98,17 @@ try {
         -OutputDir $resultsDir `
         -Config $config
 
-    if (-not $startResult.Success) {
-        throw "Diagnostic measurement failed: one or more collectors failed to start."
+    if ($startResult.Handles.Count -eq 0) {
+        throw "Diagnostic measurement failed: no collectors started successfully."
     }
 
     $startedCollectors = ($startResult.Handles.Keys -join ', ')
-    Write-Information "  │ Collectors active: $startedCollectors" -InformationAction Continue
+    if (-not $startResult.Success) {
+        Write-Warning "  │ Some collectors failed to start — continuing with: $startedCollectors"
+    }
+    else {
+        Write-Information "  │ Collectors active: $startedCollectors" -InformationAction Continue
+    }
 
     # Allow collectors to stabilise
     Start-Sleep -Seconds 2
@@ -135,7 +140,7 @@ try {
         -Handles $startResult.Handles
 
     if (-not $stopResult.Success) {
-        throw "Diagnostic measurement failed: one or more collectors failed to stop cleanly."
+        Write-Warning "  │ Some collectors failed to stop cleanly — continuing with available data"
     }
 
     # ── Step 7: Export collector data ────────────────────────────────────────
@@ -148,7 +153,7 @@ try {
         -ProcessName $apiProcessName
 
     if (-not $exportResult.Success) {
-        throw "Diagnostic measurement failed: one or more collectors failed to export data."
+        Write-Warning "  │ Some collectors failed to export data — continuing with available data"
     }
 
     $collectorData = $exportResult.CollectorData
