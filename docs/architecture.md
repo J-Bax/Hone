@@ -23,79 +23,65 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 Each experiment is a self-contained cycle of 5 phases:
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph MEASURE["📊 1. Measure"]
-        M1["Use reference metrics<br/>(baseline or previous experiment)"]
+        direction TB
+        M1["Reference metrics<br/>(baseline or prev experiment)"]
     end
 
     subgraph ANALYZE["🧠 2. Analyze"]
-        AQ{"Optimization<br/>queue empty?"}
-        AQ -->|No| ASKIP["Pick next item<br/>from queue"]
-        AQ -->|Yes| ADIAG
-
-        subgraph DIAG["Diagnostic Profiling"]
-            ADIAG["Start API + PerfView collectors"]
-            ADIAG --> AK6["Run k6 load test<br/>(single pass, with profiling overhead)"]
-            AK6 --> ASTOP["Stop collectors → export data"]
-            ASTOP --> ACPU["🤖 CPU Profiler agent<br/>→ hotspot report"]
-            ASTOP --> AMEM["🤖 Memory Profiler agent<br/>→ GC/allocation report"]
-        end
-
-        ACPU --> AANALYST
-        AMEM --> AANALYST
-        AANALYST["🤖 Analyst agent<br/>(metrics + source code + profiling reports)<br/>→ 1-3 ranked optimizations → queue"]
-        AANALYST --> ASKIP
+        direction TB
+        A1["PerfView diagnostic profiling<br/>(CPU stacks, GC, allocations)"]
+        A1 --> A2["CPU Profiler + Memory Profiler<br/>agents → hotspot reports"]
+        A2 --> A3["Analyst agent<br/>→ optimization queue"]
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        E1["🤖 Classifier agent<br/>(narrow vs. architecture)"]
-        E1 -->|narrow| E2["🤖 Fixer agent<br/>→ generate optimized code"]
-        E2 --> E3["Apply fix + dotnet build"]
+        direction TB
+        E1["Classifier agent<br/>(scope check)"]
+        E1 --> E2["Fixer agent<br/>(code generation)"]
+        E2 --> E3["Apply + build"]
     end
 
     subgraph VERIFY["✅ 4. Verify"]
-        V1["dotnet test<br/>(E2E regression gate)"]
-        V1 --> V2["Start API<br/>(no profiling tools)"]
-        V2 --> V3["k6 load test<br/>(median of 5 runs)"]
-        V3 --> V4["Compare metrics<br/>→ accept / reject / stale"]
+        direction TB
+        V1["E2E tests"]
+        V1 --> V2["k6 load test<br/>(median of 5, no profiling)"]
+        V2 --> V3["Accept / reject"]
     end
 
     subgraph PUBLISH["📦 5. Publish"]
-        P1{"Improved?"}
-        P1 -->|Yes| P2["Push branch + create PR"]
-        P1 -->|No| P3["Revert code change"]
+        direction TB
+        P1["PR or revert"]
     end
 
     MEASURE --> ANALYZE --> EXPERIMENT --> VERIFY --> PUBLISH
-    PUBLISH -.->|"next experiment"| MEASURE
 
     style MEASURE fill:#f5a623,color:#fff
     style ANALYZE fill:#9b59b6,color:#fff
-    style DIAG fill:#7d3c98,color:#fff
     style EXPERIMENT fill:#e74c3c,color:#fff
     style VERIFY fill:#50c878,color:#fff
     style PUBLISH fill:#4a90d9,color:#fff
 ```
 
-### Key Design: Two Separate Measurement Passes
+### Two Separate Measurement Passes
 
-The diagram above shows two distinct k6 runs that serve different purposes:
+Phases 2 and 4 each run k6 load tests, but for different purposes:
 
-| | Diagnostic Measurement (Phase 2) | Evaluation Measurement (Phase 4) |
+| | Diagnostic (Phase 2) | Evaluation (Phase 4) |
 |---|---|---|
-| **Purpose** | Deep profiling data for analysis | Fair benchmarking for accept/reject |
-| **When** | Only when optimization queue is empty | Every experiment |
-| **k6 runs** | 1 (accuracy less important) | 5 (median selected) |
-| **PerfView** | ✅ Active (CPU stacks, GC events, allocation sampling) | ❌ Not running |
-| **dotnet-counters** | Optional (via plugin) | ✅ Active (lightweight) |
-| **Overhead** | 5–15% latency impact from profiling | Minimal (~1%) |
-| **Numbers used for** | AI analysis input only | Accept/reject decisions |
+| **Purpose** | Deep profiling for AI analysis | Fair benchmarking for accept/reject |
+| **Runs when** | Optimization queue is empty | Every experiment |
+| **k6 passes** | 1 | 5 (median selected) |
+| **PerfView** | ✅ CPU stacks, GC events, allocations | ❌ Off |
+| **Overhead** | 5–15% (acceptable — numbers discarded) | ~1% (dotnet-counters only) |
+| **Output used for** | Analyst agent context | Accept/reject decision |
 
-This separation ensures that profiling overhead never biases the metrics used to judge whether an optimization helped.
+This separation ensures profiling overhead never biases the metrics used to judge whether an optimization helped.
 
 ### Queue-Driven Analysis
 
-The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics and diagnostic profiling data.
+The analysis pipeline (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis pipeline runs again with fresh metrics and profiling data.
 
 ## Decision Logic
 
