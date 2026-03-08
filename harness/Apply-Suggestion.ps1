@@ -59,7 +59,7 @@ $submoduleDir = Join-Path $repoRoot 'sample-api'
 $submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'fix' -Level 'info' `
+    -Phase 'experiment' -Level 'info' `
     -Message "Applying fix on branch: $branchName — $Description" `
     -Experiment $Experiment `
     -Data @{ file = $FilePath; branch = $branchName }
@@ -109,7 +109,7 @@ try {
     git commit -m "hone(experiment-$Experiment): $Description" 2>&1 | Out-Null
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'fix' -Level 'info' `
+        -Phase 'experiment' -Level 'info' `
         -Message "Fix committed on branch: $branchName" `
         -Experiment $Experiment
 
@@ -129,7 +129,7 @@ catch {
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'fix' -Level 'error' `
+        -Phase 'experiment' -Level 'error' `
         -Message "Failed to apply fix: $_" `
         -Experiment $Experiment
 }

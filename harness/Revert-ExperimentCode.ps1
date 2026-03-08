@@ -62,7 +62,7 @@ $submoduleDir = Join-Path $repoRoot 'sample-api'
 $submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'fix' -Level 'info' `
+    -Phase 'publish' -Level 'info' `
     -Message "Reverting code change on branch: $BranchName ($Outcome)" `
     -Experiment $Experiment `
     -Data @{ file = $FilePath; branch = $BranchName; outcome = $Outcome }
@@ -111,13 +111,13 @@ try {
         Write-Warning "Failed to push branch '$BranchName' to origin (exit code $LASTEXITCODE) — revert is local only"
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'fix' -Level 'warning' `
+            -Phase 'publish' -Level 'warning' `
             -Message "git push failed for revert branch: $BranchName (exit code $LASTEXITCODE)" `
             -Experiment $Experiment
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'fix' -Level 'info' `
+        -Phase 'publish' -Level 'info' `
         -Message "Revert committed and pushed on branch: $BranchName" `
         -Experiment $Experiment
 
@@ -137,7 +137,7 @@ catch {
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'fix' -Level 'error' `
+        -Phase 'publish' -Level 'error' `
         -Message "Failed to revert experiment code: $_" `
         -Experiment $Experiment
 }

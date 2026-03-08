@@ -4,14 +4,12 @@
 
 .DESCRIPTION
     Orchestrates the full iterative optimization cycle. Each experiment is
-    a self-contained optimization cycle:
-    1. Analyze with Copilot to identify the next optimization
-    2. Apply the suggested code change locally
-    3. Build the target API with the fix applied
-    4. Verify correctness with E2E tests
-    5. Start the API and measure performance with k6
-    6. Compare results against baseline — confirm improvement
-    7. If validated: push branch + create PR; if not: revert + continue
+    a self-contained cycle of 5 phases:
+    1. Measure  — establish current performance metrics
+    2. Analyze  — identify the next optimization with Copilot
+    3. Experiment — apply the suggested fix and build
+    4. Verify   — run E2E tests, stress-test, and accept/reject
+    5. Publish  — push branch + create PR (or revert on failure)
 
     Supports two modes:
     - Stacked diffs (default): experiments form a linear branch chain.
@@ -257,13 +255,26 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' -Message "Starting experiment $experiment" -Experiment $experiment
 
-    # ── Phase 1: Analyze ───────────────────────────────────────────────────
-    Write-Information '[1/7] Analyzing with Copilot...' -InformationAction Continue
+    # ── Phase 1: Measure ──────────────────────────────────────────────────
+    Write-Information '[1/5] 📊 Measuring (current state)...' -InformationAction Continue
 
     # For experiment 1, use baseline as current (no prior fix to measure).
-    # For experiment 2+, use the metrics from the previous experiment's post-fix measurement.
+    # For experiment 2+, use the metrics from the previous experiment's Verify phase.
     $metricsForAnalysis = if ($previousMetrics) { $previousMetrics } else { $baselineMetrics }
     $countersForAnalysis = if ($previousCounterMetrics) { $previousCounterMetrics } else { $null }
+
+    $refP95 = $metricsForAnalysis.HttpReqDuration.P95
+    $refRps = [math]::Round($metricsForAnalysis.HttpReqs.Rate, 1)
+    $refLabel = if ($previousMetrics) { "experiment $($experiment - 1)" } else { 'baseline' }
+    Write-Information "  Reference: p95=${refP95}ms, RPS=${refRps} (from $refLabel)" -InformationAction Continue
+
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+        -Phase 'measure' -Level 'info' `
+        -Message "Reference metrics from ${refLabel}: p95=${refP95}ms, RPS=${refRps}" `
+        -Experiment $experiment
+
+    # ── Phase 2: Analyze ──────────────────────────────────────────────────
+    Write-Information '[2/5] 🧠 Analyzing...' -InformationAction Continue
 
     # Build a comparison object for the analysis prompt.
     $comparisonForAnalysis = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
@@ -342,7 +353,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'fix' -Level 'info' `
+            -Phase 'analyze' -Level 'info' `
             -Message "Architecture change queued (not applied): $(Limit-String $analysisResult.Explanation 100)" `
             -Experiment $experiment
 
@@ -376,8 +387,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         continue
     }
 
-    # ── Phase 2: Fix (generate + apply locally, defer PR) ──────────────────
-    Write-Information '[2/7] Generating fix...' -InformationAction Continue
+    # ── Phase 3: Experiment (fix + build) ──────────────────────────────────
+    Write-Information '[3/5] 🧪 Experimenting (fix + build)...' -InformationAction Continue
 
     # ── Sub-agent 3: Fix ───────────────────────────────────────────────────
     $fixResult = & (Join-Path $PSScriptRoot 'Invoke-FixAgent.ps1') `
@@ -429,8 +440,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
 
     Write-Information "  ✓ Fix committed locally on branch: $($applyResult.BranchName)" -InformationAction Continue
 
-    # ── Phase 3: Build ──────────────────────────────────────────────────────
-    Write-Information '[3/7] Building...' -InformationAction Continue
+    # Build the project with the fix applied
+    Write-Information '  Building...' -InformationAction Continue
     $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
 
     if (-not $buildResult.Success) {
@@ -478,8 +489,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         }
     }
 
-    # ── Phase 4: Verify (E2E Tests) ────────────────────────────────────────
-    Write-Information '[4/7] Verifying (E2E tests)...' -InformationAction Continue
+    # ── Phase 4: Verify (tests + measure + compare) ──────────────────────
+    Write-Information '[4/5] ✅ Verifying...' -InformationAction Continue
     $testResult = & (Join-Path $PSScriptRoot 'Invoke-E2ETests.ps1') `
         -ConfigPath $ConfigPath -Experiment $experiment
 
@@ -528,8 +539,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         }
     }
 
-    # ── Phase 5: Measure (Scale Tests) ─────────────────────────────────────
-    Write-Information '[5/7] Measuring (k6 scale tests)...' -InformationAction Continue
+    # Stress-test the optimized API
+    Write-Information '  Measuring (k6 scale tests)...' -InformationAction Continue
 
     # Reset database so every experiment starts with identical seed data
     & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment $experiment
@@ -658,8 +669,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         $bestExperiment = $experiment
     }
 
-    # ── Phase 6: Compare ───────────────────────────────────────────────────
-    Write-Information '[6/7] Comparing results...' -InformationAction Continue
+    # Compare post-fix metrics against reference
+    Write-Information '  Comparing results...' -InformationAction Continue
 
     $comparison = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
         -CurrentMetrics $currentMetrics `
@@ -695,7 +706,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             $ed.WorkingSet.Current, $ed.WorkingSet.ChangePct) -InformationAction Continue
     }
 
-    # ── Phase 7: Publish or Rollback ───────────────────────────────────────
+    # ── Phase 5: Publish ──────────────────────────────────────────────────
     $experimentOutcome = 'stale'
 
     if ($comparison.Regression) {
@@ -758,7 +769,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             Write-Information '  ↑ Improvement detected — publishing' -InformationAction Continue
         }
 
-        Write-Information '[7/7] Publishing (push + PR)...' -InformationAction Continue
+        Write-Information '[5/5] 📦 Publishing (push + PR)...' -InformationAction Continue
 
         # Update metadata BEFORE the amend so entries appear in the commit
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
@@ -805,7 +816,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         git push -u origin $branchName 2>&1 | Out-Null
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'fix' -Level 'info' `
+            -Phase 'publish' -Level 'info' `
             -Message "Branch pushed to origin: $branchName" `
             -Experiment $experiment
 
@@ -907,7 +918,7 @@ $scenarioBreakdown
             $prNumber = ($prUrl -split '/')[-1]
 
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                -Phase 'fix' -Level 'info' `
+                -Phase 'publish' -Level 'info' `
                 -Message "Pull request created: $prUrl" `
                 -Experiment $experiment `
                 -Data @{ prUrl = "$prUrl"; prNumber = $prNumber; baseBranch = $prBaseBranch }
@@ -944,7 +955,7 @@ $scenarioBreakdown
                     Write-Information "  ✓ PR #$prNumber merged — continuing loop" -InformationAction Continue
 
                     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                        -Phase 'fix' -Level 'info' `
+                        -Phase 'publish' -Level 'info' `
                         -Message "PR #$prNumber merged at $($prState.mergedAt)" `
                         -Experiment $experiment
 
@@ -961,7 +972,7 @@ $scenarioBreakdown
                     Write-Warning "  PR #$prNumber was closed without merging — stopping loop"
 
                     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                        -Phase 'fix' -Level 'warning' `
+                        -Phase 'publish' -Level 'warning' `
                         -Message "PR #$prNumber closed without merge" `
                         -Experiment $experiment
 

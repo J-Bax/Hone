@@ -21,7 +21,7 @@ graph LR
 
 ## How It Works
 
-- Hone runs an **iterative optimization loop**: Analyze → Experiment → Verify → Measure → Publish
+- Hone runs an **iterative optimization loop**: Measure → Analyze → Experiment → Verify → Publish
 - A **three-agent AI pipeline** drives each experiment:
   - **Analyst** — examines performance metrics and source code to identify the highest-impact optimization
   - **Classifier** — determines whether the proposed change is narrow (single-file) or architectural (multi-file)

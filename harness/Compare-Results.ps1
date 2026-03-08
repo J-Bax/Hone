@@ -62,7 +62,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 $tolerances = $config.Tolerances
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'compare' -Level 'info' -Message 'Comparing performance metrics (relative mode)' `
+    -Phase 'verify' -Level 'info' -Message 'Comparing performance metrics (relative mode)' `
     -Experiment $Experiment
 
 # Use baseline as reference when there is no previous experiment
@@ -207,13 +207,13 @@ if ($RunMetrics -and $RunMetrics.Count -gt 1) {
         "stddev: $([math]::Round($stdDev, 1))ms ($($p95Values.Count) runs)"
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level $cvLevel -Message $cvMessage `
+        -Phase 'verify' -Level $cvLevel -Message $cvMessage `
         -Experiment $Experiment `
         -Data @{ cv = [math]::Round($cv * 100, 1); stdDev = [math]::Round($stdDev, 2); runs = $p95Values.Count }
 
     if ($cv -gt 0.10) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'compare' -Level 'warning' `
+            -Phase 'verify' -Level 'warning' `
             -Message "High measurement variance (CV > 10%) — comparison results may be unreliable" `
             -Experiment $Experiment
     }
@@ -295,20 +295,20 @@ $logMessage = "vs baseline: ${improvementPct}% | " +
 $level = if ($anyRegressed) { 'warning' } elseif ($anyImproved) { 'info' } else { 'info' }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'compare' -Level $level -Message $logMessage `
+    -Phase 'verify' -Level $level -Message $logMessage `
     -Experiment $Experiment `
     -Data @{ improvement = $improvementPct; improved = ($anyImproved -or $tiebreakerUsed); regression = $anyRegressed; efficiencyImproved = $efficiencyImproved; tiebreakerUsed = $tiebreakerUsed }
 
 if ($anyRegressed) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level 'warning' `
+        -Phase 'verify' -Level 'warning' `
         -Message "REGRESSION DETECTED: $($regressionDetails -join '; ')" `
         -Experiment $Experiment
 }
 
 if ($anyImproved) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level 'info' -Message 'Improvement detected in at least one metric' `
+        -Phase 'verify' -Level 'info' -Message 'Improvement detected in at least one metric' `
         -Experiment $Experiment
 }
 elseif ($tiebreakerUsed) {
@@ -316,13 +316,13 @@ elseif ($tiebreakerUsed) {
     if ($cpuImproved) { $tbDetails += "CPU avg reduced by $([math]::Round([math]::Abs($cpuChange) * 100, 1))%" }
     if ($workingSetImproved) { $tbDetails += "Working set reduced by $([math]::Round([math]::Abs($wsChange) * 100, 1))%" }
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level 'info' `
+        -Phase 'verify' -Level 'info' `
         -Message "Efficiency tiebreaker: $($tbDetails -join '; ')" `
         -Experiment $Experiment
 }
 elseif (-not $anyRegressed) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level 'info' -Message 'No meaningful change in any metric (stale experiment)' `
+        -Phase 'verify' -Level 'info' -Message 'No meaningful change in any metric (stale experiment)' `
         -Experiment $Experiment
 }
 

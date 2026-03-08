@@ -8,7 +8,7 @@
     phase, level, message, and optional data payload.
 
 .PARAMETER Phase
-    The current agentic loop phase (build, verify, measure, compare, analyze, fix).
+    The current experiment phase (measure, analyze, experiment, verify, publish).
 
 .PARAMETER Level
     Log level: verbose, info, warning, error.
@@ -28,7 +28,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('build', 'verify', 'measure', 'compare', 'analyze', 'fix', 'loop', 'baseline', 'counters', 'metadata')]
+    [ValidateSet('measure', 'analyze', 'experiment', 'verify', 'publish', 'loop', 'baseline', 'counters', 'metadata')]
     [string]$Phase,
 
     [Parameter(Mandatory)]

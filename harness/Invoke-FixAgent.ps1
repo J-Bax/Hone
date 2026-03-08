@@ -41,7 +41,7 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'fix' -Level 'info' -Message "Calling fix agent for: $FilePath" `
+    -Phase 'experiment' -Level 'info' -Message "Calling fix agent for: $FilePath" `
     -Experiment $Experiment
 
 # ── Build the prompt ────────────────────────────────────────────────────────
@@ -98,12 +98,12 @@ try {
 
     if ($codeBlock) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'fix' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
+            -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
             -Experiment $Experiment
     }
     else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'fix' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
+            -Phase 'experiment' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
             -Experiment $Experiment
     }
 }
@@ -116,7 +116,7 @@ catch {
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'fix' -Level 'warning' -Message "Fix agent failed: $_" `
+        -Phase 'experiment' -Level 'warning' -Message "Fix agent failed: $_" `
         -Experiment $Experiment
 }
 
