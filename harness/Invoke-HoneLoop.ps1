@@ -5,11 +5,16 @@
 .DESCRIPTION
     Orchestrates the full iterative optimization cycle. Each experiment is
     a self-contained cycle of 5 phases:
-    1. Measure  — establish current performance metrics
-    2. Analyze  — identify the next optimization with Copilot
-    3. Experiment — apply the suggested fix and build
-    4. Verify   — run E2E tests, stress-test, and accept/reject
-    5. Publish  — push branch + create PR (or revert on failure)
+    1. Measure    — establish current performance metrics
+    2. Analyze    — populate the optimization queue (only when empty)
+    3. Experiment — pick from queue, apply fix, and build
+    4. Verify     — run E2E tests, stress-test, and accept/reject
+    5. Publish    — push branch + create PR (or revert on failure)
+
+    Analysis is queue-driven: the analysis agent runs only when the
+    optimization queue has no actionable items. It produces 3-5 ranked
+    ideas that populate the queue. Subsequent experiments pick from the
+    queue until it is drained, then analysis runs again with fresh metrics.
 
     Supports two modes:
     - Stacked diffs (default): experiments form a linear branch chain.
@@ -273,10 +278,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         -Message "Reference metrics from ${refLabel}: p95=${refP95}ms, RPS=${refRps}" `
         -Experiment $experiment
 
-    # ── Phase 2: Analyze ──────────────────────────────────────────────────
-    Write-Information '[2/5] 🧠 Analyzing...' -InformationAction Continue
-
-    # Build a comparison object for the analysis prompt.
+    # ── Phase 2: Analyze (conditional — only when queue is empty) ────────
+    # Build a comparison object (needed for both analysis prompts and RCA).
     $comparisonForAnalysis = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
         -CurrentMetrics $metricsForAnalysis `
         -BaselineMetrics $baselineMetrics `
@@ -286,27 +289,66 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         -ConfigPath $ConfigPath `
         -Experiment $experiment
 
-    # ── Sub-agent 1: Analysis ──────────────────────────────────────────────
-    $analysisResult = & (Join-Path $PSScriptRoot 'Invoke-AnalysisAgent.ps1') `
-        -CurrentMetrics $metricsForAnalysis `
-        -BaselineMetrics $baselineMetrics `
-        -ComparisonResult $comparisonForAnalysis `
-        -CounterMetrics $countersForAnalysis `
-        -Experiment $experiment `
-        -ConfigPath $ConfigPath `
-        -PreviousRcaExplanation $previousRcaExplanation
+    $hasQueue = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+        -Action 'HasActionable' -ConfigPath $ConfigPath
 
-    $rcaResult = $null
-    $applyResult = $null
-    $branchName = "$($config.Loop.BranchPrefix)-$experiment"
-    $applySuccess = $false
-    $skipExperiment = $false
+    if (-not $hasQueue) {
+        Write-Information '[2/5] 🧠 Analyzing (queue empty — running analysis)...' -InformationAction Continue
 
-    if (-not $analysisResult.Success) {
-        Write-Warning '  Analysis agent failed — skipping experiment'
+        $rawAnalysis = & (Join-Path $PSScriptRoot 'Invoke-AnalysisAgent.ps1') `
+            -CurrentMetrics $metricsForAnalysis `
+            -BaselineMetrics $baselineMetrics `
+            -ComparisonResult $comparisonForAnalysis `
+            -CounterMetrics $countersForAnalysis `
+            -Experiment $experiment `
+            -ConfigPath $ConfigPath `
+            -PreviousRcaExplanation $previousRcaExplanation
+
+        if (-not $rawAnalysis.Success) {
+            Write-Warning '  Analysis agent failed — skipping experiment'
+            $staleCount++
+            if ($stackedDiffs) { $consecutiveFailures++ }
+            if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
+                $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
+                Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
+                break
+            }
+            continue
+        }
+
+        Write-Information "  Analysis complete: $(@($rawAnalysis.Opportunities).Count) opportunities found" -InformationAction Continue
+        if ($rawAnalysis.ResponsePath) {
+            Write-Information "  Response saved to: $($rawAnalysis.ResponsePath)" -InformationAction Continue
+        }
+
+        # Populate the optimization queue from analysis results
+        $initResult = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'Init' `
+            -Opportunities $rawAnalysis.Opportunities `
+            -Experiment $experiment `
+            -ConfigPath $ConfigPath
+
+        if (-not $initResult.Success) {
+            Write-Warning '  Failed to initialize optimization queue — skipping experiment'
+            $staleCount++
+            if ($stackedDiffs) { $consecutiveFailures++ }
+            continue
+        }
+
+        Write-Information "  Queue initialized with $($initResult.Count) items" -InformationAction Continue
+    }
+    else {
+        Write-Information '[2/5] 🧠 Analyzing... (queue has items — skipping analysis)' -InformationAction Continue
+    }
+
+    # Pick the next actionable item from the queue
+    $currentItem = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+        -Action 'GetNext' -Experiment $experiment -ConfigPath $ConfigPath
+
+    if (-not $currentItem) {
+        Write-Warning '  No actionable items in queue — skipping experiment'
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
-        $maxFailures = if ($stackedDiffs) { $maxConsecutiveFailures } else { $tolerances.StaleExperimentsBeforeStop }
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
             Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
@@ -315,10 +357,24 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         continue
     }
 
-    Write-Information "  Analysis: $($analysisResult.FilePath)" -InformationAction Continue
-    Write-Information "  Response saved to: $($analysisResult.ResponsePath)" -InformationAction Continue
+    # Build analysisResult-compatible object from queue item so downstream code is unchanged
+    $analysisResult = [PSCustomObject]@{
+        Success      = $true
+        FilePath     = $currentItem.filePath
+        Explanation  = $currentItem.explanation
+        ResponsePath = $null
+    }
+    $queueItemId = $currentItem.id
 
-    # ── Sub-agent 2: Classification ────────────────────────────────────────
+    $rcaResult = $null
+    $applyResult = $null
+    $branchName = "$($config.Loop.BranchPrefix)-$experiment"
+    $applySuccess = $false
+    $skipExperiment = $false
+
+    Write-Information "  Queue item #$($currentItem.id): $($currentItem.filePath)" -InformationAction Continue
+
+    # ── Classification ────────────────────────────────────────────────────
     $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
         -FilePath $analysisResult.FilePath `
         -Explanation $analysisResult.Explanation `
@@ -328,7 +384,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
     $changeScope = $classificationResult.Scope
     Write-Information "  Classification: $changeScope — $($classificationResult.Reasoning)" -InformationAction Continue
 
-    # Generate root cause analysis document (structured data, no regex)
+    # Generate root cause analysis document
     $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
         -FilePath $analysisResult.FilePath `
         -Explanation $analysisResult.Explanation `
@@ -344,27 +400,23 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
     }
 
-    # Always log the analysis to optimization-log.md
     $isArchitecture = ($changeScope -eq 'architecture')
 
     if ($isArchitecture) {
-        Write-Information '  ⚠ Architecture-level change detected — queuing for manual review' -InformationAction Continue
+        Write-Information '  ⚠ Architecture-level change detected — skipping' -InformationAction Continue
         Write-Information "    Scope: $changeScope | File: $($analysisResult.FilePath)" -InformationAction Continue
-        Write-Information '    Add [APPROVED] tag in optimization-queue.md to enable implementation.' -InformationAction Continue
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'analyze' -Level 'info' `
-            -Message "Architecture change queued (not applied): $(Limit-String $analysisResult.Explanation 100)" `
+            -Message "Architecture change skipped: $(Limit-String $analysisResult.Explanation 100)" `
             -Experiment $experiment
 
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddQueue' `
-            -Experiment $experiment `
-            -Opportunities @($analysisResult.Explanation) `
-            -Scopes @('architecture') `
+        # Mark queue item as skipped
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'skipped' `
             -ConfigPath $ConfigPath
 
-        # Log architecture changes to the optimization log too
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
             -Experiment $experiment `
@@ -468,6 +520,11 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
                 -Outcome 'regressed' `
                 -ConfigPath $ConfigPath
 
+            & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                -Action 'MarkDone' -ItemId $queueItemId `
+                -Experiment $experiment -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
             $currentBranch = $branchName
             $branchChain += $branchName
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'build_failure' }
@@ -516,6 +573,11 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
                 -Summary "Test failure: $($analysisResult.Explanation)" `
                 -FilePath $analysisResult.FilePath `
                 -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
+            & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                -Action 'MarkDone' -ItemId $queueItemId `
+                -Experiment $experiment -Outcome 'regressed' `
                 -ConfigPath $ConfigPath
 
             $currentBranch = $branchName
@@ -569,6 +631,11 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
                 -Summary "API start failure: $($analysisResult.Explanation)" `
                 -FilePath $analysisResult.FilePath `
                 -Outcome 'regressed' `
+                -ConfigPath $ConfigPath
+
+            & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                -Action 'MarkDone' -ItemId $queueItemId `
+                -Experiment $experiment -Outcome 'regressed' `
                 -ConfigPath $ConfigPath
 
             $currentBranch = $branchName
@@ -635,6 +702,11 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             -Summary "Scale test failure: $($analysisResult.Explanation)" `
             -FilePath $analysisResult.FilePath `
             -Outcome 'regressed' `
+            -ConfigPath $ConfigPath
+
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'regressed' `
             -ConfigPath $ConfigPath
 
         $currentBranch = $branchName
@@ -722,6 +794,12 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             -Outcome 'regressed' `
             -ConfigPath $ConfigPath
 
+        # Mark queue item as done
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'regressed' `
+            -ConfigPath $ConfigPath
+
         if ($stackedDiffs) {
             Write-Warning "  Reverting code change, preserving artifacts"
 
@@ -780,21 +858,11 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             -Outcome 'improved' `
             -ConfigPath $ConfigPath
 
-        if ($analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
-            $oppDescriptions = @($analysisResult.AdditionalOpportunities | ForEach-Object { $_.description })
-            $oppScopes = @($analysisResult.AdditionalOpportunities | ForEach-Object {
-                if ($_.scope -eq 'architecture') { 'architecture' } else { 'narrow' }
-            })
-
-            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-                -Action 'AddQueue' `
-                -Experiment $experiment `
-                -Opportunities $oppDescriptions `
-                -Scopes $oppScopes `
-                -ConfigPath $ConfigPath
-
-            Write-Information "  Queued $($oppDescriptions.Count) additional optimization opportunities" -InformationAction Continue
-        }
+        # Mark queue item as done
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'improved' `
+            -ConfigPath $ConfigPath
 
         # Amend the commit to include post-fix artifacts (k6 summaries, comparison data)
         Push-Location (Join-Path $repoRoot 'sample-api')
@@ -1013,6 +1081,12 @@ $scenarioBreakdown
             -Outcome 'stale' `
             -ConfigPath $ConfigPath
 
+        # Mark queue item as done
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'stale' `
+            -ConfigPath $ConfigPath
+
         if ($stackedDiffs) {
             Write-Information "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)" -InformationAction Continue
 
@@ -1049,24 +1123,6 @@ $scenarioBreakdown
                 break
             }
         }
-    }
-
-    # Queue additional opportunities for non-improved outcomes (improved queues before its amend commit)
-    if ($experimentOutcome -ne 'improved' -and $analysisResult.AdditionalOpportunities -and $analysisResult.AdditionalOpportunities.Count -gt 0) {
-        # Analysis agent returns JSON objects with .description and .scope fields
-        $oppDescriptions = @($analysisResult.AdditionalOpportunities | ForEach-Object { $_.description })
-        $oppScopes = @($analysisResult.AdditionalOpportunities | ForEach-Object {
-            if ($_.scope -eq 'architecture') { 'architecture' } else { 'narrow' }
-        })
-
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddQueue' `
-            -Experiment $experiment `
-            -Opportunities $oppDescriptions `
-            -Scopes $oppScopes `
-            -ConfigPath $ConfigPath
-
-        Write-Information "  Queued $($oppDescriptions.Count) additional optimization opportunities" -InformationAction Continue
     }
 
     # Only update metrics reference on successful experiments.

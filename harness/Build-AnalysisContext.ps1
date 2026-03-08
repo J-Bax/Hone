@@ -66,17 +66,37 @@ if ($CounterMetrics) {
 # ── Optimization history context ─────────────────────────────────────────────
 $historyContext = ''
 $metadataDir = Join-Path $RepoRoot $Config.Api.MetadataPath
-$logPath   = Join-Path $metadataDir 'optimization-log.md'
-$queuePath = Join-Path $metadataDir 'optimization-queue.md'
+$logPath      = Join-Path $metadataDir 'optimization-log.md'
+$queueJsonPath = Join-Path $metadataDir 'optimization-queue.json'
+$queueMdPath  = Join-Path $metadataDir 'optimization-queue.md'
 
 if (Test-Path $logPath) {
     $logContent = Get-Content $logPath -Raw
     $historyContext += "`n## Previously Tried Optimizations`n$logContent`n"
 }
-if (Test-Path $queuePath) {
-    $queueContent = Get-Content $queuePath -Raw
+
+# Prefer structured JSON queue if available; fall back to markdown
+if (Test-Path $queueJsonPath) {
+    $queueJson = Get-Content $queueJsonPath -Raw | ConvertFrom-Json
+    $pendingItems = @($queueJson.items | Where-Object { $_.status -eq 'pending' })
+    $doneItems    = @($queueJson.items | Where-Object { $_.status -eq 'done' })
+    if ($pendingItems.Count -gt 0 -or $doneItems.Count -gt 0) {
+        $queueLines = @()
+        foreach ($item in $doneItems) {
+            $queueLines += "- [TRIED] ``$($item.filePath)`` — $($item.explanation) *(experiment $($item.triedByExperiment) — $($item.outcome))*"
+        }
+        foreach ($item in $pendingItems) {
+            $scopeTag = if ($item.scope -eq 'architecture') { '[ARCHITECTURE] ' } else { '' }
+            $queueLines += "- [PENDING] ${scopeTag}``$($item.filePath)`` — $($item.explanation)"
+        }
+        $historyContext += "`n## Known Optimization Queue`n$($queueLines -join "`n")`n"
+    }
+}
+elseif (Test-Path $queueMdPath) {
+    $queueContent = Get-Content $queueMdPath -Raw
     $historyContext += "`n## Known Optimization Queue`n$queueContent`n"
 }
+
 if ($PreviousRcaExplanation) {
     $historyContext += "`n## Last Experiment's Fix`n$PreviousRcaExplanation`n"
 }

@@ -26,21 +26,23 @@ Each experiment is a self-contained cycle of 5 phases:
 flowchart TD
     subgraph MEASURE["📊 1. Measure"]
         direction TB
-        M1["Stress tests (k6)"]
+        M1["Reference metrics"]
         M1 -.-> M2["API metrics (p95, RPS)"]
         M1 -.-> M3["Efficiency (CPU, memory)"]
     end
 
-    subgraph ANALYZE["🧠 2. Analyze"]
+    subgraph ANALYZE["🧠 2. Analyze (conditional)"]
         direction TB
-        A1["Metrics + source code"]
+        A0{"Queue empty?"}
+        A0 -->|Yes| A1["Metrics + source code"]
         A1 --> A2["Identify bottlenecks"]
-        A2 --> A3["Propose optimization"]
+        A2 --> A3["Propose 3-5 optimizations → queue"]
+        A0 -->|No| A4["Skip analysis"]
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
         direction LR
-        E1["Pick optimization"] --> E2["Implement"]
+        E1["Pick from queue"] --> E2["Classify scope"] --> E3["Implement + build"]
     end
 
     subgraph VERIFY["✅ 4. Verify"]
@@ -61,6 +63,12 @@ flowchart TD
     style VERIFY fill:#50c878,color:#fff
     style PUBLISH fill:#4a90d9,color:#fff
 ```
+
+### Queue-Driven Analysis
+
+The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 3-5 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics.
+
+This design is efficient (analysis is the most expensive AI call) and ensures the loop doesn't re-analyze the entire codebase before every single code change.
 
 ## Decision Logic
 

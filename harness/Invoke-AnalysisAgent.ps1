@@ -74,7 +74,7 @@ $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) {
 $fileList = ($sourceFilePaths | ForEach-Object { "- $_" }) -join "`n"
 
 $prompt = @"
-Analyze this Web API's performance and identify the single highest-impact optimization.
+Analyze this Web API's performance and identify the top 3-5 optimization opportunities, ranked by expected impact.
 
 ## Current Performance (Experiment $Experiment)
 - p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
@@ -138,33 +138,69 @@ try {
     }
     $parsed = $jsonText | ConvertFrom-Json
 
-    $result = [ordered]@{
-        Success                 = ($copilotExitCode -eq 0 -and $null -ne $parsed.filePath)
-        ExitCode                = $copilotExitCode
-        FilePath                = $parsed.filePath
-        Explanation             = $parsed.explanation
-        AdditionalOpportunities = $parsed.additionalOpportunities
-        Prompt                  = $prompt
-        Response                = $responseText
-        PromptPath              = $promptPath
-        ResponsePath            = $responsePath
+    # Support both new format ({opportunities: [...]}) and legacy ({filePath, explanation, additionalOpportunities}).
+    if ($parsed.opportunities) {
+        # New multi-opportunity format
+        $opportunities = @($parsed.opportunities)
+        $primaryOpp = $opportunities[0]
+        $result = [ordered]@{
+            Success       = ($copilotExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
+            ExitCode      = $copilotExitCode
+            FilePath      = $primaryOpp.filePath
+            Explanation   = $primaryOpp.explanation
+            Opportunities = $opportunities
+            Prompt        = $prompt
+            Response      = $responseText
+            PromptPath    = $promptPath
+            ResponsePath  = $responsePath
+        }
+    }
+    else {
+        # Legacy single-item format — convert to opportunities array for consistency
+        $legacyOpps = @([PSCustomObject]@{
+            filePath    = $parsed.filePath
+            explanation = $parsed.explanation
+            scope       = 'narrow'
+        })
+        if ($parsed.additionalOpportunities) {
+            foreach ($addl in $parsed.additionalOpportunities) {
+                $legacyOpps += [PSCustomObject]@{
+                    filePath    = if ($addl.filePath) { $addl.filePath } else { $parsed.filePath }
+                    explanation = if ($addl.description) { $addl.description } else { $addl.explanation }
+                    scope       = if ($addl.scope) { $addl.scope } else { 'narrow' }
+                }
+            }
+        }
+        $result = [ordered]@{
+            Success       = ($copilotExitCode -eq 0 -and $null -ne $parsed.filePath)
+            ExitCode      = $copilotExitCode
+            FilePath      = $parsed.filePath
+            Explanation   = $parsed.explanation
+            Opportunities = $legacyOpps
+            Prompt        = $prompt
+            Response      = $responseText
+            PromptPath    = $promptPath
+            ResponsePath  = $responsePath
+        }
     }
 
+    $oppCount = @($result.Opportunities).Count
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'analyze' -Level 'info' -Message "Analysis agent response received: $($parsed.filePath)" `
+        -Phase 'analyze' -Level 'info' `
+        -Message "Analysis agent returned $oppCount opportunities (primary: $($result.FilePath))" `
         -Experiment $Experiment
 }
 catch {
     $result = [ordered]@{
-        Success                 = $false
-        ExitCode                = -1
-        FilePath                = $null
-        Explanation             = $null
-        AdditionalOpportunities = @()
-        Prompt                  = $prompt
-        Response                = "Error: $_"
-        PromptPath              = $promptPath
-        ResponsePath            = $null
+        Success       = $false
+        ExitCode      = -1
+        FilePath      = $null
+        Explanation   = $null
+        Opportunities = @()
+        Prompt        = $prompt
+        Response      = "Error: $_"
+        PromptPath    = $promptPath
+        ResponsePath  = $null
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

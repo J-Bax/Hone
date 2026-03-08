@@ -1,5 +1,9 @@
 # Hone
 
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Hone logo" width="420" />
+</p>
+
 **Agentic performance optimization for web APIs.**
 
 Hone is a PowerShell-driven harness that automatically optimizes API performance through an iterative agentic loop. It measures with k6 load tests, analyzes bottlenecks with GitHub Copilot CLI, applies fixes, validates correctness, and repeats — producing a stack of reviewable PRs with measurable improvements.
