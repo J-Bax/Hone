@@ -4,7 +4,8 @@ description: >
   Performance analysis agent for the Hone optimization harness. Analyzes API
   performance metrics and source code to identify ranked optimization
   opportunities with detailed root-cause analysis. Returns structured JSON output only.
-tools: []
+tools:
+  - read
 ---
 
 # Hone Performance Analyst
