@@ -16,7 +16,7 @@ The config file is the single source of truth — every option includes comments
 
 ## Runtime Overrides
 
-`Invoke-HoneLoop.ps1` exposes two command-line parameters that take precedence over config file values:
+`Invoke-HoneLoop.ps1` exposes these command-line parameters that take precedence over config file values:
 
 ```powershell
 # Override max experiments
@@ -24,6 +24,11 @@ The config file is the single source of truth — every option includes comments
 
 # Use a different config file
 .\harness\Invoke-HoneLoop.ps1 -ConfigPath .\my-config.psd1
+
+# Dry-run mode: skip k6 scale tests, use synthetic metrics
+# AI agents, build, and E2E tests still run normally
+# PRs are created with a [DRY RUN] prefix
+.\harness\Invoke-HoneLoop.ps1 -DryRun -MaxExperiments 3
 ```
 
-These are the only CLI overrides. To change any other setting (tolerances, scale-test options, model selection, etc.), edit `config.psd1` directly.
+To change any other setting (tolerances, scale-test options, model selection, etc.), edit `config.psd1` directly.

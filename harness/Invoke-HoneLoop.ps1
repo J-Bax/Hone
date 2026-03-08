@@ -32,13 +32,22 @@
 .EXAMPLE
     .\Invoke-HoneLoop.ps1
 
+.PARAMETER DryRun
+    Skip slow operations (k6 scale tests, API start/stop, DB reset) and use
+    synthetic metrics. AI agents, build, and E2E tests still run normally.
+    PRs are created with a [DRY RUN] prefix.
+
 .EXAMPLE
     .\Invoke-HoneLoop.ps1 -MaxExperiments 10
+
+.EXAMPLE
+    .\Invoke-HoneLoop.ps1 -DryRun -MaxExperiments 3
 #>
 [CmdletBinding()]
 param(
     [int]$MaxExperiments,
-    [string]$ConfigPath
+    [string]$ConfigPath,
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,11 +115,17 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 }
 
 # ── Banner ──────────────────────────────────────────────────────────────────
+$bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
 Write-Information '' -InformationAction Continue
 Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-Write-Information '║               HONE — Agentic Optimizer              ║' -InformationAction Continue
+Write-Information "║  $($bannerTitle.PadLeft(40).PadRight(54))║" -InformationAction Continue
 Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
 Write-Information '' -InformationAction Continue
+if ($DryRun) {
+    Write-Information '  ⚡ DRY RUN: Skipping k6 scale tests, using synthetic metrics' -InformationAction Continue
+    Write-Information '             AI agents, build, and E2E tests run normally' -InformationAction Continue
+    Write-Information '' -InformationAction Continue
+}
 Write-Information "  Max experiments:       $maxExp" -InformationAction Continue
 Write-Information "  Min improvement:      $([math]::Round($tolerances.MinImprovementPct * 100, 1))% (any metric)" -InformationAction Continue
 Write-Information "  Max regression:       $([math]::Round($tolerances.MaxRegressionPct * 100, 1))% (per metric)" -InformationAction Continue
@@ -601,24 +616,131 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
         }
     }
 
-    # Stress-test the optimized API
-    Write-Information '  Measuring (k6 scale tests)...' -InformationAction Continue
+    # Stress-test the optimized API (or generate synthetic metrics in dry-run)
+    if ($DryRun) {
+        Write-Information '  Measuring... [DRY RUN] Using synthetic metrics' -InformationAction Continue
 
-    # Reset database so every experiment starts with identical seed data
-    & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment $experiment
+        # Generate synthetic metrics showing 5% improvement over reference
+        $syntheticMetrics = [PSCustomObject]@{
+            Timestamp       = Get-Date -Format 'o'
+            Experiment      = $experiment
+            HttpReqDuration = [PSCustomObject]@{
+                Avg = [math]::Round($metricsForAnalysis.HttpReqDuration.Avg * 0.95, 2)
+                P50 = [math]::Round($metricsForAnalysis.HttpReqDuration.P50 * 0.95, 2)
+                P90 = [math]::Round($metricsForAnalysis.HttpReqDuration.P90 * 0.95, 2)
+                P95 = [math]::Round($metricsForAnalysis.HttpReqDuration.P95 * 0.95, 2)
+                P99 = [math]::Round($metricsForAnalysis.HttpReqDuration.P99 * 0.95, 2)
+                Max = [math]::Round($metricsForAnalysis.HttpReqDuration.Max * 0.95, 2)
+            }
+            HttpReqs = [PSCustomObject]@{
+                Count = $metricsForAnalysis.HttpReqs.Count
+                Rate  = [math]::Round($metricsForAnalysis.HttpReqs.Rate * 1.05, 1)
+            }
+            HttpReqFailed = [PSCustomObject]@{
+                Count = 0
+                Rate  = 0
+            }
+        }
 
-    $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
+        $scaleResult = [PSCustomObject]@{
+            Success        = $true
+            Metrics        = $syntheticMetrics
+            CounterMetrics = $null
+            RunMetrics     = $null
+        }
+        $scenarioResults = @()
 
-    if (-not $apiResult.Success) {
-        if ($stackedDiffs) {
-            Write-Warning "API failed to start at experiment $experiment — reverting and continuing"
+        Write-Information "  Synthetic p95: $($syntheticMetrics.HttpReqDuration.P95)ms (5% improvement over reference)" -InformationAction Continue
+    }
+    else {
+        Write-Information '  Measuring (k6 scale tests)...' -InformationAction Continue
 
+        # Reset database so every experiment starts with identical seed data
+        & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment $experiment
+
+        $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
+
+        if (-not $apiResult.Success) {
+            if ($stackedDiffs) {
+                Write-Warning "API failed to start at experiment $experiment — reverting and continuing"
+
+                $revertResult = & (Join-Path $PSScriptRoot 'Revert-ExperimentCode.ps1') `
+                    -BranchName $branchName `
+                    -FilePath $targetFile `
+                    -Experiment $experiment `
+                    -Outcome 'regressed' `
+                    -Description 'API start failure' `
+                    -ConfigPath $ConfigPath
+
+                if (-not $revertResult.Success) {
+                    Write-Warning "  Revert failed: $($revertResult.Outcome)"
+                }
+
+                & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                    -Action 'AddTried' `
+                    -Experiment $experiment `
+                    -Summary "API start failure: $($analysisResult.Explanation)" `
+                    -FilePath $analysisResult.FilePath `
+                    -Outcome 'regressed' `
+                    -ConfigPath $ConfigPath
+
+                & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                    -Action 'MarkDone' -ItemId $queueItemId `
+                    -Experiment $experiment -Outcome 'regressed' `
+                    -ConfigPath $ConfigPath
+
+                $currentBranch = $branchName
+                $branchChain += $branchName
+                $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'api_start_failure' }
+                $consecutiveFailures++
+                $staleCount++
+
+                if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                    $exitReason = 'max_consecutive_failures'
+                    Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                    break
+                }
+                continue
+            }
+            else {
+                $exitReason = 'api_start_failure'
+                Write-Error "API failed to start at experiment $experiment. Aborting."
+                break
+            }
+        }
+
+        try {
+            $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
+                -ConfigPath $ConfigPath -Experiment $experiment
+
+            if (-not $scaleResult.Success) {
+                if (-not $stackedDiffs) {
+                    $exitReason = 'scale_test_failure'
+                    Write-Error "Scale tests failed at experiment $experiment. Aborting."
+                    break
+                }
+                # Stacked mode: flag for revert after API is stopped (below finally)
+                Write-Warning "Scale tests failed at experiment $experiment — will revert after cleanup"
+            }
+            else {
+                # Run additional (diagnostic) scenarios only on success
+                Write-Information '      Running additional scenarios...' -InformationAction Continue
+                $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
+                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary
+            }
+        }
+        finally {
+            & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
+        }
+
+        # Handle scale test failure in stacked mode (after API is stopped)
+        if ($stackedDiffs -and (-not $scaleResult.Success)) {
             $revertResult = & (Join-Path $PSScriptRoot 'Revert-ExperimentCode.ps1') `
                 -BranchName $branchName `
                 -FilePath $targetFile `
                 -Experiment $experiment `
                 -Outcome 'regressed' `
-                -Description 'API start failure' `
+                -Description 'Scale test failure' `
                 -ConfigPath $ConfigPath
 
             if (-not $revertResult.Success) {
@@ -628,7 +750,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
                 -Action 'AddTried' `
                 -Experiment $experiment `
-                -Summary "API start failure: $($analysisResult.Explanation)" `
+                -Summary "Scale test failure: $($analysisResult.Explanation)" `
                 -FilePath $analysisResult.FilePath `
                 -Outcome 'regressed' `
                 -ConfigPath $ConfigPath
@@ -640,7 +762,7 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
 
             $currentBranch = $branchName
             $branchChain += $branchName
-            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'api_start_failure' }
+            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'scale_test_failure' }
             $consecutiveFailures++
             $staleCount++
 
@@ -651,76 +773,6 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             }
             continue
         }
-        else {
-            $exitReason = 'api_start_failure'
-            Write-Error "API failed to start at experiment $experiment. Aborting."
-            break
-        }
-    }
-
-    try {
-        $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
-            -ConfigPath $ConfigPath -Experiment $experiment
-
-        if (-not $scaleResult.Success) {
-            if (-not $stackedDiffs) {
-                $exitReason = 'scale_test_failure'
-                Write-Error "Scale tests failed at experiment $experiment. Aborting."
-                break
-            }
-            # Stacked mode: flag for revert after API is stopped (below finally)
-            Write-Warning "Scale tests failed at experiment $experiment — will revert after cleanup"
-        }
-        else {
-            # Run additional (diagnostic) scenarios only on success
-            Write-Information '      Running additional scenarios...' -InformationAction Continue
-            $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-                -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary
-        }
-    }
-    finally {
-        & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
-    }
-
-    # Handle scale test failure in stacked mode (after API is stopped)
-    if ($stackedDiffs -and (-not $scaleResult.Success)) {
-        $revertResult = & (Join-Path $PSScriptRoot 'Revert-ExperimentCode.ps1') `
-            -BranchName $branchName `
-            -FilePath $targetFile `
-            -Experiment $experiment `
-            -Outcome 'regressed' `
-            -Description 'Scale test failure' `
-            -ConfigPath $ConfigPath
-
-        if (-not $revertResult.Success) {
-            Write-Warning "  Revert failed: $($revertResult.Outcome)"
-        }
-
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddTried' `
-            -Experiment $experiment `
-            -Summary "Scale test failure: $($analysisResult.Explanation)" `
-            -FilePath $analysisResult.FilePath `
-            -Outcome 'regressed' `
-            -ConfigPath $ConfigPath
-
-        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-            -Action 'MarkDone' -ItemId $queueItemId `
-            -Experiment $experiment -Outcome 'regressed' `
-            -ConfigPath $ConfigPath
-
-        $currentBranch = $branchName
-        $branchChain += $branchName
-        $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'scale_test_failure' }
-        $consecutiveFailures++
-        $staleCount++
-
-        if ($consecutiveFailures -ge $maxConsecutiveFailures) {
-            $exitReason = 'max_consecutive_failures'
-            Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
-            break
-        }
-        continue
     }
 
     $currentMetrics = $scaleResult.Metrics
@@ -955,9 +1007,18 @@ $scenarioTable
             }
         }
 
+        $dryRunNotice = ''
+        if ($DryRun) {
+            $dryRunNotice = @"
+
+> ⚡ **DRY RUN** — This PR was created in dry-run mode. Performance metrics are synthetic (not from real k6 tests). The code change is real but has not been stress-tested.
+
+"@
+        }
+
         $prBody = @"
 ## Hone Experiment $experiment
-$stackNote
+$dryRunNotice$stackNote
 **Optimization:** $($analysisResult.Explanation)
 
 **File changed:** ``$($analysisResult.FilePath)``
@@ -975,10 +1036,11 @@ $scenarioBreakdown
 *Auto-generated by the Hone agentic optimization harness.*
 "@
 
+        $prTitlePrefix = if ($DryRun) { '[DRY RUN] ' } else { '' }
         $prUrl = gh pr create `
             --base $prBaseBranch `
             --head $branchName `
-            --title "hone(experiment-$experiment): $(Limit-String $analysisResult.Explanation 120)" `
+            --title "${prTitlePrefix}hone(experiment-$experiment): $(Limit-String $analysisResult.Explanation 120)" `
             --body $prBody 2>&1
 
         $prNumber = $null
