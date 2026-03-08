@@ -310,6 +310,27 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
     if (-not $hasQueue) {
         Write-Information '[2/5] 🧠 Analyzing (queue empty — running analysis)...' -InformationAction Continue
 
+        # ── Diagnostic profiling (runs only when analysis is needed) ─────
+        $diagnosticReports = $null
+        if ($config.Diagnostics -and $config.Diagnostics.Enabled -and -not $DryRun) {
+            Write-Information '  Running diagnostic measurement (PerfView profiling)...' -InformationAction Continue
+            $diagResult = & (Join-Path $PSScriptRoot 'Invoke-DiagnosticMeasurement.ps1') `
+                -Experiment $experiment `
+                -ConfigPath $ConfigPath `
+                -CurrentMetrics $metricsForAnalysis
+
+            if ($diagResult.Success) {
+                $diagnosticReports = $diagResult.AnalyzerReports
+                Write-Information "  Diagnostic profiling complete: $($diagnosticReports.Count) report(s)" -InformationAction Continue
+            }
+            else {
+                throw 'Diagnostic measurement failed. Fix PerfView/profiling setup or set Diagnostics.Enabled = $false.'
+            }
+        }
+        elseif ($DryRun) {
+            Write-Information '  Diagnostic profiling skipped (dry run)' -InformationAction Continue
+        }
+
         $rawAnalysis = & (Join-Path $PSScriptRoot 'Invoke-AnalysisAgent.ps1') `
             -CurrentMetrics $metricsForAnalysis `
             -BaselineMetrics $baselineMetrics `
@@ -317,7 +338,8 @@ for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
             -CounterMetrics $countersForAnalysis `
             -Experiment $experiment `
             -ConfigPath $ConfigPath `
-            -PreviousRcaExplanation $previousRcaExplanation
+            -PreviousRcaExplanation $previousRcaExplanation `
+            -DiagnosticReports $diagnosticReports
 
         if (-not $rawAnalysis.Success) {
             Write-Warning '  Analysis agent failed — skipping experiment'

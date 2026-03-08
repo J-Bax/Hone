@@ -18,6 +18,9 @@
 
 .PARAMETER PreviousRcaExplanation
     Explanation from the previous experiment's RCA (optional).
+
+.PARAMETER DiagnosticReports
+    Hashtable of analyzer name → @{ Report; Summary } from diagnostic profiling (optional).
 #>
 [CmdletBinding()]
 param(
@@ -29,7 +32,9 @@ param(
 
     [PSCustomObject]$CounterMetrics,
 
-    [string]$PreviousRcaExplanation
+    [string]$PreviousRcaExplanation,
+
+    [hashtable]$DiagnosticReports
 )
 
 # ── Source file paths (agent explores files itself) ──────────────────────────
@@ -101,9 +106,27 @@ if ($PreviousRcaExplanation) {
     $historyContext += "`n## Last Experiment's Fix`n$PreviousRcaExplanation`n"
 }
 
+# ── Diagnostic profiling context ─────────────────────────────────────────────
+$profilingContext = ''
+if ($DiagnosticReports -and $DiagnosticReports.Count -gt 0) {
+    $profilingContext = "`n## Diagnostic Profiling Reports"
+    $profilingContext += "`n(Captured during a separate profiling run — numbers may differ from evaluation due to profiling overhead)`n"
+
+    foreach ($analyzerName in ($DiagnosticReports.Keys | Sort-Object)) {
+        $entry = $DiagnosticReports[$analyzerName]
+        $reportJson = if ($entry.Report) {
+            $entry.Report | ConvertTo-Json -Depth 5 -Compress
+        } else {
+            $entry.Summary
+        }
+        $profilingContext += "`n### $analyzerName`n``````json`n$reportJson`n```````n"
+    }
+}
+
 # ── Return structured result ─────────────────────────────────────────────────
 [PSCustomObject]@{
-    SourceFilePaths = @($sourceFilePaths)
-    CounterContext  = $counterContext
-    HistoryContext  = $historyContext
+    SourceFilePaths  = @($sourceFilePaths)
+    CounterContext   = $counterContext
+    HistoryContext   = $historyContext
+    ProfilingContext = $profilingContext
 }

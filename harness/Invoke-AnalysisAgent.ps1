@@ -27,6 +27,9 @@
 
 .PARAMETER PreviousRcaExplanation
     Explanation from the previous experiment's RCA (optional).
+
+.PARAMETER DiagnosticReports
+    Hashtable of analyzer name → @{ Report; Summary } from diagnostic profiling (optional).
 #>
 [CmdletBinding()]
 param(
@@ -44,7 +47,9 @@ param(
 
     [string]$ConfigPath,
 
-    [string]$PreviousRcaExplanation
+    [string]$PreviousRcaExplanation,
+
+    [hashtable]$DiagnosticReports
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -59,14 +64,16 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
     -Phase 'analyze' -Level 'info' -Message 'Preparing analysis agent prompt' `
     -Experiment $Experiment
 
-# ── Build analysis context (source code, counters, history) ─────────────────
+# ── Build analysis context (source code, counters, history, profiling) ───────
 $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
     -Config $config -RepoRoot $repoRoot `
-    -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation
+    -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation `
+    -DiagnosticReports $DiagnosticReports
 
-$sourceFilePaths = $analysisContext.SourceFilePaths
-$counterContext  = $analysisContext.CounterContext
-$historyContext  = $analysisContext.HistoryContext
+$sourceFilePaths  = $analysisContext.SourceFilePaths
+$counterContext   = $analysisContext.CounterContext
+$historyContext   = $analysisContext.HistoryContext
+$profilingContext = $analysisContext.ProfilingContext
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) { $ComparisonResult.ImprovementPct } else { '0' }
@@ -88,6 +95,7 @@ Analyze this Web API's performance and identify 1-3 optimization opportunities r
 - Error rate: $([math]::Round($BaselineMetrics.HttpReqFailed.Rate * 100, 2))%
 $counterContext
 $historyContext
+$profilingContext
 
 ## Source Files
 The following source files are available for analysis (paths relative to repo root).

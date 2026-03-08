@@ -120,3 +120,62 @@ The loop stops when any of these conditions is met:
 | **Test failure** | E2E regression detected (non-stacked mode) |
 
 In stacked mode, build and test failures trigger a revert-and-continue rather than an abort, allowing the loop to recover and try different optimizations.
+
+## Dual-Phase Measurement
+
+Hone uses two distinct measurement phases with different purposes:
+
+### Evaluation Measurement (Phase 4: Verify)
+
+Fair benchmarking used for **accept/reject decisions**. Runs k6 with median-of-5 selection and lightweight dotnet-counters only. No heavy profiling tools. This is the source of truth for whether an optimization improved performance.
+
+### Diagnostic Measurement (Phase 2: Analyze)
+
+Deep profiling used **only as analysis input**. Runs PerfView ETW collection alongside a single k6 pass to capture:
+- **CPU sampling stacks** — flamegraph data showing which methods dominate CPU time
+- **GC events** — detailed garbage collection statistics (generation counts, pause times, heap sizes)
+- **Allocation tick sampling** — which types are allocated most frequently and from which call-sites
+
+Diagnostic measurement runs once per analysis cycle (when the optimization queue is empty). Since profiling tools add 5–15% overhead to latency/throughput, these numbers are **never used for regression testing** — they exist solely to give the analysis agent deeper insight into where bottlenecks live.
+
+## Diagnostic Plugin Architecture
+
+The diagnostic framework uses a **plugin model** for both data collection and analysis. New profiling tools can be added by dropping in a directory — no orchestrator changes needed.
+
+### Collector Plugins (`harness/collectors/<name>/`)
+
+Each collector is a self-contained directory with 4 files:
+
+| File | Purpose |
+|------|---------|
+| `collector.psd1` | Metadata: name, description, RequiresAdmin, OverheadImpact, DefaultSettings |
+| `Start-Collector.ps1` | Start data collection targeting an API process → returns handle |
+| `Stop-Collector.ps1` | Stop collection → returns raw artifact paths |
+| `Export-CollectorData.ps1` | Convert raw artifacts to analysis-friendly format |
+
+Built-in collectors: `perfview-cpu`, `perfview-gc`, `dotnet-counters`
+
+### Analyzer Plugins (`harness/analyzers/<name>/`)
+
+Each analyzer is a self-contained directory with 3 files:
+
+| File | Purpose |
+|------|---------|
+| `analyzer.psd1` | Metadata: name, RequiredCollectors, AgentName, DefaultSettings |
+| `Invoke-Analyzer.ps1` | Build prompt from collector data, call AI agent, parse response |
+| `agent.md` | Copilot agent definition (also symlinked to `.github/agents/`) |
+
+Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks), `memory-gc` (reads GC report)
+
+### Adding a New Plugin
+
+**New collector** (e.g., `thread-contention`):
+1. Create `harness/collectors/thread-contention/` with the 4 standard files
+2. Add settings under `Diagnostics.CollectorSettings.'thread-contention'` in `config.psd1`
+
+**New analyzer** (e.g., `thread-hotspots`):
+1. Create `harness/analyzers/thread-hotspots/` with the 3 standard files
+2. Add settings under `Diagnostics.AnalyzerSettings.'thread-hotspots'` in `config.psd1`
+3. Copy or symlink `agent.md` to `.github/agents/`
+
+The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticAnalysis.ps1`) automatically discover and run all enabled plugins.

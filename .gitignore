@@ -54,6 +54,9 @@ ehthumbs.db
 Desktop.ini
 .DS_Store
 
+# ----- Hone Tools (downloaded, not committed) -----
+tools/
+
 # ----- Hone Results -----
 # NOTE: sample-api/ is a git submodule with its own .gitignore.
 # The rules below do NOT take effect for the parent repo because git

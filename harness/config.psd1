@@ -164,4 +164,61 @@
         # Log level: 'verbose', 'info', 'warning', 'error'
         Level      = 'info'
     }
+
+    # ── Diagnostic Profiling (Plugin Framework) ─────────────────
+    # Deep profiling data collected during a separate "diagnostic"
+    # measurement pass.  Results feed the analysis agent only — they
+    # are never used for accept/reject decisions.
+    Diagnostics = @{
+        # Master switch for diagnostic profiling
+        Enabled = $true
+
+        # Directories containing collector / analyzer plugins (relative to repo root)
+        CollectorsPath = 'harness/collectors'
+        AnalyzersPath  = 'harness/analyzers'
+
+        # PerfView executable path (downloaded by Setup-DevEnvironment.ps1)
+        PerfViewExePath = 'tools/PerfView/PerfView.exe'
+
+        # k6 scenario for diagnostic runs ($null = reuse ScaleTest.ScenarioPath)
+        DiagnosticScenarioPath = $null
+
+        # Number of k6 runs during diagnostic pass (accuracy is less
+        # important than coverage — a single run is usually sufficient)
+        DiagnosticRuns = 1
+
+        # ── Per-collector settings ─────────────────────────────
+        # Keys must match the directory name under CollectorsPath.
+        CollectorSettings = @{
+            'perfview-cpu' = @{
+                Enabled       = $true
+                MaxCollectSec = 90
+                BufferSizeMB  = 256
+            }
+            'perfview-gc' = @{
+                Enabled            = $true
+                AllocationSampling = $true
+                MaxCollectSec      = 90
+                BufferSizeMB       = 256
+            }
+            'dotnet-counters' = @{
+                Enabled = $true
+                # Reuses DotnetCounters.Providers and .RefreshIntervalSeconds
+            }
+        }
+
+        # ── Per-analyzer settings ──────────────────────────────
+        # Keys must match the directory name under AnalyzersPath.
+        AnalyzerSettings = @{
+            'cpu-hotspots' = @{
+                Enabled   = $true
+                Model     = 'claude-opus-4.6'
+                MaxStacks = 100     # Truncate folded stacks to top-N by sample count
+            }
+            'memory-gc' = @{
+                Enabled = $true
+                Model   = 'claude-opus-4.6'
+            }
+        }
+    }
 }

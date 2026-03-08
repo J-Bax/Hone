@@ -12,6 +12,7 @@ The config file is the single source of truth — every option includes comments
 - **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior
 - **Copilot** — AI model selection and per-agent model overrides
 - **DotnetCounters** — Runtime counter collection providers and sampling interval
+- **Diagnostics** — Diagnostic profiling plugin framework (PerfView, analyzers)
 - **Logging** — Log level
 
 ## Runtime Overrides
@@ -32,3 +33,33 @@ The config file is the single source of truth — every option includes comments
 ```
 
 To change any other setting (tolerances, scale-test options, model selection, etc.), edit `config.psd1` directly.
+
+## Diagnostics Configuration
+
+The `Diagnostics` section controls the diagnostic profiling plugin framework. This is separate from the evaluation measurement (ScaleTest + DotnetCounters) used for accept/reject decisions.
+
+```powershell
+Diagnostics = @{
+    Enabled            = $true                    # Master switch
+    CollectorsPath     = 'harness/collectors'     # Plugin directory for collectors
+    AnalyzersPath      = 'harness/analyzers'      # Plugin directory for analyzers
+    PerfViewExePath    = 'tools/PerfView/PerfView.exe'  # Downloaded by Setup-DevEnvironment.ps1
+    DiagnosticScenarioPath = $null                # k6 scenario ($null = use ScaleTest.ScenarioPath)
+    DiagnosticRuns     = 1                        # Single run (accuracy less important)
+
+    CollectorSettings = @{
+        'perfview-cpu' = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256 }
+        'perfview-gc'  = @{ Enabled = $true; AllocationSampling = $true; MaxCollectSec = 90; BufferSizeMB = 256 }
+        'dotnet-counters' = @{ Enabled = $true }
+    }
+
+    AnalyzerSettings = @{
+        'cpu-hotspots' = @{ Enabled = $true; Model = 'claude-opus-4.6'; MaxStacks = 100 }
+        'memory-gc'    = @{ Enabled = $true; Model = 'claude-opus-4.6' }
+    }
+}
+```
+
+**Important**: PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal. PerfView is downloaded automatically by `Setup-DevEnvironment.ps1`.
+
+To disable diagnostic profiling entirely, set `Diagnostics.Enabled = $false`. Individual collectors and analyzers can be disabled independently via their `Enabled` flag.
