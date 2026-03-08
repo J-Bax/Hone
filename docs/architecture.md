@@ -34,9 +34,10 @@ flowchart TD
     subgraph ANALYZE["🧠 2. Analyze (conditional)"]
         direction TB
         A0{"Queue empty?"}
-        A0 -->|Yes| A1["Metrics + source code"]
+        A0 -->|Yes| AD["Diagnostic profiling<br/>(PerfView CPU + GC)"]
+        AD --> A1["Metrics + source code<br/>+ profiling reports"]
         A1 --> A2["Identify bottlenecks"]
-        A2 --> A3["Propose 3-5 optimizations → queue"]
+        A2 --> A3["Propose 1-3 optimizations → queue"]
         A0 -->|No| A4["Skip analysis"]
     end
 
@@ -66,7 +67,7 @@ flowchart TD
 
 ### Queue-Driven Analysis
 
-The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 3-5 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics.
+The analysis agent (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis agent runs again with fresh post-experiment metrics and diagnostic profiling data.
 
 This design is efficient (analysis is the most expensive AI call) and ensures the loop doesn't re-analyze the entire codebase before every single code change.
 
@@ -82,7 +83,7 @@ After measuring, the harness compares three metrics against the previous experim
 
 **Accept** if at least one metric improved and none regressed. **Reject** if any metric regressed beyond tolerance. **Stale** if nothing changed.
 
-When performance is flat but OS-level resource usage (CPU or working set) decreased, the **efficiency tiebreaker** accepts the experiment — preventing premature stops when there are genuine resource gains.
+When performance is flat but OS-level resource usage (CPU or working set) decreased, the **efficiency tiebreaker** accepts the experiment — preventing premature stops when there are genuine resource gains. The tiebreaker can be disabled or tuned via `Tolerances.Efficiency` in `config.psd1`.
 
 ## Stacked Diffs (Continuous Mode)
 
@@ -166,6 +167,8 @@ Each analyzer is a self-contained directory with 3 files:
 | `agent.md` | Copilot agent definition (also symlinked to `.github/agents/`) |
 
 Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks), `memory-gc` (reads GC report)
+
+Each analyzer declares its `RequiredCollectors` in `analyzer.psd1`. If a required collector's data is not available (e.g., the collector is disabled or failed), the analyzer is automatically skipped with a warning — it does not block other analyzers from running.
 
 ### Adding a New Plugin
 

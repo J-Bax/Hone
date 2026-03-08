@@ -26,11 +26,28 @@ The config file is the single source of truth — every option includes comments
 # Use a different config file
 .\harness\Invoke-HoneLoop.ps1 -ConfigPath .\my-config.psd1
 
-# Dry-run mode: skip k6 scale tests, use synthetic metrics
-# AI agents, build, and E2E tests still run normally
-# PRs are created with a [DRY RUN] prefix
+# Dry-run mode: skip k6 scale tests, API start/stop, database reset,
+# and diagnostic profiling.  AI agents, build, and E2E tests still run
+# normally.  PRs are created with a [DRY RUN] prefix.
 .\harness\Invoke-HoneLoop.ps1 -DryRun -MaxExperiments 3
 ```
+
+### DryRun Mode
+
+When `-DryRun` is specified:
+
+| Component | Behavior |
+|-----------|----------|
+| Build (`dotnet build`) | Runs normally |
+| E2E tests (`dotnet test`) | Runs normally |
+| k6 scale tests | **Skipped** — synthetic metrics used (5% improvement) |
+| API start/stop | **Skipped** |
+| Database reset | **Skipped** |
+| Diagnostic profiling (PerfView) | **Skipped** |
+| AI agents (analyst, classifier, fixer) | Run normally |
+| PRs | Created with `[DRY RUN]` prefix |
+
+Dry-run mode is useful for testing the AI pipeline and branch management without waiting for full load tests.
 
 To change any other setting (tolerances, scale-test options, model selection, etc.), edit `config.psd1` directly.
 

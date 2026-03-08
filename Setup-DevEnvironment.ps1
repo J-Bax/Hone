@@ -338,6 +338,11 @@ else {
 }
 Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -ForegroundColor DarkGray
 
+# Remind about admin requirement for PerfView
+if (Test-Path (Join-Path $PSScriptRoot 'tools' 'PerfView' 'PerfView.exe')) {
+    Write-Host "  🔒 PerfView diagnostic profiling requires an elevated (Admin) terminal at runtime.`n" -ForegroundColor DarkYellow
+}
+
 # Remind user to refresh PATH if anything was installed
 if (-not $SkipWinget -or $Force) {
     Write-Host "  💡 If any tools were just installed, restart your terminal to refresh PATH.`n" -ForegroundColor DarkYellow

@@ -26,8 +26,10 @@ graph LR
 ## How It Works
 
 - Hone runs an **iterative optimization loop**: Measure → Analyze → Experiment → Verify → Publish
-- A **three-agent AI pipeline** drives each experiment:
-  - **Analyst** — examines performance metrics and source code to identify the highest-impact optimization
+- A **five-agent AI pipeline** drives each experiment:
+  - **Analyst** — examines performance metrics, profiling data, and source code to identify the highest-impact optimization
+  - **CPU Profiler** — analyzes PerfView CPU sampling stacks to pinpoint hot methods and call paths
+  - **Memory Profiler** — analyzes PerfView GC statistics and allocation data to identify memory pressure sources
   - **Classifier** — determines whether the proposed change is narrow (single-file) or architectural (multi-file)
   - **Fixer** — generates the optimized code for narrow-scope changes
 - Each experiment runs **multi-run load tests** with k6 and computes median latency with variance analysis
@@ -42,10 +44,12 @@ graph LR
 - 🔍 **Automatic performance regression detection** — flags experiments that make things worse
 - 📊 **Multi-run median with variance analysis** — reduces noise from flaky measurements
 - 🔗 **Stacked diffs mode** — linear branch chain with fire-and-forget PRs
-- 🤖 **Three-agent AI pipeline** with scope classification (narrow vs. architectural)
+- 🤖 **Five-agent AI pipeline** with scope classification (narrow vs. architectural)
+- 🔬 **Deep diagnostic profiling** — PerfView CPU stacks, GC analysis, and allocation tracking via plugin framework
 - 📝 **Optimization history tracking** — avoids repeating failed approaches across experiments
 - 🎯 **Multi-scenario stress testing** with per-scenario baselines and thresholds
 - 📈 **.NET runtime counter collection** — CPU, GC, thread pool, working set metrics
+- 🔌 **Plugin architecture** — add new profiling tools by dropping in a directory
 - 📋 **HTML dashboard and terminal results display** for at-a-glance comparison
 
 ## Prerequisites
@@ -57,7 +61,10 @@ graph LR
 | SQL Server LocalDB | 2019+ | Included with Visual Studio or `winget install Microsoft.SQLServer.2019.LocalDB` |
 | k6 | Latest | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `winget install GitHub.cli` |
-| GitHub Copilot CLI | Latest | [Install standalone `copilot` CLI](https://docs.github.com/copilot/how-tos/copilot-cli) |
+| GitHub Copilot CLI | Latest | [Install standalone `copilot` CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — separate from `gh` |
+| PerfView | Latest | Auto-downloaded by `Setup-DevEnvironment.ps1` |
+
+> **Note:** PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal when diagnostic profiling is enabled.
 
 ## Quick Start
 
