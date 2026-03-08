@@ -113,7 +113,7 @@ if ($warmupEnabled) {
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
         $warmupSpinner = Start-Spinner -Message 'Warming up API'
         & k6 @warmupArgs 2>&1 | Out-Null
-        Stop-Spinner -Job $warmupSpinner -CompletionMessage 'Warmup complete'
+        Stop-Spinner -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
 
         # Cooldown after warmup — let GC, thread pool, and TCP connections settle
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
@@ -260,7 +260,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
 
         $runP95 = [math]::Round($runMetrics.HttpReqDuration.P95, 1)
         $runRps = [math]::Round($runMetrics.HttpReqs.Rate, 1)
-        Stop-Spinner -Job $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
+        Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
@@ -274,7 +274,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
             }
     }
     else {
-        Stop-Spinner -Job $runSpinner -CompletionMessage "$runLabel — no summary file"
+        Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — no summary file"
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'error' `
             -Message "k6 summary file not found at: $runSummaryPath (run $run)" `

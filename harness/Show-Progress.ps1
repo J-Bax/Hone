@@ -4,8 +4,9 @@
 
 .DESCRIPTION
     Contains Start-Spinner and Stop-Spinner functions that display an animated braille
-    spinner with elapsed time using a background ThreadJob. The spinner overwrites the
-    same terminal line via carriage return, keeping output clean.
+    spinner with elapsed time. Uses a System.Timers.Timer whose events fire on
+    background ThreadPool threads — these die automatically when the process exits
+    (e.g., via Ctrl+C), so no explicit cancellation handling is needed.
 
     Uses [Console]::Write for thread-safe, stream-independent terminal updates that
     don't appear in log files or captured output.
@@ -18,7 +19,7 @@ function Start-Spinner {
     .PARAMETER Message
         Text to display next to the spinner (e.g., "Analyzing performance data").
     .OUTPUTS
-        A job object to pass to Stop-Spinner.
+        A spinner object to pass to Stop-Spinner.
     #>
     [CmdletBinding()]
     param(
@@ -32,47 +33,53 @@ function Start-Spinner {
         return $null
     }
 
-    $job = Start-ThreadJob -ScriptBlock {
-        param($msg)
-        $frames = @(
+    $state = [hashtable]::Synchronized(@{
+        Message   = $Message
+        Frames    = @(
             [char]0x280B, [char]0x2819, [char]0x2839, [char]0x2838,
             [char]0x283C, [char]0x2834, [char]0x2826, [char]0x2827,
             [char]0x2807, [char]0x280F
         )
-        $i = 0
-        $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        while ($true) {
-            $elapsed = [math]::Floor($sw.Elapsed.TotalSeconds)
-            $frame = $frames[$i % $frames.Count]
-            $line = "  $frame $msg... ${elapsed}s"
-            # Pad to overwrite any previous longer line
-            $padded = $line.PadRight(78)
-            [Console]::Write("`r$padded")
-            Start-Sleep -Milliseconds 120
-            $i++
-        }
-    } -ArgumentList $Message
+        Index     = 0
+        Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    })
 
-    return $job
+    $timer = [System.Timers.Timer]::new(120)
+    $timer.AutoReset = $true
+
+    # The Elapsed event fires on a ThreadPool background thread.
+    # Background threads are killed automatically on process exit (Ctrl+C).
+    Register-ObjectEvent -InputObject $timer -EventName Elapsed -Action {
+        $s = $Event.MessageData
+        $elapsed = [math]::Floor($s.Stopwatch.Elapsed.TotalSeconds)
+        $frame = $s.Frames[$s.Index % $s.Frames.Count]
+        $line = "  $frame $($s.Message)... ${elapsed}s"
+        try { [Console]::Write("`r$($line.PadRight(78))") } catch {}
+        $s.Index++
+    } -MessageData $state | Out-Null
+
+    $timer.Start()
+
+    return @{ Timer = $timer; State = $state }
 }
 
 function Stop-Spinner {
     <#
     .SYNOPSIS
         Stops a running spinner and optionally displays a completion message.
-    .PARAMETER Job
-        The job object returned by Start-Spinner.
+    .PARAMETER Spinner
+        The spinner object returned by Start-Spinner.
     .PARAMETER CompletionMessage
         Optional message to display after clearing the spinner (prefixed with ✓).
     #>
     [CmdletBinding()]
     param(
-        $Job,
+        $Spinner,
 
         [string]$CompletionMessage
     )
 
-    if ($null -eq $Job) {
+    if ($null -eq $Spinner) {
         # Spinner was skipped (non-interactive) — just show completion
         if ($CompletionMessage) {
             Write-Information "  ✓ $CompletionMessage" -InformationAction Continue
@@ -80,8 +87,15 @@ function Stop-Spinner {
         return
     }
 
-    Stop-Job $Job -ErrorAction SilentlyContinue
-    Remove-Job $Job -Force -ErrorAction SilentlyContinue
+    $Spinner.Timer.Stop()
+    $Spinner.Timer.Dispose()
+
+    # Unregister the event subscriber for this timer
+    Get-EventSubscriber | Where-Object { $_.SourceObject -eq $Spinner.Timer } |
+        ForEach-Object {
+            Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue
+            Remove-Job -Id $_.Action.Id -Force -ErrorAction SilentlyContinue
+        }
 
     # Clear the spinner line
     [Console]::Write("`r$(' ' * 78)`r")

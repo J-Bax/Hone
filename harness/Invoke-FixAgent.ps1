@@ -103,7 +103,7 @@ try {
 
     $responseText = ($copilotOutput | Out-String).Trim()
 
-    Stop-Spinner -Job $spinner -CompletionMessage "Code generation complete"
+    Stop-Spinner -Spinner $spinner -CompletionMessage "Code generation complete"
 
     # Save the response
     $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
@@ -139,7 +139,7 @@ try {
     }
 }
 catch {
-    Stop-Spinner -Job $spinner -CompletionMessage $null
+    Stop-Spinner -Spinner $spinner -CompletionMessage $null
     $result = [ordered]@{
         Success      = $false
         CodeBlock    = $null

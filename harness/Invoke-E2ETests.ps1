@@ -60,7 +60,7 @@ $passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
 $failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
 
 $testMsg = if ($testExitCode -eq 0) { "$passedTests/$totalTests tests passed" } else { "$failedTests/$totalTests tests FAILED" }
-Stop-Spinner -Job $spinner -CompletionMessage $testMsg
+Stop-Spinner -Spinner $spinner -CompletionMessage $testMsg
 
 $result = [ordered]@{
     Success     = ($testExitCode -eq 0)

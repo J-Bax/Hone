@@ -34,7 +34,7 @@ $buildOutput = dotnet build $solutionPath --configuration Release 2>&1
 $buildExitCode = $LASTEXITCODE
 
 $buildMsg = if ($buildExitCode -eq 0) { 'Build succeeded' } else { "Build failed (exit code $buildExitCode)" }
-Stop-Spinner -Job $spinner -CompletionMessage $buildMsg
+Stop-Spinner -Spinner $spinner -CompletionMessage $buildMsg
 
 $result = [ordered]@{
     Success    = ($buildExitCode -eq 0)

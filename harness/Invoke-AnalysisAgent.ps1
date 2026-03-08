@@ -146,7 +146,7 @@ try {
 
     # Show brief result from agent
     $oppPreview = if ($responseText.Length -gt 80) { $responseText.Substring(0, 80) + '…' } else { $responseText }
-    Stop-Spinner -Job $spinner -CompletionMessage "Analysis complete"
+    Stop-Spinner -Spinner $spinner -CompletionMessage "Analysis complete"
 
     # Save the response
     $responsePath = Join-Path $iterDir 'analysis-response.json'
@@ -235,7 +235,7 @@ try {
         -Experiment $Experiment
 }
 catch {
-    Stop-Spinner -Job $spinner -CompletionMessage $null
+    Stop-Spinner -Spinner $spinner -CompletionMessage $null
     $result = [ordered]@{
     }
 

@@ -85,7 +85,7 @@ try {
 
     $responseText = ($copilotOutput | Out-String).Trim()
 
-    Stop-Spinner -Job $spinner -CompletionMessage 'Classification complete'
+    Stop-Spinner -Spinner $spinner -CompletionMessage 'Classification complete'
 
     # Save the response
     $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
@@ -115,7 +115,7 @@ try {
         -Experiment $Experiment
 }
 catch {
-    Stop-Spinner -Job $spinner -CompletionMessage $null
+    Stop-Spinner -Spinner $spinner -CompletionMessage $null
     # Default to architecture on failure (safe)
     $result = [ordered]@{
         Success   = $false
