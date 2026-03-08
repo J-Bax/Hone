@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Compares current performance metrics against previous iteration using
+    Compares current performance metrics against previous experiment using
     relative improvement / regression logic.
 
 .DESCRIPTION
@@ -9,28 +9,28 @@
     keeps running as long as it can make things better.
 
 .PARAMETER CurrentMetrics
-    PSCustomObject with current iteration metrics (from Invoke-ScaleTests.ps1).
+    PSCustomObject with current experiment metrics (from Invoke-ScaleTests.ps1).
 
 .PARAMETER BaselineMetrics
     PSCustomObject with baseline metrics (from Get-PerformanceBaseline.ps1).
 
 .PARAMETER PreviousMetrics
-    PSCustomObject with previous iteration metrics. For the first iteration
+    PSCustomObject with previous experiment metrics. For the first experiment
     the baseline is used as the previous reference.
 
 .PARAMETER CurrentCounterMetrics
-    PSCustomObject with .NET counter metrics for this iteration.
+    PSCustomObject with .NET counter metrics for this experiment.
 
 .PARAMETER PreviousCounterMetrics
-    PSCustomObject with .NET counter metrics from the previous iteration.
-    For the first iteration the baseline counter data is not available,
+    PSCustomObject with .NET counter metrics from the previous experiment.
+    For the first experiment the baseline counter data is not available,
     so the efficiency tiebreaker is skipped.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
@@ -51,7 +51,7 @@ param(
 
     [string]$ConfigPath,
 
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 if (-not $ConfigPath) {
@@ -63,9 +63,9 @@ $tolerances = $config.Tolerances
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'compare' -Level 'info' -Message 'Comparing performance metrics (relative mode)' `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
-# Use baseline as reference when there is no previous iteration
+# Use baseline as reference when there is no previous experiment
 $reference = if ($PreviousMetrics) { $PreviousMetrics } else { $BaselineMetrics }
 
 # ── Per-metric helpers ──────────────────────────────────────────────────────
@@ -180,7 +180,7 @@ $improvementPct = if ($baselineP95 -gt 0) {
     [math]::Round((($baselineP95 - $p95Current) / $baselineP95) * 100, 1)
 } else { 0 }
 
-# ── Variance analysis (across measured runs within this iteration) ──────────
+# ── Variance analysis (across measured runs within this experiment) ──────────
 $varianceInfo = $null
 if ($RunMetrics -and $RunMetrics.Count -gt 1) {
     $p95Values = $RunMetrics | ForEach-Object { $_.HttpReqDuration.P95 }
@@ -208,14 +208,14 @@ if ($RunMetrics -and $RunMetrics.Count -gt 1) {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level $cvLevel -Message $cvMessage `
-        -Iteration $Iteration `
+        -Experiment $Experiment `
         -Data @{ cv = [math]::Round($cv * 100, 1); stdDev = [math]::Round($stdDev, 2); runs = $p95Values.Count }
 
     if ($cv -gt 0.10) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'compare' -Level 'warning' `
             -Message "High measurement variance (CV > 10%) — comparison results may be unreliable" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 
@@ -296,20 +296,20 @@ $level = if ($anyRegressed) { 'warning' } elseif ($anyImproved) { 'info' } else 
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'compare' -Level $level -Message $logMessage `
-    -Iteration $Iteration `
+    -Experiment $Experiment `
     -Data @{ improvement = $improvementPct; improved = ($anyImproved -or $tiebreakerUsed); regression = $anyRegressed; efficiencyImproved = $efficiencyImproved; tiebreakerUsed = $tiebreakerUsed }
 
 if ($anyRegressed) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'warning' `
         -Message "REGRESSION DETECTED: $($regressionDetails -join '; ')" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 if ($anyImproved) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'info' -Message 'Improvement detected in at least one metric' `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 elseif ($tiebreakerUsed) {
     $tbDetails = @()
@@ -318,12 +318,12 @@ elseif ($tiebreakerUsed) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'compare' -Level 'info' `
         -Message "Efficiency tiebreaker: $($tbDetails -join '; ')" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 elseif (-not $anyRegressed) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'compare' -Level 'info' -Message 'No meaningful change in any metric (stale iteration)' `
-        -Iteration $Iteration
+        -Phase 'compare' -Level 'info' -Message 'No meaningful change in any metric (stale experiment)' `
+        -Experiment $Experiment
 }
 
 return [PSCustomObject]$result

@@ -9,13 +9,13 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -26,12 +26,12 @@ if (-not $ConfigPath) {
 
 $config = Import-PowerShellDataFile -Path $ConfigPath
 $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
-$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 $trxPath = Join-Path $resultsDir "e2e-results.trx"
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'verify' -Level 'info' -Message "Running E2E tests: $testProjectPath" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # Ensure results directory exists
 if (-not (Test-Path $resultsDir)) {
@@ -71,13 +71,13 @@ if ($result.Success) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'verify' -Level 'info' `
         -Message "E2E tests passed ($($result.PassedTests)/$($result.TotalTests))" `
-        -Iteration $Iteration -Data $logData
+        -Experiment $Experiment -Data $logData
 }
 else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'verify' -Level 'error' `
         -Message "E2E tests FAILED ($($result.FailedTests) failures out of $($result.TotalTests))" `
-        -Iteration $Iteration -Data $logData
+        -Experiment $Experiment -Data $logData
 }
 
 return [PSCustomObject]$result

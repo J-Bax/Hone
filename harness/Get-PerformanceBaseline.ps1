@@ -46,7 +46,7 @@ if (-not $buildResult.Success) {
 }
 
 # ── Step 1.5: Reset Database ────────────────────────────────────────────────
-& (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Iteration 0
+& (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment 0
 
 # ── Step 2: Start API ──────────────────────────────────────────────────────
 $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
@@ -58,7 +58,7 @@ if (-not $apiResult.Success) {
 try {
     # ── Step 3: Run scale tests ─────────────────────────────────────────────
     $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
-        -ConfigPath $ConfigPath -Iteration 0
+        -ConfigPath $ConfigPath -Experiment 0
 
     # For baselines, we only need metrics — k6 threshold failures are expected
     # since the API has not been optimized yet.
@@ -71,7 +71,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'baseline' -Level 'warning' `
             -Message 'k6 thresholds not met (expected for unoptimized baseline)' `
-            -Iteration 0
+            -Experiment 0
     }
 
     # ── Step 4: Save baseline ───────────────────────────────────────────────
@@ -86,14 +86,14 @@ try {
             StartedAt  = $machineInfo.CollectedAt
             CompletedAt = (Get-Date -Format 'o')
         }
-        Iterations  = @()
+        Experiments  = @()
     }
     $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'baseline' -Level 'info' `
         -Message "Run metadata saved to: $runMetadataPath" `
-        -Iteration 0
+        -Experiment 0
 
     # Save counter metrics baseline if available
     if ($scaleResult.CounterMetrics) {
@@ -103,7 +103,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'baseline' -Level 'info' `
             -Message "Counter baseline saved to: $counterBaselinePath" `
-            -Iteration 0
+            -Experiment 0
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -133,7 +133,7 @@ try {
     Write-Information 'Running additional scenarios for baseline capture...' -InformationAction Continue
 
     $allScenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-        -ConfigPath $ConfigPath -Iteration 0 -SkipPrimary
+        -ConfigPath $ConfigPath -Experiment 0 -SkipPrimary
 
     foreach ($sr in $allScenarioResults) {
         if ($sr.Metrics) {
@@ -143,13 +143,13 @@ try {
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'baseline' -Level 'info' `
                 -Message "Scenario baseline saved: $($sr.ScenarioName) — p95: $($sr.Metrics.HttpReqDuration.P95)ms" `
-                -Iteration 0
+                -Experiment 0
         }
         else {
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'baseline' -Level 'warning' `
                 -Message "Scenario '$($sr.ScenarioName)' produced no metrics" `
-                -Iteration 0
+                -Experiment 0
         }
     }
 

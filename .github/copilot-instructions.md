@@ -54,11 +54,11 @@ Hone is an **agentic performance optimization harness** that automatically impro
 3. **Measure** → `k6 run` (capture p95 latency, RPS, error rate)
 4. **Analyze** → `copilot --model claude-opus-4.6` with perf context prompt
 5. **Fix** → Apply suggestion on a new git branch
-6. **Repeat** → Until targets met or max iterations reached
+6. **Repeat** → Until targets met or max experiments reached
 
 ## Important Design Decisions
 
 - The sample API is the optimization target — the agentic loop discovers performance issues through measurement, not hints
 - E2E tests use `WebApplicationFactory` so they don't require a running server
-- Performance results are stored as JSON in `sample-api/results/` for comparison across iterations
+- Performance results are stored as JSON in `sample-api/results/` for comparison across experiments
 - Each optimization attempt is made on a separate git branch for easy rollback

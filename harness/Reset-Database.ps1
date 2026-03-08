@@ -1,22 +1,22 @@
 <#
 .SYNOPSIS
-    Resets the sample API database to ensure clean state between iterations.
+    Resets the sample API database to ensure clean state between experiments.
 
 .DESCRIPTION
     Drops the target database so that the next API startup recreates it from
     scratch with fresh seed data.
-    This ensures every iteration starts with identical data for fair performance comparisons.
+    This ensures every experiment starts with identical data for fair performance comparisons.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -29,8 +29,8 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
-    -Message 'Resetting database for clean iteration state' `
-    -Iteration $Iteration
+    -Message 'Resetting database for clean experiment state' `
+    -Experiment $Experiment
 
 # ── Parse connection string from appsettings.json ───────────────────────────
 $appSettingsPath = Join-Path $repoRoot $config.Api.ProjectPath 'appsettings.json'
@@ -44,7 +44,7 @@ if (-not $serverMatch.Success -or -not $dbMatch.Success) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' `
         -Message "Could not parse connection string: $connectionString" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject]@{ Success = $false; Message = 'Failed to parse connection string' }
 }
@@ -68,7 +68,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'error' `
             -Message 'sqlcmd not found in PATH. Install SQL Server command-line tools or add sqlcmd to PATH.' `
-            -Iteration $Iteration
+            -Experiment $Experiment
         return [PSCustomObject]@{ Success = $false; Message = 'sqlcmd not found' }
     }
 
@@ -79,14 +79,14 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "sqlcmd exited with code $exitCode — database may not have existed" `
-            -Iteration $Iteration `
+            -Experiment $Experiment `
             -Data @{ output = ($output | Out-String) }
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Database '$dbName' dropped — will be recreated on next API startup" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject]@{ Success = $true; Database = $dbName }
 }
@@ -94,7 +94,7 @@ catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' `
         -Message "Failed to reset database: $_" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject]@{ Success = $false; Message = "Error: $_" }
 }

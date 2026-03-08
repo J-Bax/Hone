@@ -16,8 +16,8 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
@@ -29,7 +29,7 @@ param(
 
     [string]$ConfigPath,
 
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -42,7 +42,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'fix' -Level 'info' -Message "Calling fix agent for: $FilePath" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $prompt = @"
@@ -76,7 +76,7 @@ try {
     $responseText = ($copilotOutput | Out-String).Trim()
 
     # Save the response
-    $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+    $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
     if (-not (Test-Path $iterDir)) {
         New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
     }
@@ -99,12 +99,12 @@ try {
     if ($codeBlock) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'fix' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
     else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'fix' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 catch {
@@ -117,7 +117,7 @@ catch {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'warning' -Message "Fix agent failed: $_" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 return [PSCustomObject]$result

@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Generates a root cause analysis document for a harness iteration.
+    Generates a root cause analysis document for a harness experiment.
 
 .DESCRIPTION
     Takes structured analysis data (from the analysis and classification agents)
     and current performance metrics to produce a concise root-cause markdown file
-    stored in the iteration subfolder.
+    stored in the experiment subfolder.
 
 .PARAMETER FilePath
     Target file identified by the analysis agent (relative to sample-api/).
@@ -24,7 +24,7 @@
     if the fix agent hasn't run yet (e.g., architecture changes).
 
 .PARAMETER CurrentMetrics
-    PSCustomObject with current iteration metrics (p95, RPS, error rate).
+    PSCustomObject with current experiment metrics (p95, RPS, error rate).
 
 .PARAMETER BaselineMetrics
     PSCustomObject with baseline metrics.
@@ -32,8 +32,8 @@
 .PARAMETER ComparisonResult
     PSCustomObject from Compare-Results.ps1.
 
-.PARAMETER Iteration
-    Current iteration number.
+.PARAMETER Experiment
+    Current experiment number.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
@@ -58,7 +58,7 @@ param(
 
     [PSCustomObject]$ComparisonResult,
 
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
 
     [string]$ConfigPath
 )
@@ -72,8 +72,8 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-    -Phase 'analyze' -Level 'info' -Message "Generating root cause analysis for iteration $Iteration" `
-    -Iteration $Iteration
+    -Phase 'analyze' -Level 'info' -Message "Generating root cause analysis for experiment $Experiment" `
+    -Experiment $Experiment
 
 # ── Use structured data directly (no parsing needed) ─────────────────────────
 $filePath = if ($FilePath) { $FilePath } else { '' }
@@ -98,7 +98,7 @@ $improvPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) { $Com
 
 # ── Build the RCA markdown ─────────────────────────────────────────────────
 $rca = @"
-# Root Cause Analysis — Iteration $Iteration
+# Root Cause Analysis — Experiment $Experiment
 
 > Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 
@@ -133,7 +133,7 @@ $(if ($codeBlock) {
 "@
 
 # ── Write the RCA file ──────────────────────────────────────────────────────
-$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
@@ -143,7 +143,7 @@ $rca | Out-File -FilePath $rcaPath -Encoding utf8
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Root cause analysis saved to $rcaPath" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Return result ───────────────────────────────────────────────────────────
 [PSCustomObject][ordered]@{

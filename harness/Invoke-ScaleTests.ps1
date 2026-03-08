@@ -13,22 +13,22 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging and file naming.
+.PARAMETER Experiment
+    Current experiment number for logging and file naming.
 
 .PARAMETER ScenarioPath
     Override the scenario path from config. Optional.
 
 .PARAMETER ScenarioName
     Logical name for the scenario (e.g. 'stress-products'). When provided the
-    k6 summary file is written as k6-summary-{ScenarioName}-iteration-{N}.json
+    k6 summary file is written as k6-summary-{ScenarioName}-experiment-{N}.json
     and .NET counter collection is skipped (counters are only gathered for the
     primary optimization scenario). Warmup and multi-run are also skipped.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
     [string]$ScenarioPath,
     [string]$ScenarioName
 )
@@ -45,7 +45,7 @@ if (-not $ScenarioPath) {
     $ScenarioPath = Join-Path $repoRoot $config.ScaleTest.ScenarioPath
 }
 
-$outputDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+$outputDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 if ($ScenarioName) {
     $jsonSummaryPath = Join-Path $outputDir "k6-summary-$ScenarioName.json"
 } else {
@@ -61,13 +61,13 @@ if (-not (Test-Path $outputDir)) {
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message "Running k6 scenario: $ScenarioPath against $baseUrl" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Pre-flight: verify k6 is available ──────────────────────────────────────
 if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
     $msg = 'k6 is not on PATH — cannot run scale tests'
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'measure' -Level 'error' -Message $msg -Iteration $Iteration
+        -Phase 'measure' -Level 'error' -Message $msg -Experiment $Experiment
     throw $msg
 }
 
@@ -91,7 +91,7 @@ if ($healthEndpoint) {
     if (-not $healthOk) {
         $msg = "API is not healthy at $healthUrl — cannot run scale test '$ScenarioName'"
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'error' -Message $msg -Iteration $Iteration
+            -Phase 'measure' -Level 'error' -Message $msg -Experiment $Experiment
         throw $msg
     }
 }
@@ -106,7 +106,7 @@ if ($warmupEnabled) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
             -Message 'Running warmup pass' `
-            -Iteration $Iteration
+            -Experiment $Experiment
 
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
         & k6 @warmupArgs 2>&1 | Out-Null
@@ -117,14 +117,14 @@ if ($warmupEnabled) {
             -BaseUrl $baseUrl `
             -GcEndpoint $config.Api.GcEndpoint `
             -CooldownSeconds $cooldown `
-            -Iteration $Iteration `
+            -Experiment $Experiment `
             -Reason 'after warmup'
     }
     else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Warmup scenario not found at $warmupPath — skipping" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 
@@ -143,13 +143,13 @@ if ($countersEnabled) {
         $counterHandle = & (Join-Path $PSScriptRoot 'Start-DotnetCounters.ps1') `
             -ProcessId $apiProcess.OwningProcess `
             -ConfigPath $ConfigPath `
-            -Iteration $Iteration
+            -Experiment $Experiment
 
         if (-not $counterHandle.Success) {
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'measure' -Level 'warning' `
                 -Message 'Counter collection failed to start — continuing without counters' `
-                -Iteration $Iteration
+                -Experiment $Experiment
             $counterHandle = $null
         }
     }
@@ -157,7 +157,7 @@ if ($countersEnabled) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Could not find API process listening on port $apiPort — skipping counter collection" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 
@@ -193,7 +193,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
             -BaseUrl $baseUrl `
             -GcEndpoint $config.Api.GcEndpoint `
             -CooldownSeconds $cooldown `
-            -Iteration $Iteration `
+            -Experiment $Experiment `
             -Reason 'between runs'
     }
 
@@ -212,7 +212,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
             -Message "Measured run $run / $measuredRuns" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
     else {
         $runArgs = $k6Args
@@ -229,7 +229,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
 
         $runMetrics = [ordered]@{
             Timestamp       = (Get-Date -Format 'o')
-            Iteration       = $Iteration
+            Experiment       = $Experiment
             Run             = $run
             HttpReqDuration = [ordered]@{
                 Avg = $summary.metrics.http_req_duration.avg
@@ -255,7 +255,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
             -Message "Run $run — p95: $($runMetrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($runMetrics.HttpReqs.Rate, 1))" `
-            -Iteration $Iteration `
+            -Experiment $Experiment `
             -Data @{
                 run       = $run
                 p95       = $runMetrics.HttpReqDuration.P95
@@ -267,7 +267,7 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'error' `
             -Message "k6 summary file not found at: $runSummaryPath (run $run)" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 
@@ -290,7 +290,7 @@ if ($allRunMetrics.Count -gt 0) {
                 $selectedRun.HttpReqDuration.P95, `
                 $allRunMetrics.Count, `
                 (($sorted | ForEach-Object { '{0}ms' -f $_.HttpReqDuration.P95 }) -join ', ')) `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 
     # Copy the winning run's summary to the canonical path
@@ -301,7 +301,7 @@ if ($allRunMetrics.Count -gt 0) {
     # Build final metrics (without the per-run helper fields)
     $metrics = [ordered]@{
         Timestamp       = $selectedRun.Timestamp
-        Iteration       = $selectedRun.Iteration
+        Experiment       = $selectedRun.Experiment
         HttpReqDuration = $selectedRun.HttpReqDuration
         HttpReqs        = $selectedRun.HttpReqs
         HttpReqFailed   = $selectedRun.HttpReqFailed
@@ -310,7 +310,7 @@ if ($allRunMetrics.Count -gt 0) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "k6 completed — p95: $($metrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($metrics.HttpReqs.Rate, 1))" `
-        -Iteration $Iteration `
+        -Experiment $Experiment `
         -Data @{
             p95       = $metrics.HttpReqDuration.P95
             rps       = $metrics.HttpReqs.Rate
@@ -322,14 +322,14 @@ else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' `
         -Message 'No successful k6 runs produced metrics' `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 # ── Stop .NET counter collection ────────────────────────────────────────────
 if ($counterHandle) {
     $counterMetrics = & (Join-Path $PSScriptRoot 'Stop-DotnetCounters.ps1') `
         -CounterHandle $counterHandle `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 $result = [ordered]@{

@@ -17,7 +17,7 @@
     PSCustomObject with .NET counter metrics (optional).
 
 .PARAMETER PreviousRcaExplanation
-    Explanation from the previous iteration's RCA (optional).
+    Explanation from the previous experiment's RCA (optional).
 #>
 [CmdletBinding()]
 param(
@@ -78,7 +78,7 @@ if (Test-Path $queuePath) {
     $historyContext += "`n## Known Optimization Queue`n$queueContent`n"
 }
 if ($PreviousRcaExplanation) {
-    $historyContext += "`n## Last Iteration's Fix`n$PreviousRcaExplanation`n"
+    $historyContext += "`n## Last Experiment's Fix`n$PreviousRcaExplanation`n"
 }
 
 # ── Return structured result ─────────────────────────────────────────────────

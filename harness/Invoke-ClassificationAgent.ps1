@@ -15,8 +15,8 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
@@ -28,7 +28,7 @@ param(
 
     [string]$ConfigPath,
 
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -41,7 +41,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Classifying change scope for: $FilePath" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $prompt = @"
@@ -76,7 +76,7 @@ try {
     $responseText = ($copilotOutput | Out-String).Trim()
 
     # Save the response
-    $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+    $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
     if (-not (Test-Path $iterDir)) {
         New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
     }
@@ -98,7 +98,7 @@ try {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'info' -Message "Classification: $scope — $($parsed.reasoning)" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 catch {
     # Default to architecture on failure (safe)
@@ -111,7 +111,7 @@ catch {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'warning' -Message "Classification agent failed: $_ — defaulting to architecture" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 return [PSCustomObject]$result

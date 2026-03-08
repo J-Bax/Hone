@@ -12,8 +12,8 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number — forwarded to Invoke-ScaleTests.ps1 for file
+.PARAMETER Experiment
+    Current experiment number — forwarded to Invoke-ScaleTests.ps1 for file
     naming and logging.
 
 .PARAMETER SkipPrimary
@@ -21,17 +21,17 @@
     when the primary scenario was already executed by the caller.
 
 .EXAMPLE
-    # Run only the diagnostic (non-primary) scenarios for iteration 3
-    .\Invoke-AllScaleTests.ps1 -ConfigPath .\harness\config.psd1 -Iteration 3 -SkipPrimary
+    # Run only the diagnostic (non-primary) scenarios for experiment 3
+    .\Invoke-AllScaleTests.ps1 -ConfigPath .\harness\config.psd1 -Experiment 3 -SkipPrimary
 
 .EXAMPLE
-    # Run every scenario for baseline capture (iteration 0)
-    .\Invoke-AllScaleTests.ps1 -ConfigPath .\harness\config.psd1 -Iteration 0
+    # Run every scenario for baseline capture (experiment 0)
+    .\Invoke-AllScaleTests.ps1 -ConfigPath .\harness\config.psd1 -Experiment 0
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
     [switch]$SkipPrimary
 )
 
@@ -73,7 +73,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
             -BaseUrl $config.Api.BaseUrl `
             -GcEndpoint $config.Api.GcEndpoint `
             -CooldownSeconds $cooldown `
-            -Iteration $Iteration `
+            -Experiment $Experiment `
             -Reason 'between scenarios'
     }
     $scenarioIndex++
@@ -87,11 +87,11 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Running scenario '$name': $($scenario.description)" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     $params = @{
         ConfigPath   = $ConfigPath
-        Iteration    = $Iteration
+        Experiment    = $Experiment
         ScenarioPath = $scenarioFile
     }
     if ($scenarioNameArg) { $params.ScenarioName = $scenarioNameArg }
@@ -104,7 +104,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Scenario '$name' threw an error: $_" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 
     $success = $result -and $result.Success

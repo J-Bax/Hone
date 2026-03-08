@@ -7,9 +7,9 @@ The config file is the single source of truth — every option includes comments
 ## Key Configuration Areas
 
 - **Api** — Solution path, project path, test project, base URL, health endpoint, results directory
-- **Tolerances** — Regression threshold, improvement threshold, stale iteration limits, efficiency tiebreaker
+- **Tolerances** — Regression threshold, improvement threshold, stale experiment limits, efficiency tiebreaker
 - **ScaleTest** — Primary k6 scenario, scenario registry, warmup, measured runs, cooldown
-- **Loop** — Max iterations, branch prefix, stacked diffs mode, wait-for-merge behavior
+- **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior
 - **Copilot** — AI model selection and per-agent model overrides
 - **DotnetCounters** — Runtime counter collection providers and sampling interval
 - **Logging** — Log level
@@ -19,8 +19,8 @@ The config file is the single source of truth — every option includes comments
 `Invoke-HoneLoop.ps1` exposes two command-line parameters that take precedence over config file values:
 
 ```powershell
-# Override max iterations
-.\harness\Invoke-HoneLoop.ps1 -MaxIterations 10
+# Override max experiments
+.\harness\Invoke-HoneLoop.ps1 -MaxExperiments 10
 
 # Use a different config file
 .\harness\Invoke-HoneLoop.ps1 -ConfigPath .\my-config.psd1

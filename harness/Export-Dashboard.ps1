@@ -3,7 +3,7 @@
     Generates an interactive HTML dashboard for Hone performance results.
 
 .DESCRIPTION
-    Reads baseline and iteration results from the results directory, generates
+    Reads baseline and experiment results from the results directory, generates
     a self-contained HTML file with Chart.js visualizations, and optionally
     opens it in the default browser.
 
@@ -60,15 +60,15 @@ if (-not (Test-Path $baselinePath)) {
 
 $baseline = Get-Content $baselinePath -Raw | ConvertFrom-Json
 
-# Collect all iterations from iteration-* subdirectories
-$iterationDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'iteration-*' |
-    Sort-Object { [int]($_.Name -replace 'iteration-', '') }
+# Collect all experiments from experiment-* subdirectories
+$experimentDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'experiment-*' |
+    Sort-Object { [int]($_.Name -replace 'experiment-', '') }
 
 $allData = @()
 
-# Add baseline as iteration 0
+# Add baseline as experiment 0
 $allData += @{
-    iteration = 0
+    experiment = 0
     label     = 'Baseline'
     p50       = [math]::Round($baseline.HttpReqDuration.P50, 2)
     p90       = [math]::Round($baseline.HttpReqDuration.P90, 2)
@@ -80,17 +80,17 @@ $allData += @{
     errRate   = [math]::Round(($baseline.HttpReqFailed.Rate) * 100, 2)
 }
 
-foreach ($dir in $iterationDirs) {
-    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+foreach ($dir in $experimentDirs) {
+    $expNum = [int]($dir.Name -replace 'experiment-', '')
     $summaryFile = Join-Path $dir.FullName 'k6-summary.json'
     if (-not (Test-Path $summaryFile)) { continue }
-    if ($iterNum -eq 0) { continue }
+    if ($expNum -eq 0) { continue }
 
     $raw = Get-Content $summaryFile -Raw | ConvertFrom-Json
 
     $allData += @{
-        iteration = $iterNum
-        label     = "Iteration $iterNum"
+        experiment = $expNum
+        label     = "Experiment $expNum"
         p50       = [math]::Round($raw.metrics.http_req_duration.med, 2)
         p90       = [math]::Round($raw.metrics.http_req_duration.'p(90)', 2)
         p95       = [math]::Round($raw.metrics.http_req_duration.'p(95)', 2)
@@ -105,15 +105,15 @@ foreach ($dir in $iterationDirs) {
 # ── Counter data (summary) ──────────────────────────────────────────────────
 
 $counterData = @()
-foreach ($dir in $iterationDirs) {
-    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+foreach ($dir in $experimentDirs) {
+    $expNum = [int]($dir.Name -replace 'experiment-', '')
     $cf = Join-Path $dir.FullName 'dotnet-counters.json'
     if (-not (Test-Path $cf)) { continue }
 
     $raw = Get-Content $cf -Raw | ConvertFrom-Json
 
     $counterData += @{
-        iteration        = $iterNum
+        experiment        = $expNum
         cpuAvg           = $raw.Runtime.CpuUsage.Avg
         cpuMax           = $raw.Runtime.CpuUsage.Max
         heapMBAvg        = $raw.Runtime.GcHeapSizeMB.Avg
@@ -131,8 +131,8 @@ foreach ($dir in $iterationDirs) {
 
 $counterTimeSeries = @{}
 
-foreach ($dir in $iterationDirs) {
-    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+foreach ($dir in $experimentDirs) {
+    $expNum = [int]($dir.Name -replace 'experiment-', '')
     $csvFile = Join-Path $dir.FullName 'dotnet-counters.csv'
     if (-not (Test-Path $csvFile)) { continue }
 
@@ -205,8 +205,8 @@ foreach ($dir in $iterationDirs) {
         $series[$key] = $values
     }
 
-    $counterTimeSeries["iteration$iterNum"] = @{
-        iteration = $iterNum
+    $counterTimeSeries["experiment$expNum"] = @{
+        experiment = $expNum
         labels    = $elapsedLabels
         series    = $series
     }
@@ -225,7 +225,7 @@ foreach ($sbFile in $scenarioBaselineFiles) {
 
     $scenarioEntries = @()
     $scenarioEntries += @{
-        iteration = 0
+        experiment = 0
         label     = 'Baseline'
         p50       = [math]::Round($sbRaw.HttpReqDuration.P50, 2)
         p90       = [math]::Round($sbRaw.HttpReqDuration.P90, 2)
@@ -237,18 +237,18 @@ foreach ($sbFile in $scenarioBaselineFiles) {
         errRate   = [math]::Round(($sbRaw.HttpReqFailed.Rate) * 100, 2)
     }
 
-    # Find iteration results for this scenario from iteration subdirectories
-    foreach ($dir in $iterationDirs) {
-        $sIterNum = [int]($dir.Name -replace 'iteration-', '')
-        if ($sIterNum -eq 0) { continue }
+    # Find experiment results for this scenario from experiment subdirectories
+    foreach ($dir in $experimentDirs) {
+        $sExpNum = [int]($dir.Name -replace 'experiment-', '')
+        if ($sExpNum -eq 0) { continue }
 
         $sf = Join-Path $dir.FullName "k6-summary-$scenarioName.json"
         if (-not (Test-Path $sf)) { continue }
 
         $sRaw = Get-Content $sf -Raw | ConvertFrom-Json
         $scenarioEntries += @{
-            iteration = $sIterNum
-            label     = "Iteration $sIterNum"
+            experiment = $sExpNum
+            label     = "Experiment $sExpNum"
             p50       = [math]::Round($sRaw.metrics.http_req_duration.med, 2)
             p90       = [math]::Round($sRaw.metrics.http_req_duration.'p(90)', 2)
             p95       = [math]::Round($sRaw.metrics.http_req_duration.'p(95)', 2)
@@ -349,10 +349,10 @@ $html = @'
         canvas { max-height: 300px; }
         .section-header { font-size: 1.25rem; font-weight: 600; margin: 32px 0 16px; color: var(--text); }
         .section-subtitle { color: var(--text-muted); font-size: 0.85rem; margin: -12px 0 16px; }
-        .iter-selector { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-        .iter-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.2s; }
-        .iter-btn:hover { border-color: var(--blue); color: var(--blue); }
-        .iter-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+        .exp-selector { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .exp-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.8rem; font-weight: 600; transition: all 0.2s; }
+        .exp-btn:hover { border-color: var(--blue); color: var(--blue); }
+        .exp-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
         .chart-grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-bottom: 16px; }
         @media (max-width: 768px) { .chart-grid-3 { grid-template-columns: 1fr; } }
     </style>
@@ -369,7 +369,7 @@ $html = @'
 
     <div class="chart-row">
         <div class="chart-container">
-            <h3>Latency Over Iterations (ms)</h3>
+            <h3>Latency Over Experiments (ms)</h3>
             <canvas id="latencyChart"></canvas>
         </div>
         <div class="chart-container">
@@ -390,11 +390,11 @@ $html = @'
     </div>
 
     <div class="chart-container">
-        <h3>All Iterations</h3>
+        <h3>All Experiments</h3>
         <table id="detailTable">
             <thead>
                 <tr>
-                    <th>Iteration</th><th>p50 (ms)</th><th>p90 (ms)</th><th>p95 (ms)</th>
+                    <th>Experiment</th><th>p50 (ms)</th><th>p90 (ms)</th><th>p95 (ms)</th>
                     <th>Avg (ms)</th><th>Max (ms)</th><th>RPS</th><th>Requests</th>
                     <th>Errors</th><th>p95 vs Baseline</th><th>Status</th>
                 </tr>
@@ -409,7 +409,7 @@ $html = @'
     <div id="runtimeSection">
         <h2 class="section-header">Runtime Diagnostics (.NET Counters)</h2>
         <p class="section-subtitle">Time-series data captured via dotnet-counters during load tests</p>
-        <div class="iter-selector" id="iterSelector"></div>
+        <div class="exp-selector" id="expSelector"></div>
 
         <div class="chart-grid-3">
             <div class="chart-container">
@@ -527,7 +527,7 @@ $html = @'
                     : 'Baseline measurement'
             },
             {
-                title: 'Iterations',
+                title: 'Experiments',
                 value: data.length - 1,
                 met: null,
                 sub: latest.label
@@ -700,11 +700,11 @@ $html = @'
         var baseP95 = baseline.p95;
         var rows = '';
 
-        // Build a lookup of counter data by iteration for efficiency tiebreaker
+        // Build a lookup of counter data by experiment for efficiency tiebreaker
         var counterByIter = {};
         if (counterData && counterData.length) {
             for (var c = 0; c < counterData.length; c++) {
-                counterByIter[counterData[c].iteration] = counterData[c];
+                counterByIter[counterData[c].experiment] = counterData[c];
             }
         }
 
@@ -713,13 +713,13 @@ $html = @'
             var p95Better = d.p95 <= baseline.p95;
             var rpsBetter = d.rps >= baseline.rps;
             var errBetter = d.errRate <= baseline.errRate;
-            var perfImproved = d.iteration === 0 || (p95Better || rpsBetter || errBetter);
+            var perfImproved = d.experiment === 0 || (p95Better || rpsBetter || errBetter);
 
             // Check efficiency tiebreaker: performance flat but CPU or working set reduced
             var isTiebreaker = false;
-            if (!perfImproved && d.iteration > 0) {
-                var prevIter = d.iteration - 1;
-                var cur = counterByIter[d.iteration];
+            if (!perfImproved && d.experiment > 0) {
+                var prevIter = d.experiment - 1;
+                var cur = counterByIter[d.experiment];
                 var prev = counterByIter[prevIter];
                 if (cur && prev) {
                     var cpuReduced = prev.cpuAvg > 0 && ((cur.cpuAvg - prev.cpuAvg) / prev.cpuAvg) <= -0.05;
@@ -731,25 +731,25 @@ $html = @'
             var improved = perfImproved || isTiebreaker;
 
             var delta = '\u2014';
-            if (d.iteration > 0 && baseP95 > 0) {
+            if (d.experiment > 0 && baseP95 > 0) {
                 var pct = ((d.p95 - baseP95) / baseP95 * 100).toFixed(1);
                 var cls = pct < 0 ? 'positive' : pct > 0 ? 'negative' : 'zero';
                 delta = '<span class="improvement ' + cls + '">' + (pct > 0 ? '+' : '') + pct + '%</span>';
             }
 
-            var statusCls = d.iteration === 0 ? 'tag-pass' : isTiebreaker ? 'tag-tiebreaker' : improved ? 'tag-pass' : 'tag-fail';
-            var statusLabel = d.iteration === 0 ? 'BASE' : isTiebreaker ? 'TIEBREAKER' : improved ? 'IMPROVED' : 'REGRESSED';
+            var statusCls = d.experiment === 0 ? 'tag-pass' : isTiebreaker ? 'tag-tiebreaker' : improved ? 'tag-pass' : 'tag-fail';
+            var statusLabel = d.experiment === 0 ? 'BASE' : isTiebreaker ? 'TIEBREAKER' : improved ? 'IMPROVED' : 'REGRESSED';
 
             rows += '<tr>'
                 + '<td>' + d.label + '</td>'
                 + '<td>' + d.p50 + '</td>'
                 + '<td>' + d.p90 + '</td>'
-                + '<td style="color:' + (p95Better ? 'var(--green)' : d.iteration === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.p95 + '</td>'
+                + '<td style="color:' + (p95Better ? 'var(--green)' : d.experiment === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.p95 + '</td>'
                 + '<td>' + d.avg + '</td>'
                 + '<td>' + d.max + '</td>'
-                + '<td style="color:' + (rpsBetter ? 'var(--green)' : d.iteration === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.rps + '</td>'
+                + '<td style="color:' + (rpsBetter ? 'var(--green)' : d.experiment === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.rps + '</td>'
                 + '<td>' + (d.reqCount || '\u2014') + '</td>'
-                + '<td style="color:' + (errBetter ? 'var(--green)' : d.iteration === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.errRate + '%</td>'
+                + '<td style="color:' + (errBetter ? 'var(--green)' : d.experiment === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.errRate + '%</td>'
                 + '<td>' + delta + '</td>'
                 + '<td><span class="tag ' + statusCls + '">' + statusLabel + '</span></td>'
                 + '</tr>';
@@ -799,7 +799,7 @@ $html = @'
 
             // Table
             html += '<table><thead><tr>'
-                + '<th>Iteration</th><th>p95 (ms)</th><th>Avg (ms)</th>'
+                + '<th>Experiment</th><th>p95 (ms)</th><th>Avg (ms)</th>'
                 + '<th>RPS</th><th>Errors</th><th>p95 vs Baseline</th>'
                 + '</tr></thead><tbody>';
 
@@ -807,14 +807,14 @@ $html = @'
                 var d = sData[i];
                 var p95Better = d.p95 <= sBase.p95;
                 var delta = '\u2014';
-                if (d.iteration > 0 && sBase.p95 > 0) {
+                if (d.experiment > 0 && sBase.p95 > 0) {
                     var pct = ((d.p95 - sBase.p95) / sBase.p95 * 100).toFixed(1);
                     var cls2 = pct < 0 ? 'positive' : pct > 0 ? 'negative' : 'zero';
                     delta = '<span class="improvement ' + cls2 + '">' + (pct > 0 ? '+' : '') + pct + '%</span>';
                 }
                 html += '<tr>'
                     + '<td>' + d.label + '</td>'
-                    + '<td style="color:' + (p95Better ? 'var(--green)' : d.iteration === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.p95 + '</td>'
+                    + '<td style="color:' + (p95Better ? 'var(--green)' : d.experiment === 0 ? 'var(--text)' : 'var(--red)') + '">' + d.p95 + '</td>'
                     + '<td>' + d.avg + '</td>'
                     + '<td>' + d.rps + '</td>'
                     + '<td>' + d.errRate + '%</td>'
@@ -843,12 +843,12 @@ $html = @'
 
     function getIterKeys() {
         return Object.keys(timeSeriesData).sort(function(a, b) {
-            return (timeSeriesData[a].iteration || 0) - (timeSeriesData[b].iteration || 0);
+            return (timeSeriesData[a].experiment || 0) - (timeSeriesData[b].experiment || 0);
         });
     }
 
     function renderIterSelector() {
-        var container = document.getElementById('iterSelector');
+        var container = document.getElementById('expSelector');
         var keys = getIterKeys();
         if (keys.length === 0) {
             document.getElementById('runtimeSection').style.display = 'none';
@@ -857,17 +857,17 @@ $html = @'
         var html = '';
         for (var i = 0; i < keys.length; i++) {
             var k = keys[i];
-            var iterNum = timeSeriesData[k].iteration;
-            var label = iterNum === 0 ? 'Baseline' : 'Iteration ' + iterNum;
+            var expNum = timeSeriesData[k].experiment;
+            var label = expNum === 0 ? 'Baseline' : 'Experiment ' + expNum;
             var active = i === keys.length - 1 ? ' active' : '';
-            html += '<button class="iter-btn' + active + '" data-key="' + k + '" onclick="selectIteration(this)">' + label + '</button>';
+            html += '<button class="exp-btn' + active + '" data-key="' + k + '" onclick="selectExperiment(this)">' + label + '</button>';
         }
         container.innerHTML = html;
         currentIterKey = keys[keys.length - 1];
     }
 
-    function selectIteration(btn) {
-        var buttons = document.querySelectorAll('.iter-btn');
+    function selectExperiment(btn) {
+        var buttons = document.querySelectorAll('.exp-btn');
         for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
         btn.classList.add('active');
         currentIterKey = btn.getAttribute('data-key');

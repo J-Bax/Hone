@@ -52,23 +52,23 @@
         # AND this absolute threshold are exceeded.
         MinAbsoluteP95DeltaMs = 5
 
-        # Minimum improvement (any single metric) to accept an iteration.
+        # Minimum improvement (any single metric) to accept an experiment.
         # Set to 0 so any measurable improvement is accepted; regressions are
         # still gated by MaxRegressionPct.
         MinImprovementPct = 0
 
-        # Stop after this many consecutive iterations with no improvement
-        StaleIterationsBeforeStop = 2
+        # Stop after this many consecutive experiments with no improvement
+        StaleExperimentsBeforeStop = 2
 
-        # Stop after this many consecutive unsuccessful iterations
+        # Stop after this many consecutive unsuccessful experiments
         # (stale + regression combined).  Used by stacked-diffs mode where
         # regressions no longer immediately abort the loop.
-        # Falls back to StaleIterationsBeforeStop when not set.
+        # Falls back to StaleExperimentsBeforeStop when not set.
         MaxConsecutiveFailures = 10
 
         # ── Efficiency Tiebreaker ────────────────────────────────
         # When performance metrics are flat (no improvement, no regression),
-        # accept the iteration if OS-level resource usage decreased.
+        # accept the experiment if OS-level resource usage decreased.
         # Only CPU and working set are evaluated — these are the resources
         # that matter on a shared-VM architecture.
         Efficiency = @{
@@ -85,7 +85,7 @@
 
     # ── Scale Testing ───────────────────────────────────────────
     ScaleTest = @{
-        # Path to the k6 scenario to run on each iteration (primary / optimization)
+        # Path to the k6 scenario to run on each experiment (primary / optimization)
         ScenarioPath = 'sample-api/scale-tests/scenarios/baseline.js'
 
         # JSON file listing all scenarios and their metadata
@@ -127,22 +127,22 @@
 
     # ── Agentic Loop ───────────────────────────────────────────
     Loop = @{
-        # Maximum number of optimization iterations
-        MaxIterations = 999
+        # Maximum number of optimization experiments
+        MaxExperiments = 999
 
         # Git branch prefix for optimization branches
-        BranchPrefix  = 'hone/iteration'
+        BranchPrefix  = 'hone/experiment'
 
-        # Stacked diffs: each iteration branches from the previous one,
+        # Stacked diffs: each experiment branches from the previous one,
         # forming a linear chain.  PRs compare N+1 against the last
-        # successful iteration instead of master.
-        # When $false (legacy mode): each iteration branches from master
+        # successful experiment instead of master.
+        # When $false (legacy mode): each experiment branches from master
         # and PRs target master directly.
         StackedDiffs  = $true
 
         # When $false the loop creates PRs and continues immediately
         # (fire-and-forget).  When $true the loop blocks until each PR
-        # is merged before starting the next iteration.
+        # is merged before starting the next experiment.
         # In stacked mode $false is recommended; $true is the legacy
         # behaviour when StackedDiffs = $false.
         WaitForMerge  = $false

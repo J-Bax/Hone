@@ -123,13 +123,13 @@ This starts the API, runs the baseline k6 scenario, saves results to `sample-api
 .\harness\Invoke-HoneLoop.ps1
 ```
 
-This kicks off the agentic optimization cycle. Watch the console output for build results, test outcomes, performance metrics, Copilot suggestions, and iteration summaries.
+This kicks off the agentic optimization cycle. Watch the console output for build results, test outcomes, performance metrics, Copilot suggestions, and experiment summaries.
 
 ## What to Expect
 
 On the first run, the Hone loop will analyze the sample API's performance characteristics through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
 
-After the loop completes (or between iterations), you can inspect results:
+After the loop completes (or between experiments), you can inspect results:
 
 ```powershell
 # View results in terminal

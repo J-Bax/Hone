@@ -3,9 +3,9 @@
     Displays performance results in the terminal.
 
 .DESCRIPTION
-    Reads baseline and iteration results from the results directory and presents
+    Reads baseline and experiment results from the results directory and presents
     them as a formatted comparison table. Shows key metrics and improvement deltas
-    between iterations.
+    between experiments.
 
 .PARAMETER ResultsPath
     Path to the results directory. Defaults to 'sample-api/results' at the repo root.
@@ -47,21 +47,21 @@ if (-not (Test-Path $baselinePath)) {
 
 $baseline = Get-Content $baselinePath -Raw | ConvertFrom-Json
 
-# Find iteration summaries from iteration-* subdirectories
-$iterationDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'iteration-*' -ErrorAction SilentlyContinue |
-    Sort-Object { [int]($_.Name -replace 'iteration-', '') }
+# Find experiment summaries from experiment-* subdirectories
+$experimentDirs = Get-ChildItem -Path $ResultsPath -Directory -Filter 'experiment-*' -ErrorAction SilentlyContinue |
+    Sort-Object { [int]($_.Name -replace 'experiment-', '') }
 
-# Parse each iteration's metrics
-$iterations = @()
-foreach ($dir in $iterationDirs) {
-    $iterNum = [int]($dir.Name -replace 'iteration-', '')
+# Parse each experiment's metrics
+$experiments = @()
+foreach ($dir in $experimentDirs) {
+    $expNum = [int]($dir.Name -replace 'experiment-', '')
     $summaryFile = Join-Path $dir.FullName 'k6-summary.json'
     if (-not (Test-Path $summaryFile)) { continue }
 
     # Parse from the raw k6 summary
     $raw = Get-Content $summaryFile -Raw | ConvertFrom-Json
     $metrics = [PSCustomObject]@{
-        Iteration       = $iterNum
+        Experiment       = $expNum
         HttpReqDuration = [PSCustomObject]@{
             Avg = $raw.metrics.http_req_duration.avg
             P50 = $raw.metrics.http_req_duration.med
@@ -79,7 +79,7 @@ foreach ($dir in $iterationDirs) {
         }
     }
 
-    $iterations += $metrics
+    $experiments += $metrics
 }
 
 # ── Thresholds ──────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ $totalWidth = 14 + 12 + 12 + 12 + 12 + 12 + 2
 $separator = "  " + ("─" * $totalWidth)
 
 Write-Host "  " -NoNewline
-Write-Host ("{0,-$($colWidths.Label)}" -f "Iteration") -NoNewline -ForegroundColor Cyan
+Write-Host ("{0,-$($colWidths.Label)}" -f "Experiment") -NoNewline -ForegroundColor Cyan
 Write-Host ("{0,$($colWidths.P95)}" -f "p95 (ms)") -NoNewline -ForegroundColor Cyan
 Write-Host ("{0,$($colWidths.Avg)}" -f "Avg (ms)") -NoNewline -ForegroundColor Cyan
 Write-Host ("{0,$($colWidths.RPS)}" -f "RPS") -NoNewline -ForegroundColor Cyan
@@ -189,16 +189,16 @@ Write-Host ("{0,$($colWidths.Err)}" -f $bErr) -NoNewline -ForegroundColor White
 Write-Host ("{0,$($colWidths.Delta)}" -f "—") -ForegroundColor DarkGray
 Write-Host $separator -ForegroundColor DarkGray
 
-# ── Iteration rows ──────────────────────────────────────────────────────────
+# ── Experiment rows ──────────────────────────────────────────────────────────
 
-foreach ($iter in $iterations) {
-    $iterNum = $iter.Iteration
-    if ($iterNum -eq 0) { continue }  # Skip iteration 0 (same as baseline)
+foreach ($exp in $experiments) {
+    $expNum = $exp.Experiment
+    if ($expNum -eq 0) { continue }  # Skip experiment 0 (same as baseline)
 
-    $iP95 = [math]::Round($iter.HttpReqDuration.P95, 2)
-    $iAvg = [math]::Round($iter.HttpReqDuration.Avg, 2)
-    $iRPS = [math]::Round($iter.HttpReqs.Rate, 1)
-    $iErr = Format-Pct ($iter.HttpReqFailed.Rate)
+    $iP95 = [math]::Round($exp.HttpReqDuration.P95, 2)
+    $iAvg = [math]::Round($exp.HttpReqDuration.Avg, 2)
+    $iRPS = [math]::Round($exp.HttpReqs.Rate, 1)
+    $iErr = Format-Pct ($exp.HttpReqFailed.Rate)
 
     $deltaP95 = Format-Delta -Current $iP95 -Baseline $bP95 -LowerIsBetter $true
     $deltaRPS = Format-Delta -Current $iRPS -Baseline $bRPS -LowerIsBetter $false
@@ -206,10 +206,10 @@ foreach ($iter in $iterations) {
     # Color by direction of change vs baseline (green = improved, red = worse)
     $p95Color = if ($iP95 -lt $bP95) { 'Green' } elseif ($iP95 -gt $bP95) { 'Red' } else { 'White' }
     $rpsColor = if ($iRPS -gt $bRPS) { 'Green' } elseif ($iRPS -lt $bRPS) { 'Red' } else { 'White' }
-    $errColor = if ($iter.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate) { 'Green' } elseif ($iter.HttpReqFailed.Rate -gt $baseline.HttpReqFailed.Rate) { 'Red' } else { 'White' }
+    $errColor = if ($exp.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate) { 'Green' } elseif ($exp.HttpReqFailed.Rate -gt $baseline.HttpReqFailed.Rate) { 'Red' } else { 'White' }
 
     Write-Host "  " -NoNewline
-    Write-Host ("{0,-$($colWidths.Label)}" -f "Iteration $iterNum") -NoNewline -ForegroundColor White
+    Write-Host ("{0,-$($colWidths.Label)}" -f "Experiment $expNum") -NoNewline -ForegroundColor White
     Write-Host ("{0,$($colWidths.P95)}" -f $iP95) -NoNewline -ForegroundColor $p95Color
     Write-Host ("{0,$($colWidths.Avg)}" -f $iAvg) -NoNewline -ForegroundColor White
     Write-Host ("{0,$($colWidths.RPS)}" -f $iRPS) -NoNewline -ForegroundColor $rpsColor
@@ -217,9 +217,9 @@ foreach ($iter in $iterations) {
     Write-Host ("{0,$($colWidths.Delta)}" -f $deltaP95.Text) -ForegroundColor $deltaP95.Color
 }
 
-if ($iterations.Count -eq 0 -or ($iterations.Count -eq 1 -and $iterations[0].Iteration -eq 0)) {
+if ($experiments.Count -eq 0 -or ($experiments.Count -eq 1 -and $experiments[0].Experiment -eq 0)) {
     Write-Host "  " -NoNewline
-    Write-Host "  No optimization iterations yet. Run .\harness\Invoke-HoneLoop.ps1" -ForegroundColor DarkGray
+    Write-Host "  No optimization experiments yet. Run .\harness\Invoke-HoneLoop.ps1" -ForegroundColor DarkGray
 }
 
 # ── Per-scenario results ────────────────────────────────────────────────────
@@ -264,11 +264,11 @@ if ($scenarioBaselineFiles.Count -gt 0) {
         Write-Host ("{0,$($sColWidths.Err)}" -f $sbErr) -NoNewline -ForegroundColor White
         Write-Host ("{0,$($sColWidths.Delta)}" -f '—') -ForegroundColor DarkGray
 
-        # Find iteration results for this scenario from iteration subdirectories
+        # Find experiment results for this scenario from experiment subdirectories
         $scenarioIterCount = 0
-        foreach ($dir in $iterationDirs) {
-            $sIterNum = [int]($dir.Name -replace 'iteration-', '')
-            if ($sIterNum -eq 0) { continue }
+        foreach ($dir in $experimentDirs) {
+            $sExpNum = [int]($dir.Name -replace 'experiment-', '')
+            if ($sExpNum -eq 0) { continue }
 
             $sf = Join-Path $dir.FullName "k6-summary-$scenarioName.json"
             if (-not (Test-Path $sf)) { continue }
@@ -283,7 +283,7 @@ if ($scenarioBaselineFiles.Count -gt 0) {
             $sP95Color = if ($sP95 -lt $sbP95) { 'Green' } elseif ($sP95 -gt $sbP95) { 'Red' } else { 'White' }
 
             Write-Host "  " -NoNewline
-            Write-Host ("{0,-$($sColWidths.Name)}" -f "  Iteration $sIterNum") -NoNewline -ForegroundColor White
+            Write-Host ("{0,-$($sColWidths.Name)}" -f "  Experiment $sExpNum") -NoNewline -ForegroundColor White
             Write-Host ("{0,$($sColWidths.P95)}" -f $sP95) -NoNewline -ForegroundColor $sP95Color
             Write-Host ("{0,$($sColWidths.RPS)}" -f $sRPS) -NoNewline -ForegroundColor White
             Write-Host ("{0,$($sColWidths.Err)}" -f $sErr) -NoNewline -ForegroundColor White
@@ -292,7 +292,7 @@ if ($scenarioBaselineFiles.Count -gt 0) {
 
         if ($scenarioIterCount -eq 0) {
             Write-Host "  " -NoNewline
-            Write-Host '    No iteration data yet' -ForegroundColor DarkGray
+            Write-Host '    No experiment data yet' -ForegroundColor DarkGray
         }
 
         Write-Host ''
@@ -329,12 +329,12 @@ foreach ($p in $percentiles) {
     Write-Host " $([math]::Round($val, 1))ms" -ForegroundColor White
 }
 
-# ── Latest iteration latency (if available) ─────────────────────────────────
+# ── Latest experiment latency (if available) ─────────────────────────────────
 
-$latestIter = $iterations | Where-Object { $_.Iteration -gt 0 } | Select-Object -Last 1
+$latestIter = $experiments | Where-Object { $_.Experiment -gt 0 } | Select-Object -Last 1
 if ($latestIter) {
     Write-Host ""
-    Write-Host "  Latency Distribution (Iteration $($latestIter.Iteration)):" -ForegroundColor Cyan
+    Write-Host "  Latency Distribution (Experiment $($latestIter.Experiment)):" -ForegroundColor Cyan
     Write-Host ""
 
     $latestMaxVal = @($latestIter.HttpReqDuration.P50, $latestIter.HttpReqDuration.P90,

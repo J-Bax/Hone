@@ -17,8 +17,8 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
-.PARAMETER Iteration
-    Current iteration number for logging and file naming.
+.PARAMETER Experiment
+    Current experiment number for logging and file naming.
 
 .OUTPUTS
     PSCustomObject with properties: Success, Process, OutputPath
@@ -32,7 +32,7 @@ param(
 
     [string]$ConfigPath,
 
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -45,7 +45,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 # Resolve output path
 if (-not $OutputPath) {
-    $outputDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+    $outputDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
     $OutputPath = Join-Path $outputDir 'dotnet-counters.csv'
 }
 
@@ -81,7 +81,7 @@ $providerList = $providers -join ','
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message "Starting dotnet-counters collection for PID $ProcessId (providers: $providerList)" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # Build dotnet-counters arguments
 $counterArgs = @(
@@ -108,7 +108,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'error' `
             -Message "dotnet-counters exited immediately with code $exitCode. Is dotnet-counters installed? Run: dotnet tool install --global dotnet-counters" `
-            -Iteration $Iteration
+            -Experiment $Experiment
 
         return [PSCustomObject][ordered]@{
             Success    = $false
@@ -120,7 +120,7 @@ try {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "dotnet-counters collecting (PID: $($counterProcess.Id)) → $OutputPath" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject][ordered]@{
         Success    = $true
@@ -132,7 +132,7 @@ catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to start dotnet-counters: $_. Counter collection will be skipped." `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject][ordered]@{
         Success    = $false

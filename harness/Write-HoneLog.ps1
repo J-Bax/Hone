@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Writes structured log entries as JSON-lines to a log file and optionally
-    to the information stream. Each entry includes a timestamp, iteration,
+    to the information stream. Each entry includes a timestamp, experiment,
     phase, level, message, and optional data payload.
 
 .PARAMETER Phase
@@ -19,8 +19,8 @@
 .PARAMETER Data
     Optional hashtable of structured data to include in the log entry.
 
-.PARAMETER Iteration
-    Current iteration number.
+.PARAMETER Experiment
+    Current experiment number.
 
 .PARAMETER LogPath
     Path to the log file. Defaults to sample-api/results/hone.jsonl.
@@ -40,7 +40,7 @@ param(
 
     [hashtable]$Data = @{},
 
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
 
     [string]$LogPath
 )
@@ -61,7 +61,7 @@ if (-not (Test-Path $logDir)) {
 
 $entry = [ordered]@{
     timestamp = (Get-Date -Format 'o')
-    iteration = $Iteration
+    experiment = $Experiment
     phase     = $Phase
     level     = $Level
     message   = $Message

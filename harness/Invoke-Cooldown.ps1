@@ -20,8 +20,8 @@
 .PARAMETER Phase
     Logging phase label forwarded to Write-HoneLog. Defaults to 'measure'.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 
 .PARAMETER Reason
     Short description included in the log message (e.g. 'between runs',
@@ -38,7 +38,7 @@ param(
 
     [string]$Phase = 'measure',
 
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
 
     [string]$Reason = 'cooldown'
 )
@@ -55,6 +55,6 @@ if ($GcEndpoint) {
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase $Phase -Level 'info' `
     -Message "Cooldown ${CooldownSeconds}s — $Reason" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 Start-Sleep -Seconds $CooldownSeconds

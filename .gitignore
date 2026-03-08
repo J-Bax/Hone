@@ -69,4 +69,4 @@ sample-api/results/*
 !sample-api/results/baseline-*.json
 !sample-api/results/run-metadata.json
 !sample-api/results/hone.jsonl
-!sample-api/results/iteration-*/
+!sample-api/results/experiment-*/

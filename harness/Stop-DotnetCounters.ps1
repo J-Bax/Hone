@@ -12,8 +12,8 @@
     The PSCustomObject returned by Start-DotnetCounters.ps1 containing the
     Process and OutputPath.
 
-.PARAMETER Iteration
-    Current iteration number for logging.
+.PARAMETER Experiment
+    Current experiment number for logging.
 
 .OUTPUTS
     PSCustomObject with structured .NET counter metrics, or $null on failure.
@@ -23,13 +23,13 @@ param(
     [Parameter(Mandatory)]
     [PSCustomObject]$CounterHandle,
 
-    [int]$Iteration = 0
+    [int]$Experiment = 0
 )
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
     -Message 'Stopping dotnet-counters collection' `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 $process = $CounterHandle.Process
 $csvPath = $CounterHandle.OutputPath
@@ -44,13 +44,13 @@ if ($process -and -not $process.HasExited) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
             -Message "dotnet-counters process stopped (PID: $($process.Id))" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
     catch {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Error stopping dotnet-counters: $_" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 }
 
@@ -62,7 +62,7 @@ if (-not (Test-Path $csvPath)) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Counter output file not found: $csvPath" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return $null
 }
@@ -74,7 +74,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message 'Counter output file is empty' `
-            -Iteration $Iteration
+            -Experiment $Experiment
         return $null
     }
 
@@ -85,7 +85,7 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message 'No counter data rows found' `
-            -Iteration $Iteration
+            -Experiment $Experiment
         return $null
     }
 
@@ -119,7 +119,7 @@ try {
     # ── Build structured metrics ────────────────────────────────────────────
     $metrics = [ordered]@{
         Timestamp = (Get-Date -Format 'o')
-        Iteration = $Iteration
+        Experiment = $Experiment
         CsvPath   = $csvPath
         TotalSamples = $rows.Count
 
@@ -180,7 +180,7 @@ try {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Counter summary — CPU avg: $cpuAvg, GC heap max: $heapMax, Gen2: $gen2, GC pause: $gcPause, Threads max: $threads, Exceptions: $exceptions" `
-        -Iteration $Iteration `
+        -Experiment $Experiment `
         -Data @{
             cpuAvg = $metrics.Runtime.CpuUsage.Avg
             gcHeapMax = $metrics.Runtime.GcHeapSizeMB.Max
@@ -196,7 +196,7 @@ try {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
         -Message "Counter metrics saved to: $jsonPath" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return [PSCustomObject]$metrics
 }
@@ -204,7 +204,7 @@ catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to parse counter data: $_" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     return $null
 }

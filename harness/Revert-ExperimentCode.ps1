@@ -1,29 +1,29 @@
 <#
 .SYNOPSIS
-    Reverts the code change from a failed iteration while preserving artifacts.
+    Reverts the code change from a failed experiment while preserving artifacts.
 
 .DESCRIPTION
-    On a failed iteration (regression/stale), this script:
+    On a failed experiment (regression/stale), this script:
     1. Restores the modified file to its pre-fix state
-    2. Stages iteration artifacts (results, metadata, logs)
+    2. Stages experiment artifacts (results, metadata, logs)
     3. Commits the revert with a descriptive message
     4. Pushes the branch so the failed attempt is preserved for the record
 
     The branch remains checked-out after this script completes, with clean
-    code state matching the last successful iteration.  The next iteration
+    code state matching the last successful experiment.  The next experiment
     can branch directly from this tip.
 
 .PARAMETER BranchName
-    The current iteration branch name.
+    The current experiment branch name.
 
 .PARAMETER FilePath
     The file that was modified by the fix (relative to repo root).
 
-.PARAMETER Iteration
-    Current iteration number.
+.PARAMETER Experiment
+    Current experiment number.
 
 .PARAMETER Outcome
-    Why the iteration failed: 'regressed' or 'stale'.
+    Why the experiment failed: 'regressed' or 'stale'.
 
 .PARAMETER Description
     Brief description of the original optimization that was attempted.
@@ -40,7 +40,7 @@ param(
     [string]$FilePath,
 
     [Parameter(Mandatory)]
-    [int]$Iteration,
+    [int]$Experiment,
 
     [Parameter(Mandatory)]
     [ValidateSet('regressed', 'stale')]
@@ -64,7 +64,7 @@ $submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'fix' -Level 'info' `
     -Message "Reverting code change on branch: $BranchName ($Outcome)" `
-    -Iteration $Iteration `
+    -Experiment $Experiment `
     -Data @{ file = $FilePath; branch = $BranchName; outcome = $Outcome }
 
 try {
@@ -76,10 +76,10 @@ try {
     # Stage the reverted file
     git add $submoduleRelPath 2>&1 | Out-Null
 
-    # Stage iteration artifacts (k6 results, RCA, counters)
-    $iterationDir = Join-Path $submoduleDir 'results' "iteration-$Iteration"
-    if (Test-Path $iterationDir) {
-        git add "results/iteration-$Iteration/" 2>&1 | Out-Null
+    # Stage experiment artifacts (k6 results, RCA, counters)
+    $experimentDir = Join-Path $submoduleDir 'results' "experiment-$Experiment"
+    if (Test-Path $experimentDir) {
+        git add "results/experiment-$Experiment/" 2>&1 | Out-Null
     }
 
     # Stage metadata files (optimization-log.md, optimization-queue.md)
@@ -103,7 +103,7 @@ try {
         }
     } else { $Outcome }
 
-    git commit -m "hone(iteration-$Iteration): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null
+    git commit -m "hone(experiment-$Experiment): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null
 
     # Push the branch so the failed attempt is preserved remotely
     git push -u origin $BranchName 2>&1 | Out-Null
@@ -113,13 +113,13 @@ try {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'fix' -Level 'warning' `
             -Message "git push failed for revert branch: $BranchName (exit code $LASTEXITCODE)" `
-            -Iteration $Iteration
+            -Experiment $Experiment
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'info' `
         -Message "Revert committed and pushed on branch: $BranchName" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 
     $result = [ordered]@{
         Success    = $true
@@ -138,8 +138,8 @@ catch {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'fix' -Level 'error' `
-        -Message "Failed to revert iteration code: $_" `
-        -Iteration $Iteration
+        -Message "Failed to revert experiment code: $_" `
+        -Experiment $Experiment
 }
 finally {
     Pop-Location

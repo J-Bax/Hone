@@ -14,19 +14,19 @@
     PSCustomObject with baseline metrics.
 
 .PARAMETER ComparisonResult
-    PSCustomObject from Compare-Results.ps1 (optional for first iteration).
+    PSCustomObject from Compare-Results.ps1 (optional for first experiment).
 
 .PARAMETER CounterMetrics
     PSCustomObject with .NET counter metrics (optional).
 
-.PARAMETER Iteration
-    Current iteration number.
+.PARAMETER Experiment
+    Current experiment number.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
 .PARAMETER PreviousRcaExplanation
-    Explanation from the previous iteration's RCA (optional).
+    Explanation from the previous experiment's RCA (optional).
 #>
 [CmdletBinding()]
 param(
@@ -40,7 +40,7 @@ param(
 
     [PSCustomObject]$CounterMetrics,
 
-    [int]$Iteration = 0,
+    [int]$Experiment = 0,
 
     [string]$ConfigPath,
 
@@ -57,7 +57,7 @@ $config = Import-PowerShellDataFile -Path $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message 'Preparing analysis agent prompt' `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Build analysis context (source code, counters, history) ─────────────────
 $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
@@ -76,7 +76,7 @@ $fileList = ($sourceFilePaths | ForEach-Object { "- $_" }) -join "`n"
 $prompt = @"
 Analyze this Web API's performance and identify the single highest-impact optimization.
 
-## Current Performance (Iteration $Iteration)
+## Current Performance (Experiment $Experiment)
 - p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
 - Requests/sec: $([math]::Round($CurrentMetrics.HttpReqs.Rate, 1))
 - Error rate: $([math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2))%
@@ -99,7 +99,7 @@ Respond with JSON only. No markdown, no code blocks around the JSON.
 "@
 
 # ── Save the prompt for audit ───────────────────────────────────────────────
-$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "iteration-$Iteration"
+$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
@@ -108,7 +108,7 @@ $prompt | Out-File -FilePath $promptPath -Encoding utf8
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Calling hone-analyst agent (prompt saved to $promptPath)" `
-    -Iteration $Iteration
+    -Experiment $Experiment
 
 # ── Call the hone-analyst agent ─────────────────────────────────────────────
 try {
@@ -152,7 +152,7 @@ try {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'info' -Message "Analysis agent response received: $($parsed.filePath)" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 catch {
     $result = [ordered]@{
@@ -169,7 +169,7 @@ catch {
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'warning' -Message "Analysis agent failed: $_" `
-        -Iteration $Iteration
+        -Experiment $Experiment
 }
 
 return [PSCustomObject]$result
