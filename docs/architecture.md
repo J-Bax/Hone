@@ -35,15 +35,16 @@ flowchart TD
         A1["CPU analysis agent"]
         A2["Memory & GC analysis agent"]
         A3["Experiment proposal agent"]
+        A4["Classifier agent"]
         A1 --> A3
         A2 --> A3
+        A3 --> A4
     end
 
     subgraph EXPERIMENT["🧪 3. Experiment"]
-        E1["Classifier agent"]
-        E2["Fixer agent"]
-        E3["Apply fix + build"]
-        E1 --> E2 --> E3
+        E1["Fixer agent"]
+        E2["Apply fix + build"]
+        E1 --> E2
     end
 
     subgraph VERIFY["✅ 4. Verify"]
