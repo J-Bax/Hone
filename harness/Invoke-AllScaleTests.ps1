@@ -32,7 +32,8 @@
 param(
     [string]$ConfigPath,
     [int]$Experiment = 0,
-    [switch]$SkipPrimary
+    [switch]$SkipPrimary,
+    [string]$BaseUrl
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -69,8 +70,9 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     # ── Cooldown + GC between scenarios ──────────────────────────────────
     if ($scenarioIndex -gt 0) {
         $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
+        $cooldownBaseUrl = if ($BaseUrl) { $BaseUrl } else { $config.Api.BaseUrl }
         & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
-            -BaseUrl $config.Api.BaseUrl `
+            -BaseUrl $cooldownBaseUrl `
             -GcEndpoint $config.Api.GcEndpoint `
             -CooldownSeconds $cooldown `
             -Experiment $Experiment `
@@ -95,6 +97,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         ScenarioPath = $scenarioFile
     }
     if ($scenarioNameArg) { $params.ScenarioName = $scenarioNameArg }
+    if ($BaseUrl) { $params.BaseUrl = $BaseUrl }
 
     $result = $null
     try {

@@ -30,7 +30,8 @@ param(
     [string]$ConfigPath,
     [int]$Experiment = 0,
     [string]$ScenarioPath,
-    [string]$ScenarioName
+    [string]$ScenarioName,
+    [string]$BaseUrl
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -51,7 +52,7 @@ if ($ScenarioName) {
 } else {
     $jsonSummaryPath = Join-Path $outputDir "k6-summary.json"
 }
-$baseUrl = $config.Api.BaseUrl
+$baseUrl = if ($BaseUrl) { $BaseUrl } else { $config.Api.BaseUrl }
 
 # Ensure output directory exists
 if (-not (Test-Path $outputDir)) {

@@ -16,11 +16,10 @@
         # Path to the E2E test project directory (relative to repo root)
         TestProjectPath = 'sample-api/SampleApi.Tests'
 
-        # URL where the API listens when started
-        # Avoid port 5000 — Windows IP Helper (iphlpsvc) binds 0.0.0.0:5000,
-        # which steals IPv4 traffic from Kestrel and causes k6 (IPv4-first) to
-        # connect to svchost instead of the API.
-        BaseUrl         = 'http://localhost:5050'
+        # URL where the API listens when started.
+        # Use port 0 for automatic ephemeral port assignment (recommended).
+        # A specific port (e.g. http://localhost:5050) is also supported.
+        BaseUrl         = 'http://localhost:0'
 
         # Health check endpoint (GET, must return 200)
         HealthEndpoint  = '/health'

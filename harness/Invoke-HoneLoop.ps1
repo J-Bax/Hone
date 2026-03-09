@@ -830,7 +830,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
         try {
             $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
-                -ConfigPath $ConfigPath -Experiment $experiment
+                -ConfigPath $ConfigPath -Experiment $experiment -BaseUrl $apiResult.BaseUrl
 
             if (-not $scaleResult.Success) {
                 if (-not $stackedDiffs) {
@@ -845,7 +845,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 # Run additional (diagnostic) scenarios only on success
                 Write-Information '      Running additional scenarios...' -InformationAction Continue
                 $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary
+                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -BaseUrl $apiResult.BaseUrl
             }
         }
         finally {

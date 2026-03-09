@@ -82,7 +82,7 @@ if (-not $apiResult.Success) {
 
 try {
     # ── Step 3: Discover API process ID ──────────────────────────────────────
-    $apiPort = ([uri]$config.Api.BaseUrl).Port
+    $apiPort = ([uri]$apiResult.BaseUrl).Port
     $apiConn = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue |
         Select-Object -First 1
     $apiPid = if ($apiConn) { $apiConn.OwningProcess } else { $apiResult.Process.Id }
@@ -116,14 +116,14 @@ try {
     # ── Step 5: Run k6 diagnostic pass ──────────────────────────────────────
     $scenarioPath = $diagnostics.DiagnosticScenarioPath ?? $config.ScaleTest.ScenarioPath
     $scenarioFullPath = Join-Path $repoRoot $scenarioPath
-    $baseUrl = $config.Api.BaseUrl
+    $baseUrl = $apiResult.BaseUrl
     $diagnosticRuns = $diagnostics.DiagnosticRuns ?? 1
 
     Write-Information "  │ Running k6 ($diagnosticRuns run(s))..." -InformationAction Continue
 
     for ($run = 1; $run -le $diagnosticRuns; $run++) {
         if ($run -gt 1) {
-            & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -CooldownSeconds 3 -ConfigPath $ConfigPath
+            & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3
         }
 
         $k6SummaryPath = Join-Path $resultsDir "k6-diagnostic-run$run.json"

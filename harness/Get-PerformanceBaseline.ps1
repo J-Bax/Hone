@@ -58,7 +58,7 @@ if (-not $apiResult.Success) {
 try {
     # ── Step 3: Run scale tests ─────────────────────────────────────────────
     $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
-        -ConfigPath $ConfigPath -Experiment 0
+        -ConfigPath $ConfigPath -Experiment 0 -BaseUrl $apiResult.BaseUrl
 
     # For baselines, we only need metrics — k6 threshold failures are expected
     # since the API has not been optimized yet.
@@ -133,7 +133,7 @@ try {
     Write-Information 'Running additional scenarios for baseline capture...' -InformationAction Continue
 
     $allScenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-        -ConfigPath $ConfigPath -Experiment 0 -SkipPrimary
+        -ConfigPath $ConfigPath -Experiment 0 -SkipPrimary -BaseUrl $apiResult.BaseUrl
 
     foreach ($sr in $allScenarioResults) {
         if ($sr.Metrics) {

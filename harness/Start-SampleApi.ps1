@@ -26,8 +26,20 @@ if (-not $ConfigPath) {
 $config = Import-PowerShellDataFile -Path $ConfigPath
 $projectPath = Join-Path $repoRoot $config.Api.ProjectPath
 $baseUrl = $config.Api.BaseUrl
-$healthUrl = "$baseUrl$($config.Api.HealthEndpoint)"
 $timeout = $config.Api.StartupTimeout
+
+# ── Dynamic port: if configured port is 0, find a free ephemeral port ────────
+$configuredPort = ([uri]$baseUrl).Port
+if ($configuredPort -eq 0) {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $freePort = $listener.LocalEndpoint.Port
+    $listener.Stop()
+    $baseUrl = "http://localhost:$freePort"
+    Write-Verbose "Dynamic port selected: $freePort"
+}
+
+$healthUrl = "$baseUrl$($config.Api.HealthEndpoint)"
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' -Message "Starting API from: $projectPath"
