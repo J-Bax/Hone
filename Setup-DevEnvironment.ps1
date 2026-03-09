@@ -200,22 +200,21 @@ Write-Step "Checking dotnet-counters"
 # the tool can run without requiring a newer runtime (e.g. .NET 8/9).
 $dotnetCountersVersionSpec = '6.0.*'
 
-$dcNeedsInstall = $true
 if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
     # The tool may be on PATH but unable to run if the required runtime is missing.
     # Invoke it and check for a real version string to confirm it works.
     $dcVersionOutput = & dotnet-counters --version 2>&1
     if ($LASTEXITCODE -eq 0 -and $dcVersionOutput -match '^\d+\.\d+') {
         Write-Ok "dotnet-counters $dcVersionOutput"
-        $dcNeedsInstall = $false
     }
     else {
-        Write-Host "  ⚠ dotnet-counters is installed but cannot run (missing runtime?). Reinstalling..." -ForegroundColor Yellow
-        & dotnet tool uninstall --global dotnet-counters 2>$null | Out-Null
+        Write-Fail "dotnet-counters is installed but cannot run (likely targets a .NET runtime not present on this machine)."
+        Write-Host "    Fix: dotnet tool uninstall --global dotnet-counters" -ForegroundColor Gray
+        Write-Host "    Then: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec" -ForegroundColor Gray
+        $allSucceeded = $false
     }
 }
-
-if ($dcNeedsInstall) {
+else {
     if (Test-CommandExists 'dotnet') {
         try {
             & dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec 2>&1 | Out-Null
