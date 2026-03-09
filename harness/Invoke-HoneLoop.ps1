@@ -178,7 +178,17 @@ if (-not (Get-Command 'copilot' -ErrorAction SilentlyContinue)) {
 
 # ── Ensure GH_TOKEN is set and valid ─────────────────────────────────────────
 if (-not $env:GH_TOKEN) {
+    # Try 'gh auth token' (gh >= 2.17) then fall back to parsing hosts.yml
     $ghToken = gh auth token 2>$null
+    if (-not $ghToken -or $LASTEXITCODE -ne 0) {
+        $hostsFile = Join-Path $env:APPDATA 'GitHub CLI\hosts.yml'
+        if (Test-Path $hostsFile) {
+            $hostsContent = Get-Content $hostsFile -Raw
+            if ($hostsContent -match 'oauth_token:\s*(.+)') {
+                $ghToken = $Matches[1].Trim()
+            }
+        }
+    }
     if ($ghToken) {
         $env:GH_TOKEN = $ghToken
     } else {

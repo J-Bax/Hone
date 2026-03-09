@@ -163,9 +163,21 @@ else {
 # ── 5. GitHub CLI ──────────────────────────────────────────────────────────
 
 Write-Step "Checking GitHub CLI"
+$ghMinVersion = [version]'2.17.0'   # Minimum for 'gh auth token' and modern PR features
 if ((Test-CommandExists 'gh') -and -not $Force) {
-    $ghVersion = & gh --version 2>$null | Select-Object -First 1
-    Write-Ok "$ghVersion"
+    $ghVersionLine = & gh --version 2>$null | Select-Object -First 1
+    if ($ghVersionLine -match '(\d+\.\d+\.\d+)') {
+        $ghParsed = [version]$Matches[1]
+        if ($ghParsed -lt $ghMinVersion) {
+            Write-Fail "$ghVersionLine — version $ghMinVersion+ required"
+            Write-Host "    Upgrade: winget upgrade --id GitHub.cli" -ForegroundColor Gray
+            $allSucceeded = $false
+        } else {
+            Write-Ok "$ghVersionLine"
+        }
+    } else {
+        Write-Ok "$ghVersionLine (could not parse version)"
+    }
 }
 else {
     if ($SkipWinget) { Write-Skip "GitHub CLI" }
