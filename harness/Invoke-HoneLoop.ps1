@@ -628,7 +628,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     # Build the project with the fix applied
     Write-Information '  Building...' -InformationAction Continue
-    $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
+    $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath -Experiment $experiment
 
     if (-not $buildResult.Success) {
         if ($stackedDiffs) {

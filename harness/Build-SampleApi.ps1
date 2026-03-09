@@ -11,7 +11,8 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath
+    [string]$ConfigPath,
+    [int]$Experiment = 0
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -38,10 +39,21 @@ finally {
     Stop-Spinner -Spinner $spinner -CompletionMessage $buildMsg
 }
 
+$buildOutputString = ($buildOutput | Out-String)
+
+# Save build log to experiment directory
+if ($Experiment -gt 0) {
+    $logDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+    $buildOutputString | Out-File -FilePath (Join-Path $logDir 'build.log') -Encoding utf8
+}
+
 $result = [ordered]@{
     Success    = ($buildExitCode -eq 0)
     ExitCode   = $buildExitCode
-    Output     = ($buildOutput | Out-String)
+    Output     = $buildOutputString
     SolutionPath = $solutionPath
 }
 

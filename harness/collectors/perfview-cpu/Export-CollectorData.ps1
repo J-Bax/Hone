@@ -29,7 +29,7 @@ try {
     if (-not (Test-Path $etlPath)) {
         return [PSCustomObject][ordered]@{
             Success = $false
-            Error   = "ETL artifact not found: $etlPath"
+            Summary = "ETL artifact not found: $etlPath"
         }
     }
 
@@ -37,7 +37,7 @@ try {
     if (-not $perfViewExe -or -not (Test-Path $perfViewExe)) {
         return [PSCustomObject][ordered]@{
             Success = $false
-            Error   = "PerfView executable not found at '$perfViewExe'."
+            Summary = "PerfView executable not found at '$perfViewExe'."
         }
     }
 
@@ -155,6 +155,6 @@ catch {
     Write-Information $msg
     return [PSCustomObject][ordered]@{
         Success = $false
-        Error   = $msg
+        Summary = $msg
     }
 }

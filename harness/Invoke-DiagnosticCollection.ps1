@@ -219,7 +219,10 @@ if ($Action -eq 'Export') {
             }
         }
         else {
-            Write-Warning "  Export failed for '$($c.Name)': $($result.Summary)"
+            $errDetail = if ($result.PSObject.Properties['Summary']) { $result.Summary }
+                         elseif ($result.PSObject.Properties['Error']) { $result.Error }
+                         else { 'unknown error' }
+            Write-Warning "  Export failed for '$($c.Name)': $errDetail"
             $allSuccess = $false
         }
     }

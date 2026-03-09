@@ -240,6 +240,10 @@ for ($run = 1; $run -le $measuredRuns; $run++) {
         throw
     }
 
+    # Save k6 console output to experiment directory
+    $k6LogName = if ($measuredRuns -gt 1) { "k6-run$run.log" } elseif ($ScenarioName) { "k6-$ScenarioName.log" } else { 'k6.log' }
+    ($k6Output | Out-String) | Out-File -FilePath (Join-Path $outputDir $k6LogName) -Encoding utf8
+
     # Parse the JSON summary for this run
     if (Test-Path $runSummaryPath) {
         $summary = Get-Content $runSummaryPath -Raw | ConvertFrom-Json

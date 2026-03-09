@@ -74,6 +74,9 @@ $result = [ordered]@{
     Output      = $testOutputString
 }
 
+# Save test log to experiment directory
+$testOutputString | Out-File -FilePath (Join-Path $resultsDir 'e2e-tests.log') -Encoding utf8
+
 $logData = @{
     total  = $result.TotalTests
     passed = $result.PassedTests

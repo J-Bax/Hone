@@ -70,7 +70,7 @@ Write-Information '  ┌── Diagnostic Measurement ────────�
 
 # ── Step 1: Reset database ──────────────────────────────────────────────────
 Write-Information '  │ Resetting database...' -InformationAction Continue
-& (Join-Path $harnessRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath
+& (Join-Path $harnessRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath | Out-Null
 
 # ── Step 2: Start API ──────────────────────────────────────────────────────
 Write-Information '  │ Starting API...' -InformationAction Continue
@@ -123,7 +123,7 @@ try {
 
     for ($run = 1; $run -le $diagnosticRuns; $run++) {
         if ($run -gt 1) {
-            & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3
+            & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3 | Out-Null
         }
 
         $k6SummaryPath = Join-Path $resultsDir "k6-diagnostic-run$run.json"
@@ -163,7 +163,7 @@ try {
 finally {
     # ── Step 8: Stop API (always) ───────────────────────────────────────────
     Write-Information '  │ Stopping API...' -InformationAction Continue
-    & (Join-Path $harnessRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
+    & (Join-Path $harnessRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process | Out-Null
 }
 
 # ── Step 9: Run analyzers ───────────────────────────────────────────────────
