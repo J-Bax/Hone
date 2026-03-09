@@ -17,7 +17,10 @@
         TestProjectPath = 'sample-api/SampleApi.Tests'
 
         # URL where the API listens when started
-        BaseUrl         = 'http://localhost:5000'
+        # Avoid port 5000 — Windows IP Helper (iphlpsvc) binds 0.0.0.0:5000,
+        # which steals IPv4 traffic from Kestrel and causes k6 (IPv4-first) to
+        # connect to svchost instead of the API.
+        BaseUrl         = 'http://localhost:5050'
 
         # Health check endpoint (GET, must return 200)
         HealthEndpoint  = '/health'
