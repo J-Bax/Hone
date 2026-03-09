@@ -70,6 +70,19 @@ if (-not (Test-Path -LiteralPath $gcReportPath)) {
 
 $gcReportContent = Get-Content -LiteralPath $gcReportPath -Raw -Encoding utf8
 
+# ── Extract allocation type data from perfview-cpu (optional) ───────────────
+$allocTypesContent = $null
+$cpuData = $CollectorData['perfview-cpu']
+if ($cpuData) {
+    $allocPath = if ($cpuData.AllocTypesPath) { $cpuData.AllocTypesPath }
+                 elseif ($cpuData.ExportedPaths.Count -ge 2) { $cpuData.ExportedPaths[1] }
+                 else { $null }
+    if ($allocPath -and (Test-Path -LiteralPath $allocPath)) {
+        $allocTypesContent = Get-Content -LiteralPath $allocPath -Raw -Encoding utf8
+        Write-Verbose "Including allocation type data from: $allocPath"
+    }
+}
+
 # ── Extract current performance metrics ─────────────────────────────────────
 $p95Latency = if ($CurrentMetrics.HttpReqDuration -and $CurrentMetrics.HttpReqDuration.P95) {
     $CurrentMetrics.HttpReqDuration.P95
@@ -82,6 +95,15 @@ $reqsPerSec = if ($CurrentMetrics.HttpReqs -and $CurrentMetrics.HttpReqs.Rate) {
 $errorRate = if ($CurrentMetrics.HttpReqFailed -and $null -ne $CurrentMetrics.HttpReqFailed.Rate) {
     [math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2)
 } else { 'N/A' }
+
+$allocSection = if ($allocTypesContent) {
+    @"
+
+## Top Allocating Types (from sampled allocation ticks)
+
+${allocTypesContent}
+"@
+} else { '' }
 
 # ── Build the prompt ────────────────────────────────────────────────────────
 $prompt = @"
@@ -96,7 +118,7 @@ heap behavior, and allocation patterns captured during a load test.
 ## GC and Memory Report
 
 ${gcReportContent}
-
+${allocSection}
 Respond with JSON only.
 "@
 

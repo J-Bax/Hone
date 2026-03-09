@@ -51,6 +51,7 @@ try {
     # CPU sampling: /ThreadTime enables context-switch + CPU profiling
     # /ClrEvents:Default includes GC, JIT, Exception, etc. for managed stack resolution
     # NO /GCOnly — that would suppress kernel CPU sampling events
+    # /DotNetAllocSampled enables sampled allocation tick events (~100KB intervals)
     $perfViewArgs = @(
         'collect'
         "/DataFile:$outputPath"
@@ -62,6 +63,7 @@ try {
         '/Zip:true'
         '/ThreadTime'
         '/ClrEvents:Default'
+        '/DotNetAllocSampled'
     )
 
     Write-Verbose "Starting PerfView CPU: $perfViewExe $($perfViewArgs -join ' ')"

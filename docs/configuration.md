@@ -80,7 +80,7 @@ Diagnostics = @{
 ```
 
 **Collection groups** are defined in each collector's `collector.psd1` via the `Group` field:
-- `perfview-cpu` → group `etw-cpu` (CPU sampling, needs kernel Profile events)
+- `perfview-cpu` → group `etw-cpu` (CPU sampling + allocation ticks via `/DotNetAllocSampled`)
 - `perfview-gc` → group `etw-gc` (GC-only mode, suppresses CPU sampling)
 - `dotnet-counters` → group `default` (runs in every pass, lightweight)
 

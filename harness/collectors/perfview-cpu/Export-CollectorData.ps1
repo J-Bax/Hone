@@ -141,13 +141,119 @@ try {
 catch {
     $summaryText = "CPU export failed: $_"
     Write-Warning $summaryText
-    # Write placeholder so analyzer gets something
     "[CPU export error: $_] 1" | Set-Content -Path $cpuStacksPath -Encoding utf8
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Part 2: Extract allocation tick types from same ETL via GCStats
+# ═══════════════════════════════════════════════════════════════════════════
+$allocTypesPath = Join-Path $OutputDir 'alloc-types.json'
+$allocSummary = ''
+
+try {
+    $gcLogPath = Join-Path $OutputDir 'perfview-gcstats-alloc.log'
+    $gcStatsArgs = @(
+        "/LogFile:$gcLogPath"
+        '/AcceptEULA'
+        '/NoGui'
+        'UserCommand'
+        'GCStats'
+        $etlPath
+    )
+
+    Write-Verbose "Running PerfView GCStats for allocation data: $perfViewExe $($gcStatsArgs -join ' ')"
+    $gcProc = Start-Process -FilePath $perfViewExe `
+        -ArgumentList $gcStatsArgs `
+        -PassThru -WindowStyle Hidden -Wait
+
+    # Find the GCStats HTML (same search logic as perfview-gc Export)
+    $etlDir      = Split-Path -Parent $etlPath
+    $etlBaseName = [System.IO.Path]::GetFileNameWithoutExtension(
+        [System.IO.Path]::GetFileNameWithoutExtension($etlPath)
+    )
+    $pvTempDir = Join-Path $env:LOCALAPPDATA 'Temp\PerfView'
+    $htmlCandidates = @(
+        Join-Path $etlDir "$etlBaseName.gcStats.html"
+        Join-Path $etlDir "$etlBaseName.GCStats.html"
+    )
+    if (Test-Path $pvTempDir) {
+        $htmlCandidates += @(
+            Get-ChildItem -Path $pvTempDir -Filter "$etlBaseName*.gcStats.html" -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        ) | Where-Object { $_ } | ForEach-Object { $_.FullName }
+    }
+    $gcStatsHtml = $htmlCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+
+    $topTypes = @()
+
+    if ($gcStatsHtml) {
+        $htmlContent = Get-Content $gcStatsHtml -Raw
+
+        # Scope to the target process section (block with ProcessName AND GC Rollup)
+        $hrBlocks = [regex]::Split($htmlContent, '<HR\s*/?\s*>')
+        $processSection = $null
+        foreach ($block in $hrBlocks) {
+            if ($block -match [regex]::Escape($ProcessName) -and $block -match 'GC Rollup') {
+                $processSection = $block
+                break
+            }
+        }
+
+        if (-not $processSection) { $processSection = $htmlContent }
+
+        # Parse "Allocation Tick" table — PerfView renders this when /DotNetAllocSampled events exist
+        # Look for a table following "Allocation Tick" text
+        $allocMatch = [regex]::Match($processSection, '(?si)Allocation\s+Tick[^<]*<[^t]*<table[^>]*>(.*?)</table>')
+        if ($allocMatch.Success) {
+            $tableHtml = $allocMatch.Groups[1].Value
+            $rows = [regex]::Matches($tableHtml, '(?si)<tr[^>]*>(.*?)</tr>')
+            foreach ($row in $rows) {
+                $cells = [regex]::Matches($row.Groups[1].Value, '(?si)<td[^>]*>(.*?)</td>')
+                if ($cells.Count -ge 2) {
+                    $typeName   = ($cells[0].Groups[1].Value -replace '<[^>]+>', '').Trim()
+                    $allocMBRaw = ($cells[1].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
+                    if ($typeName -and $allocMBRaw -and [double]::TryParse($allocMBRaw, [ref]$null)) {
+                        $topTypes += [ordered]@{
+                            type    = $typeName
+                            allocMB = [math]::Round([double]$allocMBRaw, 2)
+                        }
+                    }
+                }
+            }
+            # Compute percentages
+            $totalAlloc = ($topTypes | Measure-Object -Property allocMB -Sum).Sum
+            if ($totalAlloc -gt 0) {
+                foreach ($t in $topTypes) {
+                    $t['pct'] = [math]::Round(($t.allocMB / $totalAlloc) * 100, 1)
+                }
+            }
+            $topTypes = @($topTypes | Select-Object -First 20)
+        }
+    }
+
+    @{ topAllocatingTypes = $topTypes } | ConvertTo-Json -Depth 5 |
+        Out-File -FilePath $allocTypesPath -Encoding utf8
+
+    if ($topTypes.Count -gt 0) {
+        $allocSummary = "Alloc: $($topTypes.Count) types"
+    }
+    else {
+        $allocSummary = 'Alloc: no allocation tick data'
+    }
+}
+catch {
+    $allocSummary = "Alloc export failed: $_"
+    Write-Warning $allocSummary
+    @{ topAllocatingTypes = @() } | ConvertTo-Json -Depth 5 |
+        Out-File -FilePath $allocTypesPath -Encoding utf8
+}
+
+$fullSummary = @($summaryText, $allocSummary) -join ' | '
+
 return @{
-    Success       = (Test-Path $cpuStacksPath)
-    ExportedPaths = @($cpuStacksPath)
-    Summary       = $summaryText
-    CpuStacksPath = $cpuStacksPath
+    Success        = (Test-Path $cpuStacksPath)
+    ExportedPaths  = @($cpuStacksPath, $allocTypesPath)
+    Summary        = $fullSummary
+    CpuStacksPath  = $cpuStacksPath
+    AllocTypesPath = $allocTypesPath
 }

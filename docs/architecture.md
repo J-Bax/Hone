@@ -76,7 +76,7 @@ Phases 2 and 4 each run k6 load tests, but for different purposes:
 | **Purpose** | Deep profiling for AI analysis | Fair benchmarking for accept/reject |
 | **Runs when** | Optimization queue is empty | Every experiment |
 | **k6 passes** | 1 | 5 (median selected) |
-| **PerfView** | ✅ CPU stacks (pass 1), GC stats (pass 2) | ❌ Off |
+| **PerfView** | ✅ CPU stacks + alloc types (pass 1), GC stats (pass 2) | ❌ Off |
 | **Overhead** | 5–15% (acceptable — numbers discarded) | ~1% (dotnet-counters only) |
 | **Output used for** | Analyst agent context | Accept/reject decision |
 
@@ -147,7 +147,7 @@ Some collectors interfere with each other (e.g., PerfView's `/GCOnly` flag suppr
 
 | Group | Collectors | Description |
 |-------|-----------|-------------|
-| `etw-cpu` | `perfview-cpu` | CPU sampling via PerfView (kernel Profile events) |
+| `etw-cpu` | `perfview-cpu` | CPU sampling + allocation ticks via PerfView (`/ThreadTime /DotNetAllocSampled`) |
 | `etw-gc` | `perfview-gc` | GC statistics via PerfView `/GCOnly` (minimal overhead) |
 | `default` | `dotnet-counters` | Runs in **every** pass (lightweight, non-interfering) |
 
@@ -187,7 +187,7 @@ Each collector is a self-contained directory with 4 files:
 
 The `Group` field in `collector.psd1` controls which pass the collector runs in. Collectors with `Group = 'default'` run in every pass. Other collectors in the same group run together; different groups get separate passes.
 
-Built-in collectors: `perfview-cpu` (CPU sampling), `perfview-gc` (GC statistics), `dotnet-counters` (runtime counters)
+Built-in collectors: `perfview-cpu` (CPU sampling + allocation ticks), `perfview-gc` (GC statistics), `dotnet-counters` (runtime counters)
 
 ### Analyzer Plugins (`harness/analyzers/<name>/`)
 
