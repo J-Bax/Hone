@@ -43,9 +43,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── Extract folded stacks from collector data ───────────────────────────────
-$perfviewData = $CollectorData['perfview']
+$perfviewData = $CollectorData['perfview-cpu']
 if (-not $perfviewData) {
-    Write-Warning "No perfview collector data available — skipping cpu-hotspots analysis."
+    Write-Warning "No perfview-cpu collector data available — skipping cpu-hotspots analysis."
     return [PSCustomObject][ordered]@{
         Success      = $false
         Report       = $null

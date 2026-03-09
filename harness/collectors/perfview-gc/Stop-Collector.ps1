@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Stops the unified PerfView collection and waits for merge/zip.
+    Stops the PerfView GC collection and waits for merge/zip.
 .DESCRIPTION
     Signals PerfView to stop via its abort-file mechanism, waits for the
     process to exit (allowing time for ETL merge and zip), and verifies
@@ -85,3 +85,4 @@ catch {
         ArtifactPaths = @()
     }
 }
+

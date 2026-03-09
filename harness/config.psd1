@@ -191,14 +191,20 @@
 
         # ── Per-collector settings ─────────────────────────────
         # Keys must match the directory name under CollectorsPath.
+        # Collectors in different Groups run in separate diagnostic passes.
         CollectorSettings = @{
-            'perfview' = @{
-                Enabled            = $true
-                MaxCollectSec      = 90
-                StopTimeoutSec     = 300   # rundown + merge + zip can be slow
-                BufferSizeMB       = 256
-                AllocationSampling = $true
-                MaxStacks          = 100   # truncate CPU folded stacks to top-N
+            'perfview-cpu' = @{
+                Enabled        = $true
+                MaxCollectSec  = 90
+                StopTimeoutSec = 300   # rundown + merge + zip can be slow
+                BufferSizeMB   = 256
+                MaxStacks      = 100   # truncate CPU folded stacks to top-N
+            }
+            'perfview-gc' = @{
+                Enabled        = $true
+                MaxCollectSec  = 90
+                StopTimeoutSec = 300
+                BufferSizeMB   = 256
             }
             'dotnet-counters' = @{
                 Enabled = $true

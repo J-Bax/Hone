@@ -1,7 +1,7 @@
 @{
     Name               = 'memory-gc'
     Description        = 'Memory and GC pressure analysis using PerfView GC event data'
-    RequiredCollectors = @('perfview')
+    RequiredCollectors = @('perfview-gc')
     AgentName          = 'hone-memory-profiler'
     DefaultSettings    = @{
         Model = 'claude-opus-4.6'

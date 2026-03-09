@@ -76,7 +76,7 @@ Phases 2 and 4 each run k6 load tests, but for different purposes:
 | **Purpose** | Deep profiling for AI analysis | Fair benchmarking for accept/reject |
 | **Runs when** | Optimization queue is empty | Every experiment |
 | **k6 passes** | 1 | 5 (median selected) |
-| **PerfView** | ✅ CPU stacks, GC events, allocations | ❌ Off |
+| **PerfView** | ✅ CPU stacks (pass 1), GC stats (pass 2) | ❌ Off |
 | **Overhead** | 5–15% (acceptable — numbers discarded) | ~1% (dotnet-counters only) |
 | **Output used for** | Analyst agent context | Accept/reject decision |
 
@@ -139,19 +139,36 @@ In stacked mode, build and test failures trigger a revert-and-continue rather th
 
 ## Diagnostic Measurement Details
 
-The diagnostic measurement pipeline (Phase 2, when queue is empty) runs a complete profiling cycle:
+The diagnostic measurement pipeline (Phase 2, when queue is empty) runs a **multi-pass** profiling cycle. Collectors are organized into **groups** — collectors in the same group run together in one pass, while different groups get separate passes with their own API + k6 cycle.
+
+### Collection Groups
+
+Some collectors interfere with each other (e.g., PerfView's `/GCOnly` flag suppresses CPU sampling). The group system ensures non-interfering collectors run together and interfering ones run in separate passes:
+
+| Group | Collectors | Description |
+|-------|-----------|-------------|
+| `etw-cpu` | `perfview-cpu` | CPU sampling via PerfView (kernel Profile events) |
+| `etw-gc` | `perfview-gc` | GC statistics via PerfView `/GCOnly` (minimal overhead) |
+| `default` | `dotnet-counters` | Runs in **every** pass (lightweight, non-interfering) |
+
+### Per-Pass Flow
+
+For each collection group:
 
 1. **Reset database** — ensure clean seed data
 2. **Start API** — launch the .NET process
-3. **Start collectors** — all enabled collector plugins attach to the API process (PerfView ETW sessions, dotnet-counters)
-4. **Run k6** — single load-test pass using the same scenario as evaluation
-5. **Stop collectors** — detach, merge traces, export raw artifacts (ETL files, CSV)
-6. **Stop API** — clean shutdown
-7. **Export data** — convert raw artifacts to analysis-friendly formats (folded stacks, GC report JSON, counter JSON)
-8. **Run analyzers** — each analyzer plugin calls its Copilot agent with the exported data, producing a structured JSON report
-9. **Aggregate reports** — all analyzer reports are collected and injected into the main analyst agent's prompt as additional context
+3. **Start collectors** — group collectors + default collectors attach to the API process
+4. **Run k6** — single load-test pass using the diagnostic scenario
+5. **Stop collectors** — detach, merge traces, export raw artifacts
+6. **Export data** — convert raw artifacts to analysis-friendly formats
+7. **Stop API** — clean shutdown
 
-Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15% overhead to latency/throughput, the k6 numbers from the diagnostic pass are **discarded** — they are never compared against baselines or used in accept/reject decisions. Only the profiling data (stacks, GC stats, allocations) is carried forward.
+After all passes complete:
+
+8. **Run analyzers** — each analyzer plugin consumes the merged collector data from all passes
+9. **Aggregate reports** — all analyzer reports are injected into the main analyst agent's prompt
+
+Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15% overhead to latency/throughput, the k6 numbers from diagnostic passes are **discarded** — they are never compared against baselines or used in accept/reject decisions. Only the profiling data (stacks, GC stats) is carried forward.
 
 ## Diagnostic Plugin Architecture
 
@@ -163,12 +180,14 @@ Each collector is a self-contained directory with 4 files:
 
 | File | Purpose |
 |------|---------|
-| `collector.psd1` | Metadata: name, description, RequiresAdmin, OverheadImpact, DefaultSettings |
+| `collector.psd1` | Metadata: Name, Group, RequiresAdmin, OverheadImpact, DefaultSettings |
 | `Start-Collector.ps1` | Start data collection targeting an API process → returns handle |
 | `Stop-Collector.ps1` | Stop collection → returns raw artifact paths |
 | `Export-CollectorData.ps1` | Convert raw artifacts to analysis-friendly format |
 
-Built-in collectors: `perfview` (unified CPU + GC), `dotnet-counters`
+The `Group` field in `collector.psd1` controls which pass the collector runs in. Collectors with `Group = 'default'` run in every pass. Other collectors in the same group run together; different groups get separate passes.
+
+Built-in collectors: `perfview-cpu` (CPU sampling), `perfview-gc` (GC statistics), `dotnet-counters` (runtime counters)
 
 ### Analyzer Plugins (`harness/analyzers/<name>/`)
 
@@ -180,7 +199,7 @@ Each analyzer is a self-contained directory with 3 files:
 | `Invoke-Analyzer.ps1` | Build prompt from collector data, call AI agent, parse response |
 | `agent.md` | Copilot agent definition (also symlinked to `.github/agents/`) |
 
-Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks), `memory-gc` (reads GC report)
+Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks from `perfview-cpu`), `memory-gc` (reads GC report from `perfview-gc`)
 
 Each analyzer declares its `RequiredCollectors` in `analyzer.psd1`. If a required collector's data is not available (e.g., the collector is disabled or failed), the analyzer is automatically skipped with a warning — it does not block other analyzers from running.
 
@@ -188,11 +207,12 @@ Each analyzer declares its `RequiredCollectors` in `analyzer.psd1`. If a require
 
 **New collector** (e.g., `thread-contention`):
 1. Create `harness/collectors/thread-contention/` with the 4 standard files
-2. Add settings under `Diagnostics.CollectorSettings.'thread-contention'` in `config.psd1`
+2. Set `Group` in `collector.psd1` — use an existing group if compatible, or create a new one
+3. Add settings under `Diagnostics.CollectorSettings.'thread-contention'` in `config.psd1`
 
 **New analyzer** (e.g., `thread-hotspots`):
 1. Create `harness/analyzers/thread-hotspots/` with the 3 standard files
 2. Add settings under `Diagnostics.AnalyzerSettings.'thread-hotspots'` in `config.psd1`
 3. Copy or symlink `agent.md` to `.github/agents/`
 
-The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticAnalysis.ps1`) automatically discover and run all enabled plugins.
+The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticAnalysis.ps1`, `Invoke-DiagnosticMeasurement.ps1`) automatically discover and run all enabled plugins.

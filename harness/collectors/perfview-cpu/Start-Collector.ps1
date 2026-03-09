@@ -1,11 +1,9 @@
 <#
 .SYNOPSIS
-    Starts a single PerfView session collecting both CPU sampling stacks and GC events.
+    Starts PerfView CPU sampling collection (ThreadTime + CLR events).
 .DESCRIPTION
-    Launches one PerfView process with merged provider sets (/ThreadTime for CPU,
-    /GCOnly for GC events, /ClrEvents:Default for CLR stacks). This replaces the
-    former two-process approach (perfview-cpu + perfview-gc) which competed for ETW
-    resources and caused timeouts.
+    Launches PerfView with CPU sampling enabled. Does NOT use /GCOnly, ensuring
+    kernel Profile events (CPU sampling) are captured.
 #>
 [CmdletBinding()]
 param(
@@ -30,7 +28,6 @@ try {
         return [PSCustomObject][ordered]@{ Success = $false; Error = $msg }
     }
 
-    # Resolve relative paths from repo root
     if (-not [System.IO.Path]::IsPathRooted($perfViewExe)) {
         $repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
         $perfViewExe = Join-Path $repoRoot $perfViewExe
@@ -46,12 +43,14 @@ try {
         New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
     }
 
-    $outputPath = Join-Path $OutputDir 'perfview.etl.zip'
+    $outputPath = Join-Path $OutputDir 'perfview-cpu.etl.zip'
 
     $maxCollectSec = if ($Settings.ContainsKey('MaxCollectSec')) { $Settings.MaxCollectSec } else { 90 }
     $bufferSizeMB  = if ($Settings.ContainsKey('BufferSizeMB'))  { $Settings.BufferSizeMB }  else { 256 }
 
-    # Merged provider set: CPU sampling + thread time + GC events + CLR stacks
+    # CPU sampling: /ThreadTime enables context-switch + CPU profiling
+    # /ClrEvents:Default includes GC, JIT, Exception, etc. for managed stack resolution
+    # NO /GCOnly — that would suppress kernel CPU sampling events
     $perfViewArgs = @(
         'collect'
         "/DataFile:$outputPath"
@@ -62,30 +61,27 @@ try {
         '/Merge:true'
         '/Zip:true'
         '/ThreadTime'
-        '/GCOnly'
         '/ClrEvents:Default'
-        '/Providers:Microsoft-DotNet-SampleProfiler'
     )
 
-    Write-Verbose "Starting PerfView: $perfViewExe $($perfViewArgs -join ' ')"
+    Write-Verbose "Starting PerfView CPU: $perfViewExe $($perfViewArgs -join ' ')"
 
-    $stderrLog = Join-Path $OutputDir 'perfview-stderr.log'
+    $stderrLog = Join-Path $OutputDir 'perfview-cpu-stderr.log'
     $process = Start-Process -FilePath $perfViewExe `
         -ArgumentList $perfViewArgs `
         -PassThru -WindowStyle Hidden `
         -RedirectStandardError $stderrLog
 
-    # Allow time for ETW session attachment
     Start-Sleep -Seconds 3
 
     if ($process.HasExited) {
         $exitCode = $process.ExitCode
-        $msg = "PerfView exited prematurely with exit code $exitCode. Check $stderrLog for details."
+        $msg = "PerfView exited prematurely with exit code $exitCode."
         Write-Information $msg
         return [PSCustomObject][ordered]@{ Success = $false; Error = $msg }
     }
 
-    Write-Information "PerfView collector started (PID: $($process.Id), target PID: $ProcessId)"
+    Write-Information "PerfView CPU collector started (PID: $($process.Id), target PID: $ProcessId)"
 
     return [PSCustomObject][ordered]@{
         Success = $true
@@ -98,7 +94,7 @@ try {
     }
 }
 catch {
-    $msg = "Failed to start PerfView collector: $_"
+    $msg = "Failed to start PerfView CPU collector: $_"
     Write-Information $msg
     return [PSCustomObject][ordered]@{ Success = $false; Error = $msg }
 }

@@ -42,9 +42,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── Extract GC report from collector data ───────────────────────────────────
-$perfviewData = $CollectorData['perfview']
+$perfviewData = $CollectorData['perfview-gc']
 if (-not $perfviewData) {
-    Write-Warning "No perfview collector data available — skipping memory-gc analysis."
+    Write-Warning "No perfview-gc collector data available — skipping memory-gc analysis."
     return [PSCustomObject][ordered]@{
         Success      = $false
         Report       = $null
@@ -54,9 +54,7 @@ if (-not $perfviewData) {
     }
 }
 
-$gcReportPath = if ($perfviewData.GcReportPath) { $perfviewData.GcReportPath }
-               elseif ($perfviewData.ExportedPaths.Count -ge 2) { $perfviewData.ExportedPaths[1] }
-               else { $perfviewData.ExportedPaths[0] }
+$gcReportPath = if ($perfviewData.GcReportPath) { $perfviewData.GcReportPath } else { $perfviewData.ExportedPaths[0] }
 Write-Verbose "Reading GC report from: $gcReportPath"
 
 if (-not (Test-Path -LiteralPath $gcReportPath)) {

@@ -55,6 +55,8 @@ To change any other setting (tolerances, scale-test options, model selection, et
 
 The `Diagnostics` section controls the diagnostic profiling plugin framework. This is separate from the evaluation measurement (ScaleTest + DotnetCounters) used for accept/reject decisions.
 
+Collectors are organized into **groups** — collectors in the same group run together in one diagnostic pass, while different groups get separate passes (each with its own API instance + k6 run). This prevents interfering collectors (e.g., PerfView CPU sampling vs `/GCOnly` mode) from corrupting each other's data.
+
 ```powershell
 Diagnostics = @{
     Enabled            = $true                    # Master switch
@@ -62,10 +64,11 @@ Diagnostics = @{
     AnalyzersPath      = 'harness/analyzers'      # Plugin directory for analyzers
     PerfViewExePath    = 'tools/PerfView/PerfView.exe'  # Downloaded by Setup-DevEnvironment.ps1
     DiagnosticScenarioPath = $null                # k6 scenario ($null = use ScaleTest.ScenarioPath)
-    DiagnosticRuns     = 1                        # Single run (accuracy less important)
+    DiagnosticRuns     = 1                        # Runs per pass (accuracy less important)
 
     CollectorSettings = @{
-        'perfview' = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256; AllocationSampling = $true }
+        'perfview-cpu'    = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256; MaxStacks = 100 }
+        'perfview-gc'     = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256 }
         'dotnet-counters' = @{ Enabled = $true }
     }
 
@@ -75,6 +78,11 @@ Diagnostics = @{
     }
 }
 ```
+
+**Collection groups** are defined in each collector's `collector.psd1` via the `Group` field:
+- `perfview-cpu` → group `etw-cpu` (CPU sampling, needs kernel Profile events)
+- `perfview-gc` → group `etw-gc` (GC-only mode, suppresses CPU sampling)
+- `dotnet-counters` → group `default` (runs in every pass, lightweight)
 
 **Important**: PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal. PerfView is downloaded automatically by `Setup-DevEnvironment.ps1`.
 

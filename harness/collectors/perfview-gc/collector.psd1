@@ -1,0 +1,12 @@
+@{
+    Name            = 'perfview-gc'
+    Description     = 'GC statistics via PerfView ETW (/GCOnly mode for minimal overhead)'
+    Group           = 'etw-gc'
+    RequiresAdmin   = $true
+    OverheadImpact  = 'low'
+    DefaultSettings = @{
+        MaxCollectSec  = 90
+        BufferSizeMB   = 256
+        StopTimeoutSec = 300
+    }
+}

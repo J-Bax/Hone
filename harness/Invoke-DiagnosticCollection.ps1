@@ -34,15 +34,21 @@
 .PARAMETER ProcessName
     (Export only) API process name for PerfView filtering.
 
+.PARAMETER CollectorSubset
+    (Optional) Array of collector names to operate on. When specified, only
+    these collectors are started/stopped/exported. Used by the multi-pass
+    measurement orchestrator to run one group at a time.
+
 .OUTPUTS
-    Start  → @{ Success; Handles = @{ 'perfview' = $handle; ... } }
-    Stop   → @{ Success; ArtifactMap = @{ 'perfview' = @($paths); ... } }
-    Export → @{ Success; CollectorData = @{ 'perfview' = @{ ExportedPaths; Summary }; ... } }
+    Start     → @{ Success; Handles = @{ 'name' = $handle; ... } }
+    Stop      → @{ Success; ArtifactMap = @{ 'name' = @($paths); ... } }
+    Export    → @{ Success; CollectorData = @{ 'name' = @{ ExportedPaths; Summary }; ... } }
+    GetGroups → @{ Groups = [ordered]@{ 'group' = @($collectors); ... } }
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('Start', 'Stop', 'Export')]
+    [ValidateSet('Start', 'Stop', 'Export', 'GetGroups')]
     [string]$Action,
 
     [int]$ProcessId,
@@ -50,7 +56,8 @@ param(
     [hashtable]$Config,
     [hashtable]$Handles,
     [hashtable]$ArtifactMap,
-    [string]$ProcessName
+    [string]$ProcessName,
+    [string[]]$CollectorSubset
 )
 
 Set-StrictMode -Version Latest
@@ -106,12 +113,56 @@ function Get-EnabledCollectors {
             Dir      = $dir.FullName
             Meta     = $meta
             Settings = $merged
+            Group    = $meta.Group ?? 'default'
         })
     }
     return $result
 }
 
+<#
+.SYNOPSIS
+    Groups collectors by their Group field for multi-pass execution.
+.DESCRIPTION
+    Returns an ordered dictionary where keys are group names and values are
+    arrays of collectors. Collectors with Group='default' are included in
+    every non-default group (they're lightweight/non-interfering).
+    If no non-default groups exist, returns a single 'default' group.
+#>
+function Get-CollectorGroups {
+    param([System.Collections.Generic.List[hashtable]]$Collectors)
+
+    $defaultCollectors = @($Collectors | Where-Object { $_.Group -eq 'default' })
+    $nonDefaultCollectors = @($Collectors | Where-Object { $_.Group -ne 'default' })
+
+    $groups = [ordered]@{}
+
+    if ($nonDefaultCollectors.Count -eq 0) {
+        # Only default collectors — single pass
+        $groups['default'] = @($defaultCollectors)
+    }
+    else {
+        # Group non-default collectors, include default collectors in each group
+        $nonDefaultCollectors | Group-Object -Property Group | ForEach-Object {
+            $groups[$_.Name] = @($_.Group) + @($defaultCollectors)
+        }
+    }
+    return $groups
+}
+
 $collectors = Get-EnabledCollectors -Path $collectorsPath -Diag $diagnostics
+
+# ── Action: GetGroups ───────────────────────────────────────────────────────
+if ($Action -eq 'GetGroups') {
+    $groups = Get-CollectorGroups -Collectors $collectors
+    return @{ Groups = $groups }
+}
+
+# ── Apply CollectorSubset filter ────────────────────────────────────────────
+if ($CollectorSubset -and $CollectorSubset.Count -gt 0) {
+    $collectors = [System.Collections.Generic.List[hashtable]]@(
+        $collectors | Where-Object { $_.Name -in $CollectorSubset }
+    )
+}
 
 # ── Action: Start ───────────────────────────────────────────────────────────
 if ($Action -eq 'Start') {
