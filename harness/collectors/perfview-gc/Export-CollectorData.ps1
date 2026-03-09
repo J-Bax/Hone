@@ -135,8 +135,11 @@ try {
         Write-Verbose "Parsing GCStats HTML: $gcStatsHtml"
         $htmlContent = Get-Content $gcStatsHtml -Raw
 
-        # Scope to the target process section (between HR tags)
-        $processSection = $htmlContent
+        # Scope to the target process section (between HR tags).
+        # The /GCOnly ETL typically includes the process name in the heading,
+        # but /ThreadTime ETLs may list only the PID. Try name first, then
+        # fall back to any section with GC Rollup data.
+        $processSection = $null
         $hrBlocks = [regex]::Split($htmlContent, '<HR\s*/?\s*>')
         foreach ($block in $hrBlocks) {
             if ($block -match [regex]::Escape($ProcessName) -and $block -match 'GC Rollup') {
@@ -144,6 +147,15 @@ try {
                 break
             }
         }
+        if (-not $processSection) {
+            foreach ($block in $hrBlocks) {
+                if ($block -match 'GC Rollup' -and $block -match 'GC Stats for Process') {
+                    $processSection = $block
+                    break
+                }
+            }
+        }
+        if (-not $processSection) { $processSection = $htmlContent }
 
         function Find-HtmlMetric {
             param([string]$Html, [string]$Pattern)

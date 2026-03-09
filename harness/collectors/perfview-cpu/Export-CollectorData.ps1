@@ -4,6 +4,11 @@
 .DESCRIPTION
     Uses PerfView's UserCommand SaveCPUStacksAsCsv to extract CPU stacks,
     then converts to folded-stack format (semicolon-delimited frames + count).
+
+    When /ThreadTime tracing is used, PerfView's TraceLog.Processes index may
+    fail to resolve the target process by name (despite it appearing in address
+    resolution). This script retries without a process filter and filters the
+    CSV output during parsing as a fallback.
 #>
 [CmdletBinding()]
 param(
@@ -61,82 +66,151 @@ if (-not (Test-Path $OutputDir)) {
 
 $maxStacks = if ($Settings.ContainsKey('MaxStacks')) { $Settings.MaxStacks } else { 100 }
 $cpuStacksPath = Join-Path $OutputDir 'cpu-stacks-folded.txt'
+$cpuExportSuccess = $false
 
-try {
-    $cpuLogPath = Join-Path $OutputDir 'perfview-cpu-export.log'
-    $exportArgs = @(
-        "/LogFile:$cpuLogPath"
+# ── Helper: run SaveCPUStacksAsCsv and return the CSV path if produced ──────
+function Invoke-SaveCPUStacksAsCsv {
+    param(
+        [string]$PerfViewExe,
+        [string]$EtlPath,
+        [string]$LogPath,
+        [string]$FilterProcessName  # empty string = no process filter
+    )
+
+    $args_ = @(
+        "/LogFile:$LogPath"
         '/AcceptEULA'
         '/NoGui'
         'UserCommand'
         'SaveCPUStacksAsCsv'
-        $etlPath
-        $ProcessName
+        $EtlPath
     )
+    if ($FilterProcessName) {
+        $args_ += $FilterProcessName
+    }
 
-    Write-Verbose "Running PerfView CPU export: $perfViewExe $($exportArgs -join ' ')"
-    $exportProcess = Start-Process -FilePath $perfViewExe `
-        -ArgumentList $exportArgs `
-        -PassThru -WindowStyle Hidden -Wait
+    Write-Verbose "Running PerfView CPU export: $PerfViewExe $($args_ -join ' ')"
+
+    # Remove stale CSV so we can detect whether this invocation produces it
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($baseName)
+    $etlDir   = Split-Path $EtlPath -Parent
+    $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
+    if (Test-Path $csvPath) { Remove-Item $csvPath -Force }
+
+    Start-Process -FilePath $PerfViewExe -ArgumentList $args_ `
+        -PassThru -WindowStyle Hidden -Wait | Out-Null
 
     # SaveCPUStacksAsCsv creates <basename>.perfView.csv alongside the ETL
-    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($etlPath)
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($baseName)
-    $etlDir   = Split-Path $etlPath -Parent
+    $etlDir   = Split-Path $EtlPath -Parent
     $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
 
-    $foldedLines = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path $csvPath) { return $csvPath }
+    return $null
+}
 
-    if (Test-Path $csvPath) {
-        Write-Verbose "Parsing CSV export: $csvPath"
-        $rows = Import-Csv -Path $csvPath
+# ── Helper: parse CSV into folded-stack lines ───────────────────────────────
+function ConvertTo-FoldedStacks {
+    param(
+        [string]$CsvPath,
+        [string]$FilterProcessName  # non-empty = filter rows to this process's module
+    )
 
-        if ($rows -and @($rows).Count -gt 0) {
-            # SaveCPUStacksAsCsv outputs: Name,Exc,Exc%,Inc,Inc%,Fold,First,Last
-            $nameCol = ($rows[0].PSObject.Properties.Name | Where-Object { $_ -eq 'Name' -or $_ -match 'stack|call' }) |
-                        Select-Object -First 1
-            $countCol = ($rows[0].PSObject.Properties.Name | Where-Object { $_ -eq 'Exc' -or $_ -match 'count|sample|weight' }) |
-                        Select-Object -First 1
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $rows = Import-Csv -Path $CsvPath
+    if (-not $rows -or @($rows).Count -eq 0) { return $lines }
 
-            if (-not $nameCol) { $nameCol = $rows[0].PSObject.Properties.Name[0] }
-            if (-not $countCol) { $countCol = 'Inc' }
+    # SaveCPUStacksAsCsv outputs: Name,Exc,Exc%,Inc,Inc%,Fold,First,Last
+    $nameCol = ($rows[0].PSObject.Properties.Name |
+        Where-Object { $_ -eq 'Name' -or $_ -match 'stack|call' }) |
+        Select-Object -First 1
+    $countCol = ($rows[0].PSObject.Properties.Name |
+        Where-Object { $_ -eq 'Exc' -or $_ -match 'count|sample|weight' }) |
+        Select-Object -First 1
 
-            foreach ($row in $rows) {
-                $name = $row.$nameCol
-                if (-not $name -or $name -eq 'ROOT') { continue }
-                $rawCount = $row.$countCol -replace '[,\s]', ''
-                if ([double]::TryParse($rawCount, [ref]$null)) {
-                    $count = [double]$rawCount
-                    if ($count -gt 0) {
-                        $foldedLines.Add("$name $([int]$count)")
-                    }
-                }
+    if (-not $nameCol) { $nameCol = $rows[0].PSObject.Properties.Name[0] }
+    if (-not $countCol) { $countCol = 'Inc' }
+
+    # When exported without a process filter, the CSV is a flat roll-up of
+    # methods from ALL processes. The Name column is "module!method". Filter
+    # by excluding rows from clearly unrelated processes (e.g. k6, conhost)
+    # while keeping the target process and shared framework modules.
+    $excludeModules = @('k6', 'conhost', 'searchfilterhost', 'searchindexer',
+        'teracopyservice', 'explorer', 'dwm', 'csrss', 'wininit', 'lsass')
+
+    foreach ($row in $rows) {
+        $name = $row.$nameCol
+        if (-not $name -or $name -eq 'ROOT') { continue }
+
+        if ($FilterProcessName) {
+            $module = ($name -split '!')[0].ToLowerInvariant()
+            if ($module -in $excludeModules) { continue }
+        }
+
+        $rawCount = $row.$countCol -replace '[,\s]', ''
+        if ([double]::TryParse($rawCount, [ref]$null)) {
+            $count = [double]$rawCount
+            if ($count -gt 0) {
+                $lines.Add("$name $([int]$count)")
             }
         }
     }
-    else {
-        $foldedLines.Add("[PerfView CPU export did not produce CSV — raw ETL available at $etlPath] 1")
-        Write-Verbose "No perfView.csv found at $csvPath"
+
+    return $lines
+}
+
+try {
+    $cpuLogPath = Join-Path $OutputDir 'perfview-cpu-export.log'
+
+    # ── Attempt 1: Export with process name filter ──────────────────────────
+    $csvPath = Invoke-SaveCPUStacksAsCsv -PerfViewExe $perfViewExe `
+        -EtlPath $etlPath -LogPath $cpuLogPath -FilterProcessName $ProcessName
+
+    $foldedLines = @()
+    $usedFallback = $false
+
+    if ($csvPath) {
+        Write-Verbose "Parsing process-filtered CSV: $csvPath"
+        $foldedLines = @(ConvertTo-FoldedStacks -CsvPath $csvPath -FilterProcessName '')
     }
 
-    $sortedLines = $foldedLines |
+    # ── Attempt 2: Retry without process filter ────────────────────────────
+    # /ThreadTime tracing creates huge process tables that can break PerfView's
+    # process name lookup even though the process data exists in the ETL.
+    if ($foldedLines.Count -eq 0) {
+        Write-Verbose "Process-filtered export produced no stacks — retrying without process filter"
+
+        $fallbackLogPath = Join-Path $OutputDir 'perfview-cpu-export-fallback.log'
+        $csvPath = Invoke-SaveCPUStacksAsCsv -PerfViewExe $perfViewExe `
+            -EtlPath $etlPath -LogPath $fallbackLogPath -FilterProcessName ''
+
+        if ($csvPath) {
+            Write-Verbose "Parsing unfiltered CSV with module-level filter: $csvPath"
+            $foldedLines = @(ConvertTo-FoldedStacks -CsvPath $csvPath -FilterProcessName $ProcessName)
+            $usedFallback = $true
+        }
+    }
+
+    if ($foldedLines.Count -gt 0) {
+        $cpuExportSuccess = $true
+    }
+
+    $sortedLines = @($foldedLines |
         Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
-        Select-Object -First $maxStacks
+        Select-Object -First $maxStacks)
 
-    $sortedLines | Set-Content -Path $cpuStacksPath -Encoding utf8
-
-    $top5 = $sortedLines | Select-Object -First 5
-    $cpuSummaryLines = @("Top CPU hotspots ($(@($sortedLines).Count) stacks):")
-    $rank = 1
-    foreach ($line in $top5) {
-        $parts   = $line -split '\s+'
-        $count   = $parts[-1]
-        $frames  = ($parts[0..($parts.Count - 2)] -join ' ') -split ';'
-        $topFrame = $frames[-1].Trim()
-        $cpuSummaryLines += "  ${rank}. $topFrame ($count samples)"
-        $rank++
+    if ($sortedLines.Count -gt 0) {
+        $sortedLines | Set-Content -Path $cpuStacksPath -Encoding utf8
     }
-    $summaryText = "CPU: $(@($sortedLines).Count) stacks exported"
+    else {
+        "[PerfView CPU export did not produce stacks — raw ETL available at $etlPath] 1" |
+            Set-Content -Path $cpuStacksPath -Encoding utf8
+    }
+
+    $fallbackNote = if ($usedFallback) { ' (fallback: unfiltered export)' } else { '' }
+    $summaryText = "CPU: $(@($sortedLines).Count) stacks exported${fallbackNote}"
 }
 catch {
     $summaryText = "CPU export failed: $_"
@@ -145,8 +219,14 @@ catch {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Part 2: Extract allocation tick types from same ETL via GCStats
+# Part 2: Extract allocation type data from same ETL via GCStats
 # ═══════════════════════════════════════════════════════════════════════════
+# Note: PerfView's GCStats HTML does not include an "Allocation Tick" table
+# even when /DotNetAllocSampled was used during collection. The allocation
+# tick events are captured in the ETL but GCStats only renders GC Rollup,
+# per-generation stats, and individual GC event tables. To get per-type
+# allocation data, a dedicated GC Heap Alloc Stacks view export would be
+# needed. For now we attempt to parse it but expect empty results.
 $allocTypesPath = Join-Path $OutputDir 'alloc-types.json'
 $allocSummary = ''
 
@@ -166,7 +246,8 @@ try {
         -ArgumentList $gcStatsArgs `
         -PassThru -WindowStyle Hidden -Wait
 
-    # Find the GCStats HTML (same search logic as perfview-gc Export)
+    # Find the GCStats HTML — PerfView writes it before the NullReferenceException
+    # that commonly occurs in the GCStats UserCommand cleanup code.
     $etlDir      = Split-Path -Parent $etlPath
     $etlBaseName = [System.IO.Path]::GetFileNameWithoutExtension(
         [System.IO.Path]::GetFileNameWithoutExtension($etlPath)
@@ -189,7 +270,7 @@ try {
     if ($gcStatsHtml) {
         $htmlContent = Get-Content $gcStatsHtml -Raw
 
-        # Scope to the target process section (block with ProcessName AND GC Rollup)
+        # Scope to the target process section (block with ProcessName or PID AND GC Rollup)
         $hrBlocks = [regex]::Split($htmlContent, '<HR\s*/?\s*>')
         $processSection = $null
         foreach ($block in $hrBlocks) {
@@ -199,16 +280,26 @@ try {
             }
         }
 
+        # If process name not found, try matching by just "GC Rollup" (the CPU
+        # ETL's GCStats HTML may list the process by PID only, without name)
+        if (-not $processSection) {
+            foreach ($block in $hrBlocks) {
+                if ($block -match 'GC Rollup' -and $block -match 'GC Stats for Process') {
+                    $processSection = $block
+                    break
+                }
+            }
+        }
+
         if (-not $processSection) { $processSection = $htmlContent }
 
-        # Parse "Allocation Tick" table — PerfView renders this when /DotNetAllocSampled events exist
-        # Look for a table following "Allocation Tick" text
+        # Parse "Allocation Tick" table if present (GCStats rarely includes it)
         $allocMatch = [regex]::Match($processSection, '(?si)Allocation\s+Tick[^<]*<[^t]*<table[^>]*>(.*?)</table>')
         if ($allocMatch.Success) {
             $tableHtml = $allocMatch.Groups[1].Value
-            $rows = [regex]::Matches($tableHtml, '(?si)<tr[^>]*>(.*?)</tr>')
-            foreach ($row in $rows) {
-                $cells = [regex]::Matches($row.Groups[1].Value, '(?si)<td[^>]*>(.*?)</td>')
+            $trMatches = [regex]::Matches($tableHtml, '(?si)<tr[^>]*>(.*?)</tr>')
+            foreach ($tr in $trMatches) {
+                $cells = [regex]::Matches($tr.Groups[1].Value, '(?si)<td[^>]*>(.*?)</td>')
                 if ($cells.Count -ge 2) {
                     $typeName   = ($cells[0].Groups[1].Value -replace '<[^>]+>', '').Trim()
                     $allocMBRaw = ($cells[1].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
@@ -220,7 +311,6 @@ try {
                     }
                 }
             }
-            # Compute percentages
             $totalAlloc = ($topTypes | Measure-Object -Property allocMB -Sum).Sum
             if ($totalAlloc -gt 0) {
                 foreach ($t in $topTypes) {
@@ -238,7 +328,7 @@ try {
         $allocSummary = "Alloc: $($topTypes.Count) types"
     }
     else {
-        $allocSummary = 'Alloc: no allocation tick data'
+        $allocSummary = 'Alloc: no allocation tick data (GCStats does not export it)'
     }
 }
 catch {
@@ -251,7 +341,7 @@ catch {
 $fullSummary = @($summaryText, $allocSummary) -join ' | '
 
 return @{
-    Success        = (Test-Path $cpuStacksPath)
+    Success        = $cpuExportSuccess
     ExportedPaths  = @($cpuStacksPath, $allocTypesPath)
     Summary        = $fullSummary
     CpuStacksPath  = $cpuStacksPath
