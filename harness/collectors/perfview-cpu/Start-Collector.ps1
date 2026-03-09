@@ -20,6 +20,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# ── Clean up stale ETW sessions from prior interrupted runs ─────────────────
+# PerfView uses the singleton "NT Kernel Logger" plus a user-mode session.
+# If a previous run was force-killed, these remain active and block new collection.
+foreach ($session in @('NT Kernel Logger', 'PerfViewSession')) {
+    $logmanOut = logman stop $session -ets 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Information "  Cleaned up stale ETW session: $session"
+    }
+}
+
 try {
     $perfViewExe = $Settings.PerfViewExePath
     if (-not $perfViewExe) {
@@ -44,6 +54,16 @@ try {
     }
 
     $outputPath = Join-Path $OutputDir 'perfview-cpu.etl.zip'
+
+    # Clean up stale intermediate files from interrupted prior runs
+    $baseName = Join-Path $OutputDir 'perfview-cpu'
+    foreach ($staleFile in @("$baseName.etl", "$baseName.kernel.etl", "$baseName.clrRundown.etl",
+                             "$baseName.etl.new", "$baseName.etl.zip")) {
+        if (Test-Path $staleFile) {
+            Remove-Item $staleFile -Force -ErrorAction SilentlyContinue
+            Write-Verbose "Removed stale file: $staleFile"
+        }
+    }
 
     $maxCollectSec = if ($Settings.ContainsKey('MaxCollectSec')) { $Settings.MaxCollectSec } else { 90 }
     $bufferSizeMB  = if ($Settings.ContainsKey('BufferSizeMB'))  { $Settings.BufferSizeMB }  else { 256 }

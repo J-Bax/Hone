@@ -195,15 +195,15 @@
         CollectorSettings = @{
             'perfview-cpu' = @{
                 Enabled          = $true
-                MaxCollectSec    = 90
-                StopTimeoutSec   = 300   # rundown + merge + zip can be slow
-                ExportTimeoutSec = 300   # UserCommand export can hang on large ETLs
+                MaxCollectSec    = 150    # must exceed k6 scenario duration (120s) + margin
+                StopTimeoutSec   = 300    # rundown + merge + zip can be slow
+                ExportTimeoutSec = 300    # UserCommand export can hang on large ETLs
                 BufferSizeMB     = 256
-                MaxStacks        = 100   # truncate CPU folded stacks to top-N
+                MaxStacks        = 100    # truncate CPU folded stacks to top-N
             }
             'perfview-gc' = @{
                 Enabled          = $true
-                MaxCollectSec    = 90
+                MaxCollectSec    = 150    # must exceed k6 scenario duration (120s) + margin
                 StopTimeoutSec   = 300
                 ExportTimeoutSec = 300
                 BufferSizeMB     = 256

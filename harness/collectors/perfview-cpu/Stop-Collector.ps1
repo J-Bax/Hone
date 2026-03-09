@@ -44,6 +44,10 @@ try {
             Write-Warning "PerfView did not exit within ${waitTimeoutSec}s — forcing stop."
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit(10000) | Out-Null
+            # Force-kill leaves orphaned ETW sessions — clean them up
+            foreach ($session in @('NT Kernel Logger', 'PerfViewSession')) {
+                logman stop $session -ets 2>&1 | Out-Null
+            }
         }
 
         # Clean up abort file
@@ -85,4 +89,3 @@ catch {
         ArtifactPaths = @()
     }
 }
-
