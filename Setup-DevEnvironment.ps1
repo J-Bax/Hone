@@ -195,26 +195,37 @@ else {
 # ── 7. dotnet-counters global tool ─────────────────────────────────────────
 
 Write-Step "Checking dotnet-counters"
+# dotnet-counters must be pinned to a version whose runtime is actually installed.
+# The sample API targets .NET 6, so we install the 6.0.x line to guarantee
+# the tool can run without requiring a newer runtime (e.g. .NET 8/9).
+$dotnetCountersVersionSpec = '6.0.*'
+
+$dcNeedsInstall = $true
 if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
-    $dcVersion = & dotnet-counters --version 2>$null
-    Write-Ok "dotnet-counters $dcVersion"
+    # The tool may be on PATH but unable to run if the required runtime is missing.
+    # Invoke it and check for a real version string to confirm it works.
+    $dcVersionOutput = & dotnet-counters --version 2>&1
+    if ($LASTEXITCODE -eq 0 -and $dcVersionOutput -match '^\d+\.\d+') {
+        Write-Ok "dotnet-counters $dcVersionOutput"
+        $dcNeedsInstall = $false
+    }
+    else {
+        Write-Host "  ⚠ dotnet-counters is installed but cannot run (missing runtime?). Reinstalling..." -ForegroundColor Yellow
+        & dotnet tool uninstall --global dotnet-counters 2>$null | Out-Null
+    }
 }
-else {
+
+if ($dcNeedsInstall) {
     if (Test-CommandExists 'dotnet') {
         try {
-            & dotnet tool install --global dotnet-counters 2>$null
-            Write-Ok "dotnet-counters installed as .NET global tool"
+            & dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
+            $dcInstalledVersion = & dotnet-counters --version 2>$null
+            Write-Ok "dotnet-counters $dcInstalledVersion installed (pinned to $dotnetCountersVersionSpec)"
         }
         catch {
-            # May already be installed but not on PATH; try update instead
-            try {
-                & dotnet tool update --global dotnet-counters 2>$null
-                Write-Ok "dotnet-counters updated"
-            }
-            catch {
-                Write-Fail "Failed to install dotnet-counters. Run: dotnet tool install --global dotnet-counters"
-                $allSucceeded = $false
-            }
+            Write-Fail "Failed to install dotnet-counters ($dotnetCountersVersionSpec). Run: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec"
+            $allSucceeded = $false
         }
     }
     else {
