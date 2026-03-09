@@ -194,17 +194,19 @@
         # Collectors in different Groups run in separate diagnostic passes.
         CollectorSettings = @{
             'perfview-cpu' = @{
-                Enabled        = $true
-                MaxCollectSec  = 90
-                StopTimeoutSec = 300   # rundown + merge + zip can be slow
-                BufferSizeMB   = 256
-                MaxStacks      = 100   # truncate CPU folded stacks to top-N
+                Enabled          = $true
+                MaxCollectSec    = 90
+                StopTimeoutSec   = 300   # rundown + merge + zip can be slow
+                ExportTimeoutSec = 300   # UserCommand export can hang on large ETLs
+                BufferSizeMB     = 256
+                MaxStacks        = 100   # truncate CPU folded stacks to top-N
             }
             'perfview-gc' = @{
-                Enabled        = $true
-                MaxCollectSec  = 90
-                StopTimeoutSec = 300
-                BufferSizeMB   = 256
+                Enabled          = $true
+                MaxCollectSec    = 90
+                StopTimeoutSec   = 300
+                ExportTimeoutSec = 300
+                BufferSizeMB     = 256
             }
             'dotnet-counters' = @{
                 Enabled = $true

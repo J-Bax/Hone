@@ -5,8 +5,9 @@
     RequiresAdmin   = $true
     OverheadImpact  = 'low'
     DefaultSettings = @{
-        MaxCollectSec  = 90
-        BufferSizeMB   = 256
-        StopTimeoutSec = 300
+        MaxCollectSec    = 90
+        BufferSizeMB     = 256
+        StopTimeoutSec   = 300
+        ExportTimeoutSec = 300
     }
 }

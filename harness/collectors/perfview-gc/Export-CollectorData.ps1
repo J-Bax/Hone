@@ -61,6 +61,7 @@ if (-not (Test-Path $OutputDir)) {
 }
 
 $gcReportPath = Join-Path $OutputDir 'gc-report.json'
+$exportTimeoutSec = if ($Settings.ContainsKey('ExportTimeoutSec')) { [int]$Settings.ExportTimeoutSec } else { 300 }
 
 try {
     $gcLogPath = Join-Path $OutputDir 'perfview-gcstats.log'
@@ -76,7 +77,13 @@ try {
     Write-Verbose "Running PerfView GCStats: $perfViewExe $($gcStatsArgs -join ' ')"
     $gcStatsProc = Start-Process -FilePath $perfViewExe `
         -ArgumentList $gcStatsArgs `
-        -PassThru -WindowStyle Hidden -Wait
+        -PassThru -WindowStyle Hidden
+    $exited = $gcStatsProc.WaitForExit($exportTimeoutSec * 1000)
+    if (-not $exited) {
+        Write-Warning "PerfView GCStats did not complete within ${exportTimeoutSec}s — killing process."
+        Stop-Process -Id $gcStatsProc.Id -Force -ErrorAction SilentlyContinue
+        $gcStatsProc.WaitForExit(10000) | Out-Null
+    }
 
     # PerfView UserCommand GCStats may exit non-zero due to NullReferenceException
     # even when it successfully writes the HTML — check for the output file instead

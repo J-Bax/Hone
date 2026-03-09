@@ -5,9 +5,10 @@
     RequiresAdmin   = $true
     OverheadImpact  = 'moderate'
     DefaultSettings = @{
-        MaxCollectSec  = 90
-        BufferSizeMB   = 256
-        StopTimeoutSec = 300
-        MaxStacks      = 100
+        MaxCollectSec    = 90
+        BufferSizeMB     = 256
+        StopTimeoutSec   = 300
+        ExportTimeoutSec = 300
+        MaxStacks        = 100
     }
 }

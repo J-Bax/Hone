@@ -65,8 +65,28 @@ if (-not (Test-Path $OutputDir)) {
 }
 
 $maxStacks = if ($Settings.ContainsKey('MaxStacks')) { $Settings.MaxStacks } else { 100 }
+$exportTimeoutSec = if ($Settings.ContainsKey('ExportTimeoutSec')) { [int]$Settings.ExportTimeoutSec } else { 300 }
 $cpuStacksPath = Join-Path $OutputDir 'cpu-stacks-folded.txt'
 $cpuExportSuccess = $false
+
+# ── Helper: run a PerfView command with a timeout ───────────────────────────
+function Invoke-PerfViewWithTimeout {
+    param(
+        [string]$PerfViewExe,
+        [string[]]$Arguments,
+        [int]$TimeoutSec
+    )
+
+    $proc = Start-Process -FilePath $PerfViewExe -ArgumentList $Arguments `
+        -PassThru -WindowStyle Hidden
+    $exited = $proc.WaitForExit($TimeoutSec * 1000)
+    if (-not $exited) {
+        Write-Warning "PerfView export did not complete within ${TimeoutSec}s — killing process."
+        Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        $proc.WaitForExit(10000) | Out-Null
+    }
+    return $proc
+}
 
 # ── Helper: run SaveCPUStacksAsCsv and return the CSV path if produced ──────
 function Invoke-SaveCPUStacksAsCsv {
@@ -74,7 +94,8 @@ function Invoke-SaveCPUStacksAsCsv {
         [string]$PerfViewExe,
         [string]$EtlPath,
         [string]$LogPath,
-        [string]$FilterProcessName  # empty string = no process filter
+        [string]$FilterProcessName,  # empty string = no process filter
+        [int]$TimeoutSec
     )
 
     $args_ = @(
@@ -98,8 +119,7 @@ function Invoke-SaveCPUStacksAsCsv {
     $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
     if (Test-Path $csvPath) { Remove-Item $csvPath -Force }
 
-    Start-Process -FilePath $PerfViewExe -ArgumentList $args_ `
-        -PassThru -WindowStyle Hidden -Wait | Out-Null
+    Invoke-PerfViewWithTimeout -PerfViewExe $PerfViewExe -Arguments $args_ -TimeoutSec $TimeoutSec
 
     # SaveCPUStacksAsCsv creates <basename>.perfView.csv alongside the ETL
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)
@@ -166,7 +186,8 @@ try {
 
     # ── Attempt 1: Export with process name filter ──────────────────────────
     $csvPath = Invoke-SaveCPUStacksAsCsv -PerfViewExe $perfViewExe `
-        -EtlPath $etlPath -LogPath $cpuLogPath -FilterProcessName $ProcessName
+        -EtlPath $etlPath -LogPath $cpuLogPath -FilterProcessName $ProcessName `
+        -TimeoutSec $exportTimeoutSec
 
     $foldedLines = @()
     $usedFallback = $false
@@ -184,7 +205,8 @@ try {
 
         $fallbackLogPath = Join-Path $OutputDir 'perfview-cpu-export-fallback.log'
         $csvPath = Invoke-SaveCPUStacksAsCsv -PerfViewExe $perfViewExe `
-            -EtlPath $etlPath -LogPath $fallbackLogPath -FilterProcessName ''
+            -EtlPath $etlPath -LogPath $fallbackLogPath -FilterProcessName '' `
+            -TimeoutSec $exportTimeoutSec
 
         if ($csvPath) {
             Write-Verbose "Parsing unfiltered CSV with module-level filter: $csvPath"
@@ -242,9 +264,8 @@ try {
     )
 
     Write-Verbose "Running PerfView GCStats for allocation data: $perfViewExe $($gcStatsArgs -join ' ')"
-    $gcProc = Start-Process -FilePath $perfViewExe `
-        -ArgumentList $gcStatsArgs `
-        -PassThru -WindowStyle Hidden -Wait
+    $gcProc = Invoke-PerfViewWithTimeout -PerfViewExe $perfViewExe `
+        -Arguments $gcStatsArgs -TimeoutSec $exportTimeoutSec
 
     # Find the GCStats HTML — PerfView writes it before the NullReferenceException
     # that commonly occurs in the GCStats UserCommand cleanup code.
