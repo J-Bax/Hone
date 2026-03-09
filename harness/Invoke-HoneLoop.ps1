@@ -261,17 +261,75 @@ $branchChain = @('master')
 $failedExperiments = @()
 $successCount = 0
 
-# Ensure the submodule starts on master so experiment branches fork correctly
+# ── Resume from prior run ───────────────────────────────────────────────────
+$startExperiment = 1
+$priorExperiments = @()
+if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
+    $priorExperiments = @($runMetadata.Experiments)
+    $lastEntry = $priorExperiments[-1]
+    $startExperiment = $lastEntry.Experiment + 1
+
+    # Restore running counters (backward-compatible: default 0 for old metadata)
+    $staleCount = if ($null -ne $lastEntry.StaleCount) { $lastEntry.StaleCount } else { 0 }
+    $consecutiveFailures = if ($null -ne $lastEntry.ConsecutiveFailures) { $lastEntry.ConsecutiveFailures } else { 0 }
+
+    # Restore best metrics
+    foreach ($exp in $priorExperiments) {
+        if ($exp.Outcome -eq 'improved' -and $exp.P95 -lt $bestP95) {
+            $bestP95 = $exp.P95
+            $bestExperiment = $exp.Experiment
+        }
+    }
+    $successCount = @($priorExperiments | Where-Object { $_.Outcome -eq 'improved' }).Count
+
+    # Restore stacked-diffs branch state
+    if ($stackedDiffs) {
+        $currentBranch = $lastEntry.BranchName
+        $lastImproved = $priorExperiments | Where-Object { $_.Outcome -eq 'improved' } | Select-Object -Last 1
+        $lastSuccessfulBranch = if ($lastImproved) { $lastImproved.BranchName } else { 'master' }
+        $branchChain = @('master') + @($priorExperiments | ForEach-Object { $_.BranchName })
+        $prChain = @($priorExperiments | Where-Object { $_.PrNumber } | ForEach-Object {
+            [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)" }
+        })
+        $failedExperiments = @($priorExperiments | Where-Object { $_.Outcome -ne 'improved' } | ForEach-Object {
+            [PSCustomObject]@{ Experiment = $_.Experiment; Reason = $_.Outcome }
+        })
+    }
+
+    Write-Information "  Resuming from:      experiment $startExperiment ($($priorExperiments.Count) previous)" -InformationAction Continue
+    Write-Information "  Prior successes:    $successCount" -InformationAction Continue
+    if ($stackedDiffs) {
+        Write-Information "  Current branch:     $currentBranch" -InformationAction Continue
+    }
+    Write-Information '' -InformationAction Continue
+
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+        -Phase 'loop' -Level 'info' `
+        -Message "Resuming from experiment $startExperiment (restored state from $($priorExperiments.Count) prior experiments)" `
+        -Data @{
+            startExperiment     = $startExperiment
+            priorCount          = $priorExperiments.Count
+            successCount        = $successCount
+            staleCount          = $staleCount
+            consecutiveFailures = $consecutiveFailures
+            currentBranch       = $currentBranch
+        }
+}
+
+# MaxExperiments means "run N more" — compute absolute loop end
+$loopEnd = $startExperiment + $maxExp - 1
+
+# Ensure the submodule starts on the correct branch for experiment forking
 Push-Location (Join-Path $repoRoot 'sample-api')
-git checkout master 2>&1 | Out-Null
+git checkout $currentBranch 2>&1 | Out-Null
 Pop-Location
 
-for ($experiment = 1; $experiment -le $maxExp; $experiment++) {
+for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     $experimentStartedAt = Get-Date -Format 'o'
 
     Write-Information '' -InformationAction Continue
-    Write-Information "━━━ Experiment $experiment / $maxExp ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -InformationAction Continue
+    Write-Information "━━━ Experiment $experiment / $loopEnd ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -InformationAction Continue
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' -Message "Starting experiment $experiment" -Experiment $experiment
@@ -1146,7 +1204,7 @@ $scenarioBreakdown
         }
 
         # Wait for PR merge if configured (legacy mode or explicit opt-in)
-        $shouldWait = $waitForMerge -and $prNumber -and ($experiment -lt $maxExp)
+        $shouldWait = $waitForMerge -and $prNumber -and ($experiment -lt $loopEnd)
         if ($shouldWait) {
             Write-Information '' -InformationAction Continue
             Write-Information '  ⏳ Waiting for PR to be reviewed and merged...' -InformationAction Continue
@@ -1279,18 +1337,20 @@ $scenarioBreakdown
     $experimentPrUrl = if ($experimentOutcome -eq 'improved' -and $prNumber -and $prUrl) { "$prUrl" } else { $null }
 
     $experimentMeta = [ordered]@{
-        Experiment   = $experiment
-        StartedAt   = $experimentStartedAt
-        CompletedAt = (Get-Date -Format 'o')
-        Improved    = $comparison.Improved
-        Regression  = $comparison.Regression
-        P95         = $currentMetrics.HttpReqDuration.P95
-        RPS         = [math]::Round($currentMetrics.HttpReqs.Rate, 1)
-        Outcome     = $experimentOutcome
-        BranchName  = $branchName
-        BaseBranch  = if ($stackedDiffs) { $baseBranch } else { 'master' }
-        PrNumber    = $experimentPrNumber
-        PrUrl       = $experimentPrUrl
+        Experiment          = $experiment
+        StartedAt           = $experimentStartedAt
+        CompletedAt         = (Get-Date -Format 'o')
+        Improved            = $comparison.Improved
+        Regression          = $comparison.Regression
+        P95                 = $currentMetrics.HttpReqDuration.P95
+        RPS                 = [math]::Round($currentMetrics.HttpReqs.Rate, 1)
+        Outcome             = $experimentOutcome
+        BranchName          = $branchName
+        BaseBranch          = if ($stackedDiffs) { $baseBranch } else { 'master' }
+        PrNumber            = $experimentPrNumber
+        PrUrl               = $experimentPrUrl
+        StaleCount          = $staleCount
+        ConsecutiveFailures = $consecutiveFailures
     }
 
     # Append to the in-memory experiments list
