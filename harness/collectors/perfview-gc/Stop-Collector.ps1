@@ -24,6 +24,9 @@ $ErrorActionPreference = 'Stop'
 
 $process    = $Handle.Process
 $outputPath = $Handle.OutputPath
+$waitTimeoutMs = if ($Handle.Settings -and $Handle.Settings.StopTimeoutSec) {
+    [int]$Handle.Settings.StopTimeoutSec * 1000
+} else { 300000 }
 
 if (-not $process) {
     Write-Warning 'No PerfView process in handle — collection may not have started.'
@@ -40,11 +43,12 @@ if (-not $process.HasExited) {
     Write-Information 'Signalling PerfView to stop collection...'
     New-Item -ItemType File -Path $abortPath -Force | Out-Null
 
-    # Wait for PerfView to finish merge/zip (up to 60s)
-    $exited = $process.WaitForExit(60000)
+    # Wait for PerfView to finish rundown/merge/zip
+    $exited = $process.WaitForExit($waitTimeoutMs)
 
     if (-not $exited) {
-        Write-Warning 'PerfView did not exit within 60s — forcing stop.'
+        $timeoutSec = $waitTimeoutMs / 1000
+        Write-Warning "PerfView did not exit within ${timeoutSec}s — forcing stop."
         try { Stop-Process -Id $process.Id -Force -ErrorAction Stop } catch { }
         $process.WaitForExit(10000) | Out-Null
     }

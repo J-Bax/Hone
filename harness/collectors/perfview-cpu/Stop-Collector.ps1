@@ -14,7 +14,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$waitTimeoutSec = 60
+$waitTimeoutSec = if ($Handle.Settings -and $Handle.Settings.StopTimeoutSec) {
+    [int]$Handle.Settings.StopTimeoutSec
+} else { 300 }
 
 try {
     $process    = $Handle.Process
@@ -33,7 +35,7 @@ try {
         Write-Verbose "Writing abort file: $abortFilePath"
         [System.IO.File]::WriteAllText($abortFilePath, 'stop')
 
-        Write-Information "Signaled PerfView to stop. Waiting up to ${waitTimeoutSec}s for merge/zip..."
+        Write-Information "Signaled PerfView to stop. Waiting up to ${waitTimeoutSec}s for rundown/merge/zip..."
 
         $exited = $process.WaitForExit($waitTimeoutSec * 1000)
         if (-not $exited) {

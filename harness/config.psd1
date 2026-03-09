@@ -193,14 +193,16 @@
         # Keys must match the directory name under CollectorsPath.
         CollectorSettings = @{
             'perfview-cpu' = @{
-                Enabled       = $true
-                MaxCollectSec = 90
-                BufferSizeMB  = 256
+                Enabled        = $true
+                MaxCollectSec  = 90
+                StopTimeoutSec = 300   # rundown + merge + zip can be slow
+                BufferSizeMB   = 256
             }
             'perfview-gc' = @{
                 Enabled            = $true
                 AllocationSampling = $true
                 MaxCollectSec      = 90
+                StopTimeoutSec     = 300
                 BufferSizeMB       = 256
             }
             'dotnet-counters' = @{

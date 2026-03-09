@@ -86,6 +86,7 @@ try {
             Process    = $process
             OutputPath = $outputPath
             ProcessId  = $ProcessId
+            Settings   = $Settings
         }
     }
 }

@@ -53,7 +53,12 @@ $metrics = $null
 # ── Prefer the pre-parsed JSON ──────────────────────────────────────────
 if ($jsonSource) {
     $destJson = Join-Path $OutputDir (Split-Path -Leaf $jsonSource)
-    Copy-Item -Path $jsonSource -Destination $destJson -Force
+    # Skip copy if source and destination resolve to the same file
+    $resolvedSrc  = (Resolve-Path $jsonSource).Path
+    $resolvedDest = if (Test-Path $destJson) { (Resolve-Path $destJson).Path } else { $destJson }
+    if ($resolvedSrc -ne $resolvedDest) {
+        Copy-Item -Path $jsonSource -Destination $destJson -Force
+    }
     $exportedPaths += $destJson
     $metrics = Get-Content $jsonSource -Raw | ConvertFrom-Json
     Write-Verbose "Exported pre-parsed JSON from $jsonSource"
