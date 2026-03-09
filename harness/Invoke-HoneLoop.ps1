@@ -176,7 +176,7 @@ if (-not (Get-Command 'copilot' -ErrorAction SilentlyContinue)) {
     return
 }
 
-# ── Ensure GH_TOKEN is set for copilot CLI ───────────────────────────────────
+# ── Ensure GH_TOKEN is set and valid ─────────────────────────────────────────
 if (-not $env:GH_TOKEN) {
     $ghToken = gh auth token 2>$null
     if ($ghToken) {
@@ -185,6 +185,12 @@ if (-not $env:GH_TOKEN) {
         Write-Error 'gh is not authenticated — run ''gh auth login'' before running the optimization loop'
         return
     }
+}
+# Validate the token actually works (catches expired/revoked tokens)
+$ghStatus = gh auth status 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "gh token is invalid or expired — run 'gh auth login' to refresh.`n$ghStatus"
+    return
 }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
