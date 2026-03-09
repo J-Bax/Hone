@@ -168,7 +168,7 @@ Each collector is a self-contained directory with 4 files:
 | `Stop-Collector.ps1` | Stop collection → returns raw artifact paths |
 | `Export-CollectorData.ps1` | Convert raw artifacts to analysis-friendly format |
 
-Built-in collectors: `perfview-cpu`, `perfview-gc`, `dotnet-counters`
+Built-in collectors: `perfview` (unified CPU + GC), `dotnet-counters`
 
 ### Analyzer Plugins (`harness/analyzers/<name>/`)
 

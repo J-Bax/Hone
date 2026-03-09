@@ -65,8 +65,7 @@ Diagnostics = @{
     DiagnosticRuns     = 1                        # Single run (accuracy less important)
 
     CollectorSettings = @{
-        'perfview-cpu' = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256 }
-        'perfview-gc'  = @{ Enabled = $true; AllocationSampling = $true; MaxCollectSec = 90; BufferSizeMB = 256 }
+        'perfview' = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256; AllocationSampling = $true }
         'dotnet-counters' = @{ Enabled = $true }
     }
 

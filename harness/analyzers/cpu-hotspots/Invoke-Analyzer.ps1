@@ -3,7 +3,7 @@
     Analyzes CPU sampling stacks using the hone-cpu-profiler agent.
 
 .DESCRIPTION
-    Reads folded CPU stacks collected by the perfview-cpu collector, truncates to
+    Reads folded CPU stacks collected by the perfview collector, truncates to
     the top N stacks by sample count, builds a prompt with performance context,
     and calls the hone-cpu-profiler Copilot agent to identify CPU hotspots and
     performance-critical call paths.
@@ -43,9 +43,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── Extract folded stacks from collector data ───────────────────────────────
-$cpuCollector = $CollectorData['perfview-cpu']
-if (-not $cpuCollector -or -not $cpuCollector.ExportedPaths -or $cpuCollector.ExportedPaths.Count -eq 0) {
-    Write-Warning "No perfview-cpu collector data available — skipping cpu-hotspots analysis."
+$perfviewData = $CollectorData['perfview']
+if (-not $perfviewData) {
+    Write-Warning "No perfview collector data available — skipping cpu-hotspots analysis."
     return [PSCustomObject][ordered]@{
         Success      = $false
         Report       = $null
@@ -55,7 +55,7 @@ if (-not $cpuCollector -or -not $cpuCollector.ExportedPaths -or $cpuCollector.Ex
     }
 }
 
-$stacksPath = $cpuCollector.ExportedPaths[0]
+$stacksPath = if ($perfviewData.CpuStacksPath) { $perfviewData.CpuStacksPath } else { $perfviewData.ExportedPaths[0] }
 Write-Verbose "Reading folded stacks from: $stacksPath"
 
 if (-not (Test-Path -LiteralPath $stacksPath)) {

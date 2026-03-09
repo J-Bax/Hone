@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS
-    Stops PerfView CPU sampling collection and waits for merge/zip.
+    Stops the unified PerfView collection and waits for merge/zip.
 .DESCRIPTION
-    Signals PerfView to abort collection by writing its documented abort file,
-    then waits for the process to exit and verifies the ETL.zip artifact exists.
+    Signals PerfView to stop via its abort-file mechanism, waits for the
+    process to exit (allowing time for ETL merge and zip), and verifies
+    the output artifact exists.
 #>
 [CmdletBinding()]
 param(
@@ -14,21 +15,22 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$process    = $Handle.Process
+$outputPath = $Handle.OutputPath
 $waitTimeoutSec = if ($Handle.Settings -and $Handle.Settings.StopTimeoutSec) {
     [int]$Handle.Settings.StopTimeoutSec
 } else { 300 }
 
-try {
-    $process    = $Handle.Process
-    $outputPath = $Handle.OutputPath
-
-    if (-not $process) {
-        return [PSCustomObject][ordered]@{
-            Success = $false
-            Error   = 'No PerfView process in handle.'
-        }
+if (-not $process) {
+    Write-Warning 'No PerfView process in handle — collection may not have started.'
+    return [PSCustomObject][ordered]@{
+        Success       = $false
+        Error         = 'No PerfView process in handle.'
+        ArtifactPaths = @()
     }
+}
 
+try {
     if (-not $process.HasExited) {
         # PerfView's documented abort mechanism: create a <DataFile>.abort file
         $abortFilePath = "$outputPath.abort"
@@ -39,7 +41,7 @@ try {
 
         $exited = $process.WaitForExit($waitTimeoutSec * 1000)
         if (-not $exited) {
-            Write-Information "PerfView did not exit within ${waitTimeoutSec}s — forcing termination."
+            Write-Warning "PerfView did not exit within ${waitTimeoutSec}s — forcing stop."
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit(10000) | Out-Null
         }
@@ -60,13 +62,14 @@ try {
         $msg = "ETL artifact not found at '$outputPath' after PerfView exited."
         Write-Information $msg
         return [PSCustomObject][ordered]@{
-            Success = $false
-            Error   = $msg
+            Success       = $false
+            Error         = $msg
+            ArtifactPaths = @()
         }
     }
 
     $sizeMB = [math]::Round((Get-Item $outputPath).Length / 1MB, 2)
-    Write-Information "PerfView CPU collection stopped. Artifact: $outputPath ($sizeMB MB)"
+    Write-Information "PerfView collection stopped. Artifact: $outputPath ($sizeMB MB)"
 
     return [PSCustomObject][ordered]@{
         Success       = $true
@@ -74,10 +77,11 @@ try {
     }
 }
 catch {
-    $msg = "Failed to stop PerfView CPU collector: $_"
+    $msg = "Failed to stop PerfView collector: $_"
     Write-Information $msg
     return [PSCustomObject][ordered]@{
-        Success = $false
-        Error   = $msg
+        Success       = $false
+        Error         = $msg
+        ArtifactPaths = @()
     }
 }

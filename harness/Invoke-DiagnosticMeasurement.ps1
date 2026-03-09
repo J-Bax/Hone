@@ -30,7 +30,7 @@
 .OUTPUTS
     @{
         Success          = $true
-        CollectorData    = @{ 'perfview-cpu' = @{…}; 'perfview-gc' = @{…}; … }
+        CollectorData    = @{ 'perfview' = @{…}; … }
         AnalyzerReports  = @{ 'cpu-hotspots' = @{…}; 'memory-gc' = @{…}; … }
     }
 #>

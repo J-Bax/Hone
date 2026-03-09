@@ -35,9 +35,9 @@
     (Export only) API process name for PerfView filtering.
 
 .OUTPUTS
-    Start  → @{ Success; Handles = @{ 'perfview-cpu' = $handle; ... } }
-    Stop   → @{ Success; ArtifactMap = @{ 'perfview-cpu' = @($paths); ... } }
-    Export → @{ Success; CollectorData = @{ 'perfview-cpu' = @{ ExportedPaths; Summary }; ... } }
+    Start  → @{ Success; Handles = @{ 'perfview' = $handle; ... } }
+    Stop   → @{ Success; ArtifactMap = @{ 'perfview' = @($paths); ... } }
+    Export → @{ Success; CollectorData = @{ 'perfview' = @{ ExportedPaths; Summary }; ... } }
 #>
 [CmdletBinding()]
 param(
@@ -213,10 +213,18 @@ if ($Action -eq 'Export') {
             -Settings $c.Settings
 
         if ($result.Success) {
-            $collectorData[$c.Name] = @{
+            $entry = @{
                 ExportedPaths = $result.ExportedPaths
                 Summary       = $result.Summary
             }
+            # Pass through extra keys (e.g. CpuStacksPath, GcReportPath)
+            $skipKeys = @('Success', 'ExportedPaths', 'Summary')
+            if ($result -is [hashtable]) {
+                foreach ($key in $result.Keys) {
+                    if ($key -notin $skipKeys) { $entry[$key] = $result[$key] }
+                }
+            }
+            $collectorData[$c.Name] = $entry
         }
         else {
             $errDetail = if ($result.PSObject.Properties['Summary']) { $result.Summary }

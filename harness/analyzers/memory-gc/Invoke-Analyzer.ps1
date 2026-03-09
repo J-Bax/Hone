@@ -3,7 +3,7 @@
     Analyzes GC statistics and allocation data using the hone-memory-profiler agent.
 
 .DESCRIPTION
-    Reads GC report data collected by the perfview-gc collector, builds a prompt
+    Reads GC report data collected by the perfview collector, builds a prompt
     with performance context, and calls the hone-memory-profiler Copilot agent to
     identify memory pressure sources, GC overhead, and allocation hotspots.
 
@@ -42,9 +42,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # ── Extract GC report from collector data ───────────────────────────────────
-$gcCollector = $CollectorData['perfview-gc']
-if (-not $gcCollector -or -not $gcCollector.ExportedPaths -or $gcCollector.ExportedPaths.Count -eq 0) {
-    Write-Warning "No perfview-gc collector data available — skipping memory-gc analysis."
+$perfviewData = $CollectorData['perfview']
+if (-not $perfviewData) {
+    Write-Warning "No perfview collector data available — skipping memory-gc analysis."
     return [PSCustomObject][ordered]@{
         Success      = $false
         Report       = $null
@@ -54,7 +54,9 @@ if (-not $gcCollector -or -not $gcCollector.ExportedPaths -or $gcCollector.Expor
     }
 }
 
-$gcReportPath = $gcCollector.ExportedPaths[0]
+$gcReportPath = if ($perfviewData.GcReportPath) { $perfviewData.GcReportPath }
+               elseif ($perfviewData.ExportedPaths.Count -ge 2) { $perfviewData.ExportedPaths[1] }
+               else { $perfviewData.ExportedPaths[0] }
 Write-Verbose "Reading GC report from: $gcReportPath"
 
 if (-not (Test-Path -LiteralPath $gcReportPath)) {
