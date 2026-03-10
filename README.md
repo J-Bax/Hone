@@ -99,3 +99,7 @@ See [docs/configuration.md](docs/configuration.md) for runtime override syntax.
 - [Getting Started](docs/getting-started.md) — Detailed setup guide
 - [Configuration](docs/configuration.md) — Config overview and runtime overrides
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
