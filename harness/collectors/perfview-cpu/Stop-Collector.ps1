@@ -77,14 +77,18 @@ try {
             if (-not $graceExited) {
                 Write-Information "PerfView work complete but process lingering — terminating (PID: $($process.Id))."
                 Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-                $process.WaitForExit(10000) | Out-Null
+                if (-not $process.WaitForExit(10000)) {
+                    Write-Warning "PerfView process $($process.Id) did not terminate — may be orphaned."
+                }
             }
         }
         else {
             # Deadline reached without completion — force stop
             Write-Warning "PerfView did not complete within ${waitTimeoutSec}s — forcing stop."
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            $process.WaitForExit(10000) | Out-Null
+            if (-not $process.WaitForExit(10000)) {
+                Write-Warning "PerfView process $($process.Id) did not terminate — may be orphaned."
+            }
             # Force-kill during active work leaves orphaned ETW sessions
             foreach ($session in @('NT Kernel Logger', 'PerfViewSession')) {
                 logman stop $session -ets 2>&1 | Out-Null

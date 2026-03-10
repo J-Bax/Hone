@@ -59,7 +59,8 @@ try {
     # Clean up stale intermediate files from interrupted prior runs
     $baseName = Join-Path $OutputDir 'perfview-cpu'
     foreach ($staleFile in @("$baseName.etl", "$baseName.kernel.etl", "$baseName.clrRundown.etl",
-                             "$baseName.etl.new", "$baseName.etl.zip")) {
+                             "$baseName.etl.new", "$baseName.etl.zip",
+                             "$baseName.etl.log.txt", "$baseName.etl.zip.abort")) {
         if (Test-Path $staleFile) {
             Remove-Item $staleFile -Force -ErrorAction SilentlyContinue
             Write-Verbose "Removed stale file: $staleFile"
@@ -85,6 +86,7 @@ try {
         "/BufferSizeMB:$bufferSizeMB"
         '/Merge:true'
         '/Zip:true'
+        '/NoNGenPdbs'
         '/StackCompression:false'
         '/ClrEvents:Default'
         '/DotNetAllocSampled'
