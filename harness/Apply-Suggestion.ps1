@@ -81,20 +81,29 @@ try {
     # Stage the code fix (path relative to submodule root)
     git add $submoduleRelPath 2>&1 | Out-Null
 
-    # Stage experiment artifacts (root-cause.md, k6-summary)
+    # Stage experiment artifacts — agent analysis and RCA only (raw data is gitignored)
     $experimentDir = Join-Path $submoduleDir 'results' "experiment-$Experiment"
     if (Test-Path $experimentDir) {
-        $rcaFile = Join-Path $experimentDir 'root-cause.md'
-        $k6Summaries = Get-ChildItem -Path $experimentDir -Filter 'k6-summary*.json' -ErrorAction SilentlyContinue
-        if (Test-Path $rcaFile) {
-            git add "results/experiment-$Experiment/root-cause.md" 2>&1 | Out-Null
+        foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
+                               'classification-response.json', 'root-cause.md')) {
+            $f = Join-Path $experimentDir $pattern
+            if (Test-Path $f) {
+                git add "results/experiment-$Experiment/$pattern" 2>&1 | Out-Null
+            }
         }
-        foreach ($summary in $k6Summaries) {
-            git add "results/experiment-$Experiment/$($summary.Name)" 2>&1 | Out-Null
+        # Analyzer prompt/response files
+        foreach ($analyzer in @('cpu-hotspots', 'memory-gc')) {
+            $analyzerDir = Join-Path $experimentDir "diagnostics/$analyzer"
+            if (Test-Path $analyzerDir) {
+                Get-ChildItem $analyzerDir -Include '*-prompt.md', '*-response.json' -ErrorAction SilentlyContinue |
+                    ForEach-Object {
+                        git add "results/experiment-$Experiment/diagnostics/$analyzer/$($_.Name)" 2>&1 | Out-Null
+                    }
+            }
         }
     }
 
-    # Stage metadata files (optimization-log.md, optimization-queue.md)
+    # Stage metadata files (experiment-log.md, experiment-queue.md)
     $metadataDir = Join-Path $submoduleDir 'results' 'metadata'
     if (Test-Path $metadataDir) {
         git add results/metadata/ 2>&1 | Out-Null

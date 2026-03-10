@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     Manages two markdown files in the metadata directory:
-    - optimization-log.md: append-only ledger of tried optimizations and outcomes
-    - optimization-queue.md: ranked list of potential optimizations, checked off when tried
+    - experiment-log.md: append-only ledger of tried optimizations and outcomes
+    - experiment-queue.md: ranked list of potential optimizations, checked off when tried
 
 .PARAMETER Action
     The operation to perform:
@@ -66,8 +66,8 @@ if (-not (Test-Path $metadataDir)) {
     New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
 }
 
-$logPath   = Join-Path $metadataDir 'optimization-log.md'
-$queuePath = Join-Path $metadataDir 'optimization-queue.md'
+$logPath   = Join-Path $metadataDir 'experiment-log.md'
+$queuePath = Join-Path $metadataDir 'experiment-queue.md'
 
 # ── Ensure files exist with headers ─────────────────────────────────────────
 if (-not (Test-Path $logPath)) {

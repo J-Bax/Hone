@@ -64,12 +64,20 @@ tools/
 # .gitignore. They are kept here for documentation purposes so
 # contributors understand the intended ignore policy for results.
 #
-# Performance results are stored per-run in sample-api/results/.
-# All result artifacts are committed for review.
+# Committed per experiment:
+#   - Agent prompts & responses (analysis-prompt.md, *-response.json, etc.)
+#   - Analyzer reports (cpu-hotspots/, memory-gc/ prompt+response)
+#   - Root cause analysis (root-cause.md)
+#   - Metadata (experiment-queue, experiment-log)
+#   - Run metadata (run-metadata.json)
+#
+# Gitignored (raw profiling data):
+#   - PerfView ETL/CSV/logs, dotnet-counters, k6 JSON summaries
 sample-api/results/*
 !sample-api/results/.gitkeep
 !sample-api/results/baseline.json
 !sample-api/results/baseline-*.json
 !sample-api/results/run-metadata.json
 !sample-api/results/hone.jsonl
+!sample-api/results/metadata/
 !sample-api/results/experiment-*/

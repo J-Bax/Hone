@@ -71,9 +71,9 @@ if ($CounterMetrics) {
 # ── Optimization history context ─────────────────────────────────────────────
 $historyContext = ''
 $metadataDir = Join-Path $RepoRoot $Config.Api.MetadataPath
-$logPath      = Join-Path $metadataDir 'optimization-log.md'
-$queueJsonPath = Join-Path $metadataDir 'optimization-queue.json'
-$queueMdPath  = Join-Path $metadataDir 'optimization-queue.md'
+$logPath      = Join-Path $metadataDir 'experiment-log.md'
+$queueJsonPath = Join-Path $metadataDir 'experiment-queue.json'
+$queueMdPath  = Join-Path $metadataDir 'experiment-queue.md'
 
 if (Test-Path $logPath) {
     $logContent = Get-Content $logPath -Raw

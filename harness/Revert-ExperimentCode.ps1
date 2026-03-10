@@ -76,13 +76,29 @@ try {
     # Stage the reverted file
     git add $submoduleRelPath 2>&1 | Out-Null
 
-    # Stage experiment artifacts (k6 results, RCA, counters)
+    # Stage experiment artifacts — agent analysis and RCA only (raw data is gitignored)
     $experimentDir = Join-Path $submoduleDir 'results' "experiment-$Experiment"
     if (Test-Path $experimentDir) {
-        git add "results/experiment-$Experiment/" 2>&1 | Out-Null
+        foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
+                               'classification-response.json', 'root-cause.md')) {
+            $f = Join-Path $experimentDir $pattern
+            if (Test-Path $f) {
+                git add "results/experiment-$Experiment/$pattern" 2>&1 | Out-Null
+            }
+        }
+        # Analyzer prompt/response files
+        foreach ($analyzer in @('cpu-hotspots', 'memory-gc')) {
+            $analyzerDir = Join-Path $experimentDir "diagnostics/$analyzer"
+            if (Test-Path $analyzerDir) {
+                Get-ChildItem $analyzerDir -Include '*-prompt.md', '*-response.json' -ErrorAction SilentlyContinue |
+                    ForEach-Object {
+                        git add "results/experiment-$Experiment/diagnostics/$analyzer/$($_.Name)" 2>&1 | Out-Null
+                    }
+            }
+        }
     }
 
-    # Stage metadata files (optimization-log.md, optimization-queue.md)
+    # Stage metadata files (experiment-log.md, experiment-queue.md)
     $metadataDir = Join-Path $submoduleDir 'results' 'metadata'
     if (Test-Path $metadataDir) {
         git add results/metadata/ 2>&1 | Out-Null
