@@ -119,7 +119,7 @@ function Invoke-SaveCPUStacksAsCsv {
     $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
     if (Test-Path $csvPath) { Remove-Item $csvPath -Force }
 
-    Invoke-PerfViewWithTimeout -PerfViewExe $PerfViewExe -Arguments $args_ -TimeoutSec $TimeoutSec
+    $null = Invoke-PerfViewWithTimeout -PerfViewExe $PerfViewExe -Arguments $args_ -TimeoutSec $TimeoutSec
 
     # SaveCPUStacksAsCsv creates <basename>.perfView.csv alongside the ETL
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)

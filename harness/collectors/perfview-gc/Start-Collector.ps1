@@ -70,6 +70,7 @@ try {
 
     # /GCOnly: minimal overhead, captures only GC-related events
     # /ClrEvents:GC ensures GC events are enabled (redundant with /GCOnly but explicit)
+    # /focusProcess scopes merge/analysis to the target process, reducing trace noise
     $perfViewArgs = @(
         'collect'
         "/DataFile:$outputPath"
@@ -81,6 +82,7 @@ try {
         '/Zip:true'
         '/GCOnly'
         '/ClrEvents:GC'
+        "/focusProcess:$ProcessId"
     )
 
     Write-Verbose "Starting PerfView GC: $perfViewExe $($perfViewArgs -join ' ')"

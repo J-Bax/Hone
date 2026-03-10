@@ -72,6 +72,8 @@ try {
     # /ClrEvents:Default includes GC, JIT, Exception, etc. for managed stack resolution
     # NO /GCOnly — that would suppress kernel CPU sampling events
     # /DotNetAllocSampled enables sampled allocation tick events (~100KB intervals)
+    # /focusProcess scopes merge/analysis to the target process, avoiding the 34K+
+    # process table that breaks PerfView's SaveCPUStacksAsCsv process lookup
     $perfViewArgs = @(
         'collect'
         "/DataFile:$outputPath"
@@ -84,6 +86,7 @@ try {
         '/ThreadTime'
         '/ClrEvents:Default'
         '/DotNetAllocSampled'
+        "/focusProcess:$ProcessId"
     )
 
     Write-Verbose "Starting PerfView CPU: $perfViewExe $($perfViewArgs -join ' ')"
