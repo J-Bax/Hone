@@ -116,9 +116,9 @@ function Format-Delta {
 # ── Display ─────────────────────────────────────────────────────────────────
 
 Write-Host ""
-Write-Host "  ╔══════════════════════════════════════════════════════════════════════╗" -ForegroundColor DarkCyan
-Write-Host "  ║                    HONE PERFORMANCE RESULTS                     ║" -ForegroundColor DarkCyan
-Write-Host "  ╚══════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkCyan
+Write-Host "  ══════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
+Write-Host "                      HONE PERFORMANCE RESULTS" -ForegroundColor DarkCyan
+Write-Host "  ══════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
 Write-Host ""
 
 # Machine info and run metadata
@@ -129,12 +129,12 @@ if (Test-Path $runMetadataPath) {
         $m = $runMeta.Machine
         Write-Host "  CPU:     " -NoNewline -ForegroundColor DarkGray
         Write-Host "$($m.Cpu.Name) ($($m.Cpu.LogicalProcessors) cores)" -NoNewline -ForegroundColor White
-        Write-Host " │ " -NoNewline -ForegroundColor DarkGray
+        Write-Host " · " -NoNewline -ForegroundColor DarkGray
         Write-Host "RAM: $($m.Memory.TotalGB)GB" -ForegroundColor White
         Write-Host "  OS:      " -NoNewline -ForegroundColor DarkGray
         Write-Host "$($m.OS.Description)" -ForegroundColor White
         Write-Host "  Runtime: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "PS $($m.Runtime.PowerShellVersion) │ .NET SDK $($m.Runtime.DotnetSdkVersion) │ $($m.Runtime.ClrVersion)" -ForegroundColor White
+        Write-Host "PS $($m.Runtime.PowerShellVersion) · .NET SDK $($m.Runtime.DotnetSdkVersion) · $($m.Runtime.ClrVersion)" -ForegroundColor White
     }
     if ($runMeta.BaselineRun) {
         Write-Host "  Baseline run: " -NoNewline -ForegroundColor DarkGray
@@ -150,9 +150,9 @@ if (Test-Path $runMetadataPath) {
 # Mode info row
 Write-Host "  Mode: " -NoNewline -ForegroundColor DarkGray
 Write-Host "Relative improvement" -NoNewline -ForegroundColor White
-Write-Host " │ " -NoNewline -ForegroundColor DarkGray
+Write-Host " · " -NoNewline -ForegroundColor DarkGray
 Write-Host "Min improvement: $([math]::Round($tolerances.MinImprovementPct * 100, 1))%" -NoNewline -ForegroundColor White
-Write-Host " │ " -NoNewline -ForegroundColor DarkGray
+Write-Host " · " -NoNewline -ForegroundColor DarkGray
 Write-Host "Max regression: $([math]::Round($tolerances.MaxRegressionPct * 100, 1))%" -ForegroundColor White
 Write-Host ""
 

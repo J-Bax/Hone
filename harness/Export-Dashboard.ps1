@@ -359,7 +359,7 @@ $html = @'
 </head>
 <body>
     <h1>Hone Performance Dashboard</h1>
-    <p class="subtitle">Generated __GENERATED_AT__ &nbsp;│&nbsp; Mode: Relative Improvement &nbsp;│&nbsp; Min improve: __MIN_IMPROVE__%  &nbsp;│&nbsp; Max regress: __MAX_REGRESS__%</p>
+    <p class="subtitle">Generated __GENERATED_AT__ &nbsp;·&nbsp; Mode: Relative Improvement &nbsp;·&nbsp; Min improve: __MIN_IMPROVE__%  &nbsp;·&nbsp; Max regress: __MAX_REGRESS__%</p>
 
     <div id="machineInfoBar" style="display:none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 20px; margin-bottom: 24px; font-size: 0.85rem; color: var(--text-muted);">
         <span id="machineInfoText"></span>

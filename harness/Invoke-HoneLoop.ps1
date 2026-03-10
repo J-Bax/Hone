@@ -117,12 +117,9 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 # ── Banner ──────────────────────────────────────────────────────────────────
 $bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
 Write-Information '' -InformationAction Continue
-Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-$innerWidth = 58
-$leftPad = [Math]::Max(0, [Math]::Floor(($innerWidth - $bannerTitle.Length) / 2))
-$bannerLine = $bannerTitle.PadLeft($leftPad + $bannerTitle.Length).PadRight($innerWidth)
-Write-Information "║$bannerLine║" -InformationAction Continue
-Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
+Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
+Write-Information "  $bannerTitle" -InformationAction Continue
+Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
 Write-Information '' -InformationAction Continue
 if ($DryRun) {
     Write-Information '  ⚡ DRY RUN: Skipping k6 scale tests, using synthetic metrics' -InformationAction Continue
@@ -1383,9 +1380,9 @@ $scenarioBreakdown
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 Write-Information '' -InformationAction Continue
-Write-Information '╔══════════════════════════════════════════════════════════╗' -InformationAction Continue
-Write-Information '║                    HONE COMPLETE                     ║' -InformationAction Continue
-Write-Information '╚══════════════════════════════════════════════════════════╝' -InformationAction Continue
+Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
+Write-Information '  HONE COMPLETE' -InformationAction Continue
+Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
 Write-Information '' -InformationAction Continue
 Write-Information "  Exit reason:     $exitReason" -InformationAction Continue
 Write-Information "  Experiments run:  $experiment" -InformationAction Continue
