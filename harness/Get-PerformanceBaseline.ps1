@@ -17,6 +17,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -36,7 +44,7 @@ if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
 
 # ── Collect machine info ────────────────────────────────────────────────────
 $machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
-Write-Information "Machine: CPU: $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores) | RAM: $($machineInfo.Memory.TotalGB)GB" -InformationAction Continue
+Write-Status "Machine: CPU: $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores) | RAM: $($machineInfo.Memory.TotalGB)GB"
 
 # ── Step 1: Build ───────────────────────────────────────────────────────────
 $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath
@@ -114,23 +122,23 @@ try {
             rps = $scaleResult.Metrics.HttpReqs.Rate
         }
 
-    Write-Information "Baseline established:" -InformationAction Continue
-    Write-Information "  p95 latency: $($scaleResult.Metrics.HttpReqDuration.P95)ms" -InformationAction Continue
-    Write-Information "  RPS:         $([math]::Round($scaleResult.Metrics.HttpReqs.Rate, 1))" -InformationAction Continue
-    Write-Information "  Error rate:  $([math]::Round(($scaleResult.Metrics.HttpReqFailed.Rate) * 100, 2))%" -InformationAction Continue
+    Write-Status "Baseline established:"
+    Write-Status "  p95 latency: $($scaleResult.Metrics.HttpReqDuration.P95)ms"
+    Write-Status "  RPS:         $([math]::Round($scaleResult.Metrics.HttpReqs.Rate, 1))"
+    Write-Status "  Error rate:  $([math]::Round(($scaleResult.Metrics.HttpReqFailed.Rate) * 100, 2))%"
 
     if ($scaleResult.CounterMetrics) {
         $cpuAvg = if ($scaleResult.CounterMetrics.Runtime.CpuUsage) { "$($scaleResult.CounterMetrics.Runtime.CpuUsage.Avg)%" } else { 'N/A' }
         $heapMax = if ($scaleResult.CounterMetrics.Runtime.GcHeapSizeMB) { "$($scaleResult.CounterMetrics.Runtime.GcHeapSizeMB.Max)MB" } else { 'N/A' }
-        Write-Information "  CPU avg:     $cpuAvg" -InformationAction Continue
-        Write-Information "  GC heap max: $heapMax" -InformationAction Continue
+        Write-Status "  CPU avg:     $cpuAvg"
+        Write-Status "  GC heap max: $heapMax"
     }
 
-    Write-Information "  Saved to:    $baselinePath" -InformationAction Continue
+    Write-Status "  Saved to:    $baselinePath"
 
     # ── Step 4b: Run all remaining scenarios for baseline capture ───────────
-    Write-Information '' -InformationAction Continue
-    Write-Information 'Running additional scenarios for baseline capture...' -InformationAction Continue
+    Write-Status ''
+    Write-Status 'Running additional scenarios for baseline capture...'
 
     $allScenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
         -ConfigPath $ConfigPath -Experiment 0 -SkipPrimary -BaseUrl $apiResult.BaseUrl
@@ -153,8 +161,8 @@ try {
         }
     }
 
-    Write-Information '' -InformationAction Continue
-    Write-Information "All scenario baselines captured ($($allScenarioResults.Count) additional scenarios)" -InformationAction Continue
+    Write-Status ''
+    Write-Status "All scenario baselines captured ($($allScenarioResults.Count) additional scenarios)"
 }
 finally {
     # ── Step 5: Stop API ────────────────────────────────────────────────────

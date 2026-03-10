@@ -52,6 +52,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $diagnostics = $Config.Diagnostics
 
@@ -111,7 +119,7 @@ foreach ($dir in (Get-ChildItem -Path $analyzersPath -Directory)) {
 }
 
 if ($analyzers.Count -eq 0) {
-    Write-Information '  No enabled analyzers with available collector data' -InformationAction Continue
+    Write-Status '  No enabled analyzers with available collector data'
     return @{ Success = $true; Reports = @{} }
 }
 
@@ -132,7 +140,7 @@ foreach ($a in $analyzers) {
         New-Item -ItemType Directory -Path $analyzerOutputDir -Force | Out-Null
     }
 
-    Write-Information "  Running analyzer: $($a.Name)" -InformationAction Continue
+    Write-Status "  Running analyzer: $($a.Name)"
 
     try {
         $result = & $invokeScript `
@@ -149,7 +157,7 @@ foreach ($a in $analyzers) {
                 PromptPath  = $result.PromptPath
                 ResponsePath = $result.ResponsePath
             }
-            Write-Information "    $($a.Name): $($result.Summary)" -InformationAction Continue
+            Write-Status "    $($a.Name): $($result.Summary)"
         }
         else {
             Write-Warning "  Analyzer '$($a.Name)' failed: $($result.Error ?? 'unknown error')"

@@ -33,6 +33,14 @@ param(
     [switch]$Open
 )
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -1046,7 +1054,7 @@ if (-not (Test-Path $outputDir)) {
 }
 
 $html | Out-File -FilePath $OutputPath -Encoding utf8
-Write-Information "Dashboard written to: $OutputPath" -InformationAction Continue
+Write-Status "Dashboard written to: $OutputPath"
 
 if ($Open) {
     Start-Process $OutputPath

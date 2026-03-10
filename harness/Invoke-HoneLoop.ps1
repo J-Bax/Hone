@@ -53,6 +53,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 function Undo-ExperimentBranch {
     <#
     .SYNOPSIS
@@ -116,32 +124,32 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 
 # ── Banner ──────────────────────────────────────────────────────────────────
 $bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
-Write-Information '' -InformationAction Continue
-Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
-Write-Information "  $bannerTitle" -InformationAction Continue
-Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
-Write-Information '' -InformationAction Continue
+Write-Status ''
+Write-Status '══════════════════════════════════════════════════════════════'
+Write-Status "  $bannerTitle"
+Write-Status '══════════════════════════════════════════════════════════════'
+Write-Status ''
 if ($DryRun) {
-    Write-Information '  ⚡ DRY RUN: Skipping k6 scale tests, using synthetic metrics' -InformationAction Continue
-    Write-Information '             AI agents, build, and E2E tests run normally' -InformationAction Continue
-    Write-Information '' -InformationAction Continue
+    Write-Status '  ⚡ DRY RUN: Skipping k6 scale tests, using synthetic metrics'
+    Write-Status '             AI agents, build, and E2E tests run normally'
+    Write-Status ''
 }
-Write-Information "  Max experiments:       $maxExp" -InformationAction Continue
-Write-Information "  Min improvement:      $([math]::Round($tolerances.MinImprovementPct * 100, 1))% (any metric)" -InformationAction Continue
-Write-Information "  Max regression:       $([math]::Round($tolerances.MaxRegressionPct * 100, 1))% (per metric)" -InformationAction Continue
-Write-Information "  Stale exp stop:       $($tolerances.StaleExperimentsBeforeStop) consecutive" -InformationAction Continue
+Write-Status "  Max experiments:       $maxExp"
+Write-Status "  Min improvement:      $([math]::Round($tolerances.MinImprovementPct * 100, 1))% (any metric)"
+Write-Status "  Max regression:       $([math]::Round($tolerances.MaxRegressionPct * 100, 1))% (per metric)"
+Write-Status "  Stale exp stop:       $($tolerances.StaleExperimentsBeforeStop) consecutive"
 $modeLabel = if ($stackedDiffs) { 'stacked diffs (linear chain)' } else { 'legacy (each off master)' }
 $mergeLabel = if ($waitForMerge) { 'yes (blocks)' } else { 'no (fire-and-forget)' }
-Write-Information "  Mode:                 $modeLabel" -InformationAction Continue
-Write-Information "  Wait for PR merge:    $mergeLabel" -InformationAction Continue
+Write-Status "  Mode:                 $modeLabel"
+Write-Status "  Wait for PR merge:    $mergeLabel"
 if ($stackedDiffs) {
-    Write-Information "  Max consec. failures: $maxConsecutiveFailures" -InformationAction Continue
+    Write-Status "  Max consec. failures: $maxConsecutiveFailures"
 }
 $effCfg = $tolerances.Efficiency
 if ($effCfg -and $effCfg.Enabled) {
-    Write-Information "  Efficiency tiebreak:  CPU $([math]::Round($effCfg.MinCpuReductionPct * 100))% / WorkingSet $([math]::Round($effCfg.MinWorkingSetReductionPct * 100))% min reduction" -InformationAction Continue
+    Write-Status "  Efficiency tiebreak:  CPU $([math]::Round($effCfg.MinCpuReductionPct * 100))% / WorkingSet $([math]::Round($effCfg.MinWorkingSetReductionPct * 100))% min reduction"
 }
-Write-Information '' -InformationAction Continue
+Write-Status ''
 
 # ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
 if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
@@ -205,10 +213,10 @@ if ($LASTEXITCODE -ne 0) {
 
 # ── Collect machine info ────────────────────────────────────────────────────
 $machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
-Write-Information "  CPU:     $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores)" -InformationAction Continue
-Write-Information "  RAM:     $($machineInfo.Memory.TotalGB)GB" -InformationAction Continue
-Write-Information "  OS:      $($machineInfo.OS.Description)" -InformationAction Continue
-Write-Information '' -InformationAction Continue
+Write-Status "  CPU:     $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores)"
+Write-Status "  RAM:     $($machineInfo.Memory.TotalGB)GB"
+Write-Status "  OS:      $($machineInfo.OS.Description)"
+Write-Status ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message 'Machine info collected' `
@@ -244,7 +252,7 @@ else {
 $baselinePath = Join-Path $repoRoot $config.Api.ResultsPath 'baseline.json'
 
 if (-not (Test-Path $baselinePath)) {
-    Write-Information 'No baseline found. Running Get-PerformanceBaseline.ps1 first...' -InformationAction Continue
+    Write-Status 'No baseline found. Running Get-PerformanceBaseline.ps1 first...'
     & (Join-Path $PSScriptRoot 'Get-PerformanceBaseline.ps1') -ConfigPath $ConfigPath
 
     if (-not (Test-Path $baselinePath)) {
@@ -254,7 +262,7 @@ if (-not (Test-Path $baselinePath)) {
 }
 
 $baselineMetrics = Get-Content $baselinePath -Raw | ConvertFrom-Json
-Write-Information "Baseline loaded: p95=$($baselineMetrics.HttpReqDuration.P95)ms" -InformationAction Continue
+Write-Status "Baseline loaded: p95=$($baselineMetrics.HttpReqDuration.P95)ms"
 
 # ── Experiment Loop ──────────────────────────────────────────────────────────
 $previousMetrics = $null
@@ -309,12 +317,12 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
         })
     }
 
-    Write-Information "  Resuming from:      experiment $startExperiment ($($priorExperiments.Count) previous)" -InformationAction Continue
-    Write-Information "  Prior successes:    $successCount" -InformationAction Continue
+    Write-Status "  Resuming from:      experiment $startExperiment ($($priorExperiments.Count) previous)"
+    Write-Status "  Prior successes:    $successCount"
     if ($stackedDiffs) {
-        Write-Information "  Current branch:     $currentBranch" -InformationAction Continue
+        Write-Status "  Current branch:     $currentBranch"
     }
-    Write-Information '' -InformationAction Continue
+    Write-Status ''
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' `
@@ -341,14 +349,14 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     $experimentStartedAt = Get-Date -Format 'o'
 
-    Write-Information '' -InformationAction Continue
-    Write-Information "━━━ Experiment $experiment / $loopEnd ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -InformationAction Continue
+    Write-Status ''
+    Write-Status "━━━ Experiment $experiment / $loopEnd ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'loop' -Level 'info' -Message "Starting experiment $experiment" -Experiment $experiment
 
     # ── Phase 1: Measure ──────────────────────────────────────────────────
-    Write-Information '[1/5] 📊 Measuring (current state)...' -InformationAction Continue
+    Write-Status '[1/5] 📊 Measuring (current state)...'
 
     # For experiment 1, use baseline as current (no prior fix to measure).
     # For experiment 2+, use the metrics from the previous experiment's Verify phase.
@@ -358,7 +366,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     $refP95 = $metricsForAnalysis.HttpReqDuration.P95
     $refRps = [math]::Round($metricsForAnalysis.HttpReqs.Rate, 1)
     $refLabel = if ($previousMetrics) { "experiment $($experiment - 1)" } else { 'baseline' }
-    Write-Information "  Reference: p95=${refP95}ms, RPS=${refRps} (from $refLabel)" -InformationAction Continue
+    Write-Status "  Reference: p95=${refP95}ms, RPS=${refRps} (from $refLabel)"
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' `
@@ -380,12 +388,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -Action 'HasActionable' -ConfigPath $ConfigPath
 
     if (-not $hasQueue) {
-        Write-Information '[2/5] 🧠 Analyzing (queue empty — running analysis)...' -InformationAction Continue
+        Write-Status '[2/5] 🧠 Analyzing (queue empty — running analysis)...'
 
         # ── Diagnostic profiling (runs only when analysis is needed) ─────
         $diagnosticReports = $null
         if ($config.Diagnostics -and $config.Diagnostics.Enabled -and -not $DryRun) {
-            Write-Information '  Running diagnostic measurement (PerfView profiling)...' -InformationAction Continue
+            Write-Status '  Running diagnostic measurement (PerfView profiling)...'
             $diagResult = & (Join-Path $PSScriptRoot 'Invoke-DiagnosticMeasurement.ps1') `
                 -Experiment $experiment `
                 -ConfigPath $ConfigPath `
@@ -393,14 +401,14 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
             if ($diagResult.Success) {
                 $diagnosticReports = $diagResult.AnalyzerReports
-                Write-Information "  Diagnostic profiling complete: $($diagnosticReports.Count) report(s)" -InformationAction Continue
+                Write-Status "  Diagnostic profiling complete: $($diagnosticReports.Count) report(s)"
             }
             else {
                 throw 'Diagnostic measurement failed. Fix PerfView/profiling setup or set Diagnostics.Enabled = $false.'
             }
         }
         elseif ($DryRun) {
-            Write-Information '  Diagnostic profiling skipped (dry run)' -InformationAction Continue
+            Write-Status '  Diagnostic profiling skipped (dry run)'
         }
 
         $rawAnalysis = & (Join-Path $PSScriptRoot 'Invoke-AnalysisAgent.ps1') `
@@ -419,15 +427,15 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             if ($stackedDiffs) { $consecutiveFailures++ }
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
                 $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
-                Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
+                Write-Status '  Stopping: too many consecutive failures'
                 break
             }
             continue
         }
 
-        Write-Information "  Analysis complete: $(@($rawAnalysis.Opportunities).Count) opportunities found" -InformationAction Continue
+        Write-Status "  Analysis complete: $(@($rawAnalysis.Opportunities).Count) opportunities found"
         if ($rawAnalysis.ResponsePath) {
-            Write-Information "  Response saved to: $($rawAnalysis.ResponsePath)" -InformationAction Continue
+            Write-Status "  Response saved to: $($rawAnalysis.ResponsePath)"
         }
 
         # Populate the optimization queue from analysis results
@@ -444,10 +452,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             continue
         }
 
-        Write-Information "  Queue initialized with $($initResult.Count) items" -InformationAction Continue
+        Write-Status "  Queue initialized with $($initResult.Count) items"
     }
     else {
-        Write-Information '[2/5] 🧠 Analyzing... (queue has items — skipping analysis)' -InformationAction Continue
+        Write-Status '[2/5] 🧠 Analyzing... (queue has items — skipping analysis)'
     }
 
     # Pick the next actionable item from the queue
@@ -460,7 +468,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) { $consecutiveFailures++ }
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
-            Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
+            Write-Status '  Stopping: too many consecutive failures'
             break
         }
         continue
@@ -481,7 +489,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     $applySuccess = $false
     $skipExperiment = $false
 
-    Write-Information "  Queue item #$($currentItem.id): $($currentItem.filePath)" -InformationAction Continue
+    Write-Status "  Queue item #$($currentItem.id): $($currentItem.filePath)"
 
     # ── Classification ────────────────────────────────────────────────────
     $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
@@ -491,7 +499,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -ConfigPath $ConfigPath
 
     $changeScope = $classificationResult.Scope
-    Write-Information "  Classification: $changeScope — $($classificationResult.Reasoning)" -InformationAction Continue
+    Write-Status "  Classification: $changeScope — $($classificationResult.Reasoning)"
 
     # Save root-cause analysis to experiment directory.
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
@@ -521,7 +529,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         $rcaPath = Join-Path $iterDir 'root-cause.md'
         ($metricsHeader + $agentRca) | Out-File -FilePath $rcaPath -Encoding utf8
         $rcaResult = [PSCustomObject]@{ Success = $true; Path = $rcaPath }
-        Write-Information "  Root cause analysis saved to: $rcaPath" -InformationAction Continue
+        Write-Status "  Root cause analysis saved to: $rcaPath"
     }
     else {
         $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
@@ -536,15 +544,15 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -ConfigPath $ConfigPath
 
         if ($rcaResult.Success) {
-            Write-Information "  Root cause analysis saved to: $($rcaResult.Path)" -InformationAction Continue
+            Write-Status "  Root cause analysis saved to: $($rcaResult.Path)"
         }
     }
 
     $isArchitecture = ($changeScope -eq 'architecture')
 
     if ($isArchitecture) {
-        Write-Information '  ⚠ Architecture-level change detected — skipping' -InformationAction Continue
-        Write-Information "    Scope: $changeScope | File: $($analysisResult.FilePath)" -InformationAction Continue
+        Write-Status '  ⚠ Architecture-level change detected — skipping'
+        Write-Status "    Scope: $changeScope | File: $($analysisResult.FilePath)"
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'analyze' -Level 'info' `
@@ -573,14 +581,14 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) { $consecutiveFailures++ }
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
-            Write-Information '  Stopping: too many consecutive failures' -InformationAction Continue
+            Write-Status '  Stopping: too many consecutive failures'
             break
         }
         continue
     }
 
     # ── Phase 3: Experiment (fix + build) ──────────────────────────────────
-    Write-Information '[3/5] 🧪 Experimenting (fix + build)...' -InformationAction Continue
+    Write-Status '[3/5] 🧪 Experimenting (fix + build)...'
 
     # ── Sub-agent 3: Fix ───────────────────────────────────────────────────
     # Load root-cause document if available for this queue item
@@ -617,7 +625,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         continue
     }
 
-    Write-Information "  Applying fix to: $targetFile" -InformationAction Continue
+    Write-Status "  Applying fix to: $targetFile"
 
     # Determine the base branch for this experiment
     $baseBranch = if ($stackedDiffs) { $currentBranch } else { 'master' }
@@ -637,10 +645,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         continue
     }
 
-    Write-Information "  ✓ Fix committed locally on branch: $($applyResult.BranchName)" -InformationAction Continue
+    Write-Status "  ✓ Fix committed locally on branch: $($applyResult.BranchName)"
 
     # Build the project with the fix applied
-    Write-Information '  Building...' -InformationAction Continue
+    Write-Status '  Building...'
     $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath -Experiment $experiment
 
     if (-not $buildResult.Success) {
@@ -680,7 +688,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
-                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
             continue
@@ -694,7 +702,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     }
 
     # ── Phase 4: Verify (tests + measure + compare) ──────────────────────
-    Write-Information '[4/5] ✅ Verifying...' -InformationAction Continue
+    Write-Status '[4/5] ✅ Verifying...'
     $testResult = & (Join-Path $PSScriptRoot 'Invoke-E2ETests.ps1') `
         -ConfigPath $ConfigPath -Experiment $experiment
 
@@ -735,7 +743,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
-                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
             continue
@@ -750,7 +758,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     # Stress-test the optimized API (or generate synthetic metrics in dry-run)
     if ($DryRun) {
-        Write-Information '  Measuring... [DRY RUN] Using synthetic metrics' -InformationAction Continue
+        Write-Status '  Measuring... [DRY RUN] Using synthetic metrics'
 
         # Generate synthetic metrics showing 5% improvement over reference
         $syntheticMetrics = [PSCustomObject]@{
@@ -782,10 +790,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         }
         $scenarioResults = @()
 
-        Write-Information "  Synthetic p95: $($syntheticMetrics.HttpReqDuration.P95)ms (5% improvement over reference)" -InformationAction Continue
+        Write-Status "  Synthetic p95: $($syntheticMetrics.HttpReqDuration.P95)ms (5% improvement over reference)"
     }
     else {
-        Write-Information '  Measuring (k6 scale tests)...' -InformationAction Continue
+        Write-Status '  Measuring (k6 scale tests)...'
 
         # Reset database so every experiment starts with identical seed data
         & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment $experiment
@@ -829,7 +837,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
                 if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                     $exitReason = 'max_consecutive_failures'
-                    Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                    Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                     break
                 }
                 continue
@@ -856,7 +864,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             }
             else {
                 # Run additional (diagnostic) scenarios only on success
-                Write-Information '      Running additional scenarios...' -InformationAction Continue
+                Write-Status '      Running additional scenarios...'
                 $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
                     -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -BaseUrl $apiResult.BaseUrl
             }
@@ -900,7 +908,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
-                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
             continue
@@ -916,7 +924,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         $heapInfo = if ($currentCounterMetrics.Runtime.GcHeapSizeMB) { "GC heap max: $($currentCounterMetrics.Runtime.GcHeapSizeMB.Max)MB" } else { 'Heap: N/A' }
         $gen2Info = if ($currentCounterMetrics.Runtime.Gen2Collections) { "Gen2: $($currentCounterMetrics.Runtime.Gen2Collections.Last)" } else { 'Gen2: N/A' }
         $threadInfo = if ($currentCounterMetrics.Runtime.ThreadPoolThreads) { "Threads max: $($currentCounterMetrics.Runtime.ThreadPoolThreads.Max)" } else { 'Threads: N/A' }
-        Write-Information "  Runtime counters: $cpuInfo | $heapInfo | $gen2Info | $threadInfo" -InformationAction Continue
+        Write-Status "  Runtime counters: $cpuInfo | $heapInfo | $gen2Info | $threadInfo"
     }
 
     # Track best experiment
@@ -926,7 +934,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     }
 
     # Compare post-fix metrics against reference
-    Write-Information '  Comparing results...' -InformationAction Continue
+    Write-Status '  Comparing results...'
 
     $comparison = & (Join-Path $PSScriptRoot 'Compare-Results.ps1') `
         -CurrentMetrics $currentMetrics `
@@ -1007,7 +1015,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
-                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
         }
@@ -1025,13 +1033,13 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         $successCount++
 
         if ($comparison.TiebreakerUsed) {
-            Write-Information '  ↑ Efficiency improvement (tiebreaker) — publishing' -InformationAction Continue
+            Write-Status '  ↑ Efficiency improvement (tiebreaker) — publishing'
         }
         else {
-            Write-Information '  ↑ Improvement detected — publishing' -InformationAction Continue
+            Write-Status '  ↑ Improvement detected — publishing'
         }
 
-        Write-Information '[5/5] 📦 Publishing (push + PR)...' -InformationAction Continue
+        Write-Status '[5/5] 📦 Publishing (push + PR)...'
 
         # Update metadata BEFORE the amend so entries appear in the commit
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
@@ -1048,11 +1056,26 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -Experiment $experiment -Outcome 'improved' `
             -ConfigPath $ConfigPath
 
-        # Amend the commit to include post-fix artifacts (k6 summaries, comparison data)
+        # Amend the commit to include post-fix artifacts — agent analysis only (raw data is gitignored)
         Push-Location (Join-Path $repoRoot 'sample-api')
         $experimentDir = Join-Path (Join-Path $repoRoot 'sample-api') 'results' "experiment-$experiment"
         if (Test-Path $experimentDir) {
-            git add "results/experiment-$experiment/" 2>&1 | Out-Null
+            foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
+                                   'classification-response.json', 'root-cause.md')) {
+                $f = Join-Path $experimentDir $pattern
+                if (Test-Path $f) {
+                    git add "results/experiment-$experiment/$pattern" 2>&1 | Out-Null
+                }
+            }
+            foreach ($analyzer in @('cpu-hotspots', 'memory-gc')) {
+                $analyzerDir = Join-Path $experimentDir "diagnostics/$analyzer"
+                if (Test-Path $analyzerDir) {
+                    Get-ChildItem $analyzerDir -Include '*-prompt.md', '*-response.json' -ErrorAction SilentlyContinue |
+                        ForEach-Object {
+                            git add "results/experiment-$experiment/diagnostics/$analyzer/$($_.Name)" 2>&1 | Out-Null
+                        }
+                }
+            }
         }
         $runMetadataFile = Join-Path (Join-Path $repoRoot 'sample-api') 'results' 'run-metadata.json'
         if (Test-Path $runMetadataFile) {
@@ -1202,7 +1225,7 @@ $scenarioBreakdown
                 -Experiment $experiment `
                 -Data @{ prUrl = "$prUrl"; prNumber = $prNumber; baseBranch = $prBaseBranch }
 
-            Write-Information "  ✓ Pull request created: $prUrl (base: $prBaseBranch)" -InformationAction Continue
+            Write-Status "  ✓ Pull request created: $prUrl (base: $prBaseBranch)"
         }
         else {
             Write-Warning "  Failed to create pull request: $prUrl"
@@ -1219,9 +1242,9 @@ $scenarioBreakdown
         # Wait for PR merge if configured (legacy mode or explicit opt-in)
         $shouldWait = $waitForMerge -and $prNumber -and ($experiment -lt $loopEnd)
         if ($shouldWait) {
-            Write-Information '' -InformationAction Continue
-            Write-Information '  ⏳ Waiting for PR to be reviewed and merged...' -InformationAction Continue
-            Write-Information '     Merge the PR in GitHub to continue the optimization loop.' -InformationAction Continue
+            Write-Status ''
+            Write-Status '  ⏳ Waiting for PR to be reviewed and merged...'
+            Write-Status '     Merge the PR in GitHub to continue the optimization loop.'
 
             $pollInterval = 30
             $lastLog = [datetime]::MinValue
@@ -1231,7 +1254,7 @@ $scenarioBreakdown
                 Start-Sleep -Seconds $pollInterval
                 $prState = gh pr view $prNumber --json state,mergedAt 2>$null | ConvertFrom-Json
                 if ($prState.state -eq 'MERGED') {
-                    Write-Information "  ✓ PR #$prNumber merged — continuing loop" -InformationAction Continue
+                    Write-Status "  ✓ PR #$prNumber merged — continuing loop"
 
                     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                         -Phase 'publish' -Level 'info' `
@@ -1264,7 +1287,7 @@ $scenarioBreakdown
                 }
                 else {
                     if (([datetime]::Now - $lastLog) -ge $logEvery) {
-                        Write-Information "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))" -InformationAction Continue
+                        Write-Status "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))"
                         $lastLog = [datetime]::Now
                     }
                 }
@@ -1299,7 +1322,7 @@ $scenarioBreakdown
             -ConfigPath $ConfigPath
 
         if ($stackedDiffs) {
-            Write-Information "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)" -InformationAction Continue
+            Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
 
             $revertResult = & (Join-Path $PSScriptRoot 'Revert-ExperimentCode.ps1') `
                 -BranchName $branchName `
@@ -1319,18 +1342,18 @@ $scenarioBreakdown
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
-                Write-Information "  Stopping: $consecutiveFailures consecutive failures reached limit" -InformationAction Continue
+                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
         }
         else {
-            Write-Information "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))" -InformationAction Continue
+            Write-Status "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))"
 
             Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
 
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop) {
                 $exitReason = 'no_improvement'
-                Write-Information '  Stopping: no improvement for consecutive experiments' -InformationAction Continue
+                Write-Status '  Stopping: no improvement for consecutive experiments'
                 break
             }
         }
@@ -1379,24 +1402,24 @@ $scenarioBreakdown
 }
 
 # ── Summary ─────────────────────────────────────────────────────────────────
-Write-Information '' -InformationAction Continue
-Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
-Write-Information '  HONE COMPLETE' -InformationAction Continue
-Write-Information '══════════════════════════════════════════════════════════════' -InformationAction Continue
-Write-Information '' -InformationAction Continue
-Write-Information "  Exit reason:     $exitReason" -InformationAction Continue
-Write-Information "  Experiments run:  $experiment" -InformationAction Continue
-Write-Information "  Successful:      $successCount / $experiment" -InformationAction Continue
-Write-Information "  Best p95:        ${bestP95}ms (experiment $bestExperiment)" -InformationAction Continue
-Write-Information "  Baseline p95:    $($baselineMetrics.HttpReqDuration.P95)ms" -InformationAction Continue
+Write-Status ''
+Write-Status '══════════════════════════════════════════════════════════════'
+Write-Status '  HONE COMPLETE'
+Write-Status '══════════════════════════════════════════════════════════════'
+Write-Status ''
+Write-Status "  Exit reason:     $exitReason"
+Write-Status "  Experiments run:  $experiment"
+Write-Status "  Successful:      $successCount / $experiment"
+Write-Status "  Best p95:        ${bestP95}ms (experiment $bestExperiment)"
+Write-Status "  Baseline p95:    $($baselineMetrics.HttpReqDuration.P95)ms"
 
 $totalImprovement = if ($baselineMetrics.HttpReqDuration.P95 -gt 0) {
     [math]::Round((($baselineMetrics.HttpReqDuration.P95 - $bestP95) / $baselineMetrics.HttpReqDuration.P95) * 100, 1)
 } else { 0 }
-Write-Information "  Total improvement: ${totalImprovement}% (p95 vs baseline)" -InformationAction Continue
+Write-Status "  Total improvement: ${totalImprovement}% (p95 vs baseline)"
 
 if ($stackedDiffs) {
-    Write-Information '' -InformationAction Continue
+    Write-Status ''
 
     # Branch chain display
     $chainDisplay = ($branchChain | ForEach-Object {
@@ -1406,26 +1429,26 @@ if ($stackedDiffs) {
         }
         if ($failed) { "$branch ✗" } else { "$branch ✓" }
     }) -join ' → '
-    Write-Information "  Branch chain:" -InformationAction Continue
-    Write-Information "    $chainDisplay" -InformationAction Continue
+    Write-Status "  Branch chain:"
+    Write-Status "    $chainDisplay"
 
     # PR stack display
     if ($prChain.Count -gt 0) {
         $prDisplay = ($prChain | ForEach-Object { "PR #$($_.Number) (experiment-$($_.Experiment))" }) -join ' → '
-        Write-Information '' -InformationAction Continue
-        Write-Information "  PR stack (reviewable):" -InformationAction Continue
-        Write-Information "    $prDisplay" -InformationAction Continue
+        Write-Status ''
+        Write-Status "  PR stack (reviewable):"
+        Write-Status "    $prDisplay"
     }
 
     # Failed experiments display
     if ($failedExperiments.Count -gt 0) {
         $failDisplay = ($failedExperiments | ForEach-Object { "$($_.Experiment) ($($_.Reason))" }) -join ', '
-        Write-Information '' -InformationAction Continue
-        Write-Information "  Failed experiments: $failDisplay" -InformationAction Continue
+        Write-Status ''
+        Write-Status "  Failed experiments: $failDisplay"
     }
 }
 
-Write-Information '' -InformationAction Continue
+Write-Status ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' `

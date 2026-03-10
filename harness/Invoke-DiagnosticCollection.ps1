@@ -63,6 +63,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $diagnostics = $Config.Diagnostics
 
@@ -185,7 +193,7 @@ if ($Action -eq 'Start') {
             continue
         }
 
-        Write-Information "  Starting collector: $($c.Name)" -InformationAction Continue
+        Write-Status "  Starting collector: $($c.Name)"
         $result = & $startScript -ProcessId $ProcessId -OutputDir $collectorOutputDir -Settings $c.Settings
 
         if ($result.Success) {
@@ -218,7 +226,7 @@ if ($Action -eq 'Stop') {
             continue
         }
 
-        Write-Information "  Stopping collector: $($c.Name)" -InformationAction Continue
+        Write-Status "  Stopping collector: $($c.Name)"
         $result = & $stopScript -Handle $Handles[$c.Name]
 
         if ($result.Success) {
@@ -256,7 +264,7 @@ if ($Action -eq 'Export') {
             New-Item -ItemType Directory -Path $exportDir -Force | Out-Null
         }
 
-        Write-Information "  Exporting collector data: $($c.Name)" -InformationAction Continue
+        Write-Status "  Exporting collector data: $($c.Name)"
         $result = & $exportScript `
             -ArtifactPaths $ArtifactMap[$c.Name] `
             -OutputDir $exportDir `

@@ -39,6 +39,14 @@ param(
     [int]$Experiment = 0
 )
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -127,7 +135,7 @@ try {
     }
 
     if ($codeBlock) {
-        Write-Information "    → Generated $($codeBlock.Length) chars for $FilePath" -InformationAction Continue
+        Write-Status "    → Generated $($codeBlock.Length) chars for $FilePath"
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
             -Experiment $Experiment

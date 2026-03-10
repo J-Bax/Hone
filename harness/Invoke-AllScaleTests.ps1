@@ -36,6 +36,14 @@ param(
     [string]$BaseUrl
 )
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -125,7 +133,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
 
     $status = if ($success) { 'OK' } else { 'FAIL' }
     $p95 = if ($metrics) { "$($metrics.HttpReqDuration.P95)ms" } else { 'N/A' }
-    Write-Information "  [$status] $name — p95: $p95" -InformationAction Continue
+    Write-Status "  [$status] $name — p95: $p95"
 }
 
 return ,$results.ToArray()

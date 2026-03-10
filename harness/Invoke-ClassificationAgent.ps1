@@ -31,6 +31,14 @@ param(
     [int]$Experiment = 0
 )
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -101,7 +109,7 @@ try {
 
     $scope = if ($parsed.scope -eq 'narrow') { 'narrow' } else { 'architecture' }
 
-    Write-Information "    → Scope: $scope" -InformationAction Continue
+    Write-Status "    → Scope: $scope"
 
     $result = [ordered]@{
         Success   = ($copilotExitCode -eq 0 -and $null -ne $parsed.scope)

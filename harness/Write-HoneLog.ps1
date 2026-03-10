@@ -73,10 +73,11 @@ $json = $entry | ConvertTo-Json -Compress -Depth 5
 # Append to log file
 $json | Out-File -FilePath $LogPath -Append -Encoding utf8
 
-# Also write to the appropriate stream
+# Also write to the appropriate stream (with timestamp prefix)
+$ts = Get-Date -Format 'HH:mm:ss'
 switch ($Level) {
-    'verbose' { Write-Verbose $Message }
-    'info'    { Write-Information $Message -InformationAction Continue }
-    'warning' { Write-Warning $Message }
-    'error'   { Write-Warning "[ERROR] $Message" }
+    'verbose' { Write-Verbose "[$ts] $Message" }
+    'info'    { Write-Information "[$ts] $Message" -InformationAction Continue }
+    'warning' { Write-Warning "[$ts] $Message" }
+    'error'   { Write-Warning "[$ts] [ERROR] $Message" }
 }

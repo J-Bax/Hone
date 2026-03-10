@@ -52,6 +52,14 @@ param(
     [hashtable]$DiagnosticReports
 )
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ConfigPath) {
@@ -224,9 +232,9 @@ try {
         $t = $result.Opportunities[0].title
         if ($t.Length -gt 60) { $t.Substring(0, 60) + '…' } else { $t }
     } else { '' }
-    Write-Information "    → $oppCount opportunities found (primary: $primaryFile)" -InformationAction Continue
+    Write-Status "    → $oppCount opportunities found (primary: $primaryFile)"
     if ($primaryTitle) {
-        Write-Information "    → $primaryTitle" -InformationAction Continue
+        Write-Status "    → $primaryTitle"
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

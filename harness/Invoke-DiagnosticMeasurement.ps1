@@ -51,6 +51,14 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Write-Status ([string]$Message) {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+        Write-Information $Message -InformationAction Continue
+    } else {
+        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
+    }
+}
+
 $harnessRoot = $PSScriptRoot
 $repoRoot    = Split-Path -Parent $harnessRoot
 
@@ -69,8 +77,8 @@ if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
 }
 
-Write-Information '' -InformationAction Continue
-Write-Information '  ── Diagnostic Measurement ──────────────────────────────' -InformationAction Continue
+Write-Status ''
+Write-Status '  ── Diagnostic Measurement ──────────────────────────────'
 
 # ── Discover collector groups ───────────────────────────────────────────────
 $groupResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
@@ -79,7 +87,7 @@ $groups = $groupResult.Groups
 
 $groupNames = @($groups.Keys)
 $totalPasses = $groupNames.Count
-Write-Information "  Collection groups: $($groupNames -join ', ') ($totalPasses pass$(if ($totalPasses -ne 1) {'es'}))" -InformationAction Continue
+Write-Status "  Collection groups: $($groupNames -join ', ') ($totalPasses pass$(if ($totalPasses -ne 1) {'es'}))"
 
 # ── Merged collector data across all passes ─────────────────────────────────
 $mergedCollectorData = @{}
@@ -94,15 +102,15 @@ foreach ($groupName in $groupNames) {
     $groupCollectors = $groups[$groupName]
     $collectorNames = @($groupCollectors | ForEach-Object { $_.Name })
 
-    Write-Information '' -InformationAction Continue
-    Write-Information "  ── Pass $passNumber/$totalPasses [$groupName]: $($collectorNames -join ', ')" -InformationAction Continue
+    Write-Status ''
+    Write-Status "  ── Pass $passNumber/$totalPasses [$groupName]: $($collectorNames -join ', ')"
 
     # ── Reset database ──────────────────────────────────────────────────────
-    Write-Information '     Resetting database...' -InformationAction Continue
+    Write-Status '     Resetting database...'
     & (Join-Path $harnessRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath | Out-Null
 
     # ── Start API ───────────────────────────────────────────────────────────
-    Write-Information '     Starting API...' -InformationAction Continue
+    Write-Status '     Starting API...'
     $apiResult = & (Join-Path $harnessRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
 
     if (-not $apiResult.Success) {
@@ -118,10 +126,10 @@ foreach ($groupName in $groupNames) {
         $apiPid = if ($apiConn) { $apiConn.OwningProcess } else { $apiResult.Process.Id }
         $apiProcessName = (Get-Process -Id $apiPid -ErrorAction SilentlyContinue).ProcessName ?? 'dotnet'
 
-        Write-Information "     API running (PID: $apiPid)" -InformationAction Continue
+        Write-Status "     API running (PID: $apiPid)"
 
         # ── Start group collectors ──────────────────────────────────────────
-        Write-Information '     Starting collectors...' -InformationAction Continue
+        Write-Status '     Starting collectors...'
         $startResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
             -Action 'Start' `
             -ProcessId $apiPid `
@@ -135,13 +143,13 @@ foreach ($groupName in $groupNames) {
         }
 
         $startedCollectors = ($startResult.Handles.Keys -join ', ')
-        Write-Information "     Active: $startedCollectors" -InformationAction Continue
+        Write-Status "     Active: $startedCollectors"
 
         Start-Sleep -Seconds 2
 
         # ── Run k6 diagnostic pass ──────────────────────────────────────────
         $baseUrl = $apiResult.BaseUrl
-        Write-Information "     Running k6 ($diagnosticRuns run(s))..." -InformationAction Continue
+        Write-Status "     Running k6 ($diagnosticRuns run(s))..."
 
         for ($run = 1; $run -le $diagnosticRuns; $run++) {
             if ($run -gt 1) {
@@ -151,10 +159,10 @@ foreach ($groupName in $groupNames) {
             & k6 run --env "BASE_URL=$baseUrl" --summary-export $k6SummaryPath --quiet $scenarioFullPath 2>&1 | Out-Null
         }
 
-        Write-Information '     k6 complete' -InformationAction Continue
+        Write-Status '     k6 complete'
 
         # ── Stop collectors ─────────────────────────────────────────────────
-        Write-Information '     Stopping collectors...' -InformationAction Continue
+        Write-Status '     Stopping collectors...'
         $stopResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
             -Action 'Stop' `
             -Config $config `
@@ -165,7 +173,7 @@ foreach ($groupName in $groupNames) {
         }
 
         # ── Export collector data ───────────────────────────────────────────
-        Write-Information '     Exporting...' -InformationAction Continue
+        Write-Status '     Exporting...'
         $exportResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
             -Action 'Export' `
             -Config $config `
@@ -184,18 +192,18 @@ foreach ($groupName in $groupNames) {
         }
 
         $exportedNames = ($exportResult.CollectorData.Keys -join ', ')
-        Write-Information "     Exported: $exportedNames" -InformationAction Continue
+        Write-Status "     Exported: $exportedNames"
     }
     finally {
         # ── Stop API (always) ───────────────────────────────────────────────
-        Write-Information '     Stopping API...' -InformationAction Continue
+        Write-Status '     Stopping API...'
         & (Join-Path $harnessRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process | Out-Null
     }
 }
 
 # ── Run analyzers with merged data from all passes ──────────────────────────
-Write-Information '' -InformationAction Continue
-Write-Information '  Running analyzers...' -InformationAction Continue
+Write-Status ''
+Write-Status '  Running analyzers...'
 $analysisResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticAnalysis.ps1') `
     -CollectorData $mergedCollectorData `
     -CurrentMetrics $CurrentMetrics `
@@ -208,8 +216,8 @@ if (-not $analysisResult.Success) {
 }
 
 $analyzerNames = ($analysisResult.Reports.Keys -join ', ')
-Write-Information "  Analyzers complete: $analyzerNames" -InformationAction Continue
-Write-Information '  ────────────────────────────────────────────────────────' -InformationAction Continue
+Write-Status "  Analyzers complete: $analyzerNames"
+Write-Status '  ────────────────────────────────────────────────────────'
 
 return @{
     Success         = $true
