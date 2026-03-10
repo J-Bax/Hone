@@ -5,10 +5,8 @@
     Uses PerfView's UserCommand SaveCPUStacksAsCsv to extract CPU stacks,
     then converts to folded-stack format (semicolon-delimited frames + count).
 
-    When /ThreadTime tracing is used, PerfView's TraceLog.Processes index may
-    fail to resolve the target process by name (despite it appearing in address
-    resolution). This script retries without a process filter and filters the
-    CSV output during parsing as a fallback.
+    If process-filtered export produces no stacks, retries without a process
+    filter and filters during CSV parsing as a fallback.
 #>
 [CmdletBinding()]
 param(
@@ -198,8 +196,7 @@ try {
     }
 
     # ── Attempt 2: Retry without process filter ────────────────────────────
-    # /ThreadTime tracing creates huge process tables that can break PerfView's
-    # process name lookup even though the process data exists in the ETL.
+    # PerfView's process name lookup can occasionally fail; retry unfiltered.
     if ($foldedLines.Count -eq 0) {
         Write-Verbose "Process-filtered export produced no stacks — retrying without process filter"
 

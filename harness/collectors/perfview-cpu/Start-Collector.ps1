@@ -1,9 +1,10 @@
 <#
 .SYNOPSIS
-    Starts PerfView CPU sampling collection (ThreadTime + CLR events).
+    Starts PerfView CPU sampling collection (CLR events + allocation sampling).
 .DESCRIPTION
     Launches PerfView with CPU sampling enabled. Does NOT use /GCOnly, ensuring
     kernel Profile events (CPU sampling) are captured.
+    Uses /StackCompression:false to work around ETW merge bug (0x1069).
 #>
 [CmdletBinding()]
 param(
@@ -68,12 +69,13 @@ try {
     $maxCollectSec = if ($Settings.ContainsKey('MaxCollectSec')) { $Settings.MaxCollectSec } else { 90 }
     $bufferSizeMB  = if ($Settings.ContainsKey('BufferSizeMB'))  { $Settings.BufferSizeMB }  else { 256 }
 
-    # CPU sampling: /ThreadTime enables context-switch + CPU profiling
+    # CPU sampling via kernel Profile events (no /ThreadTime — avoids massive
+    # context-switch traces that cause ETW merge failures on large ETLs)
     # /ClrEvents:Default includes GC, JIT, Exception, etc. for managed stack resolution
     # NO /GCOnly — that would suppress kernel CPU sampling events
     # /DotNetAllocSampled enables sampled allocation tick events (~100KB intervals)
-    # /focusProcess scopes merge/analysis to the target process, avoiding the 34K+
-    # process table that breaks PerfView's SaveCPUStacksAsCsv process lookup
+    # /StackCompression:false works around ETW merge bug 0x1069 (microsoft/perfview#1281)
+    # /focusProcess scopes merge/analysis to the target process
     $perfViewArgs = @(
         'collect'
         "/DataFile:$outputPath"
@@ -83,7 +85,7 @@ try {
         "/BufferSizeMB:$bufferSizeMB"
         '/Merge:true'
         '/Zip:true'
-        '/ThreadTime'
+        '/StackCompression:false'
         '/ClrEvents:Default'
         '/DotNetAllocSampled'
         "/focusProcess:$ProcessId"

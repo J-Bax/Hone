@@ -1,6 +1,6 @@
 @{
     Name            = 'perfview-cpu'
-    Description     = 'CPU sampling stacks via PerfView ETW (ThreadTime + CLR events)'
+    Description     = 'CPU sampling stacks via PerfView ETW (CLR events + allocation sampling)'
     Group           = 'etw-cpu'
     RequiresAdmin   = $true
     OverheadImpact  = 'moderate'
