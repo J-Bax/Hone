@@ -1056,7 +1056,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -Experiment $experiment -Outcome 'improved' `
             -ConfigPath $ConfigPath
 
-        # Amend the commit to include post-fix artifacts — agent analysis only (raw data is gitignored)
+        # Amend the commit to include post-fix artifacts — agent analysis and metrics (raw data is gitignored)
         Push-Location (Join-Path $repoRoot 'sample-api')
         $experimentDir = Join-Path (Join-Path $repoRoot 'sample-api') 'results' "experiment-$experiment"
         if (Test-Path $experimentDir) {
@@ -1065,6 +1065,16 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 $f = Join-Path $experimentDir $pattern
                 if (Test-Path $f) {
                     git add "results/experiment-$experiment/$pattern" 2>&1 | Out-Null
+                }
+            }
+            # k6 performance summaries
+            Get-ChildItem $experimentDir -Filter 'k6-summary*.json' -ErrorAction SilentlyContinue |
+                ForEach-Object { git add "results/experiment-$experiment/$($_.Name)" 2>&1 | Out-Null }
+            # Parsed metric summaries from collectors
+            foreach ($summary in @('diagnostics/dotnet-counters/dotnet-counters.json',
+                                   'diagnostics/perfview-gc/gc-report.json')) {
+                if (Test-Path (Join-Path $experimentDir $summary)) {
+                    git add "results/experiment-$experiment/$summary" 2>&1 | Out-Null
                 }
             }
             foreach ($analyzer in @('cpu-hotspots', 'memory-gc')) {

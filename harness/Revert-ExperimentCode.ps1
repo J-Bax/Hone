@@ -76,7 +76,7 @@ try {
     # Stage the reverted file
     git add $submoduleRelPath 2>&1 | Out-Null
 
-    # Stage experiment artifacts — agent analysis and RCA only (raw data is gitignored)
+    # Stage experiment artifacts — agent analysis, metrics, and RCA (raw data is gitignored)
     $experimentDir = Join-Path $submoduleDir 'results' "experiment-$Experiment"
     if (Test-Path $experimentDir) {
         foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
@@ -84,6 +84,16 @@ try {
             $f = Join-Path $experimentDir $pattern
             if (Test-Path $f) {
                 git add "results/experiment-$Experiment/$pattern" 2>&1 | Out-Null
+            }
+        }
+        # k6 performance summaries
+        Get-ChildItem $experimentDir -Filter 'k6-summary*.json' -ErrorAction SilentlyContinue |
+            ForEach-Object { git add "results/experiment-$Experiment/$($_.Name)" 2>&1 | Out-Null }
+        # Parsed metric summaries from collectors
+        foreach ($summary in @('diagnostics/dotnet-counters/dotnet-counters.json',
+                               'diagnostics/perfview-gc/gc-report.json')) {
+            if (Test-Path (Join-Path $experimentDir $summary)) {
+                git add "results/experiment-$Experiment/$summary" 2>&1 | Out-Null
             }
         }
         # Analyzer prompt/response files
