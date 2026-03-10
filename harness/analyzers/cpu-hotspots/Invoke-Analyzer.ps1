@@ -55,7 +55,11 @@ if (-not $perfviewData) {
     }
 }
 
-$stacksPath = if ($perfviewData.CpuStacksPath) { $perfviewData.CpuStacksPath } else { $perfviewData.ExportedPaths[0] }
+$stacksPath = if ($perfviewData -is [hashtable] -and $perfviewData.ContainsKey('CpuStacksPath') -and $perfviewData.CpuStacksPath) {
+    $perfviewData.CpuStacksPath
+} else {
+    $perfviewData.ExportedPaths[0]
+}
 Write-Verbose "Reading folded stacks from: $stacksPath"
 
 if (-not (Test-Path -LiteralPath $stacksPath)) {

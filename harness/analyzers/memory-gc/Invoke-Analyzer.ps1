@@ -54,7 +54,11 @@ if (-not $perfviewData) {
     }
 }
 
-$gcReportPath = if ($perfviewData.GcReportPath) { $perfviewData.GcReportPath } else { $perfviewData.ExportedPaths[0] }
+$gcReportPath = if ($perfviewData -is [hashtable] -and $perfviewData.ContainsKey('GcReportPath') -and $perfviewData.GcReportPath) {
+    $perfviewData.GcReportPath
+} else {
+    $perfviewData.ExportedPaths[0]
+}
 Write-Verbose "Reading GC report from: $gcReportPath"
 
 if (-not (Test-Path -LiteralPath $gcReportPath)) {
@@ -74,12 +78,17 @@ $gcReportContent = Get-Content -LiteralPath $gcReportPath -Raw -Encoding utf8
 $allocTypesContent = $null
 $cpuData = $CollectorData['perfview-cpu']
 if ($cpuData) {
-    $allocPath = if ($cpuData.AllocTypesPath) { $cpuData.AllocTypesPath }
-                 elseif ($cpuData.ExportedPaths.Count -ge 2) { $cpuData.ExportedPaths[1] }
-                 else { $null }
+    $allocPath = if ($cpuData -is [hashtable] -and $cpuData.ContainsKey('AllocTypesPath') -and $cpuData.AllocTypesPath) {
+                     $cpuData.AllocTypesPath
+                 } elseif ($cpuData.ExportedPaths -and $cpuData.ExportedPaths.Count -ge 2) {
+                     $cpuData.ExportedPaths[1]
+                 } else { $null }
     if ($allocPath -and (Test-Path -LiteralPath $allocPath)) {
         $allocTypesContent = Get-Content -LiteralPath $allocPath -Raw -Encoding utf8
         Write-Verbose "Including allocation type data from: $allocPath"
+    }
+    else {
+        Write-Information "No allocation type data available — GC analysis will proceed without it"
     }
 }
 

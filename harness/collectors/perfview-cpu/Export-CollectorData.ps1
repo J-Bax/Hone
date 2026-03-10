@@ -237,9 +237,88 @@ catch {
     "[CPU export error: $_] 1" | Set-Content -Path $cpuStacksPath -Encoding utf8
 }
 
+# ── Export allocation type stacks (from /DotNetAllocSampled) ────────────────
+# PerfView's SaveManagedHeapAllocStacksAsCsv extracts sampled allocation ticks
+# into a CSV with the same format as CPU stacks (Name, Exc, Inc, etc.)
+$allocTypesPath = Join-Path $OutputDir 'alloc-types-folded.txt'
+$allocExportSuccess = $false
+
+try {
+    $allocLogPath = Join-Path $OutputDir 'perfview-alloc-export.log'
+    $allocCsvPath = $null
+
+    # Attempt with process filter first, then unfiltered fallback
+    foreach ($filterName in @($ProcessName, '')) {
+        $logPath = if ($filterName) { $allocLogPath } else { Join-Path $OutputDir 'perfview-alloc-export-fallback.log' }
+
+        $allocArgs = @(
+            "/LogFile:$logPath"
+            '/AcceptEULA'
+            '/NoGui'
+            'UserCommand'
+            'SaveManagedHeapAllocStacksAsCsv'
+            $etlPath
+        )
+        if ($filterName) { $allocArgs += $filterName }
+
+        Write-Verbose "Running PerfView alloc export: $perfViewExe $($allocArgs -join ' ')"
+
+        # Remove stale CSV before export
+        $allocBaseName = [System.IO.Path]::GetFileNameWithoutExtension(
+            [System.IO.Path]::GetFileNameWithoutExtension($etlPath))
+        $allocCsvCandidate = Join-Path (Split-Path $etlPath -Parent) "$allocBaseName.heapAlloc.csv"
+        if (Test-Path $allocCsvCandidate) { Remove-Item $allocCsvCandidate -Force }
+
+        $null = Invoke-PerfViewWithTimeout -PerfViewExe $perfViewExe -Arguments $allocArgs -TimeoutSec $exportTimeoutSec
+
+        if (Test-Path $allocCsvCandidate) {
+            $allocCsvPath = $allocCsvCandidate
+            break
+        }
+
+        # Also check the PerfView temp directory
+        $pvTempDir = Join-Path $env:LOCALAPPDATA 'Temp\PerfView'
+        if (Test-Path $pvTempDir) {
+            $tempCsv = Get-ChildItem -Path $pvTempDir -Filter "$allocBaseName*.heapAlloc.csv" -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($tempCsv) {
+                $allocCsvPath = $tempCsv.FullName
+                break
+            }
+        }
+
+        if (-not $filterName) { break }  # already tried unfiltered
+    }
+
+    if ($allocCsvPath) {
+        Write-Verbose "Parsing allocation CSV: $allocCsvPath"
+        $allocLines = @(ConvertTo-FoldedStacks -CsvPath $allocCsvPath -FilterProcessName '')
+        $sortedAllocLines = @($allocLines |
+            Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
+            Select-Object -First $maxStacks)
+
+        if ($sortedAllocLines.Count -gt 0) {
+            $sortedAllocLines | Set-Content -Path $allocTypesPath -Encoding utf8
+            $allocExportSuccess = $true
+            $summaryText += " | Alloc: $($sortedAllocLines.Count) types exported"
+        }
+    }
+
+    if (-not $allocExportSuccess) {
+        Write-Information "Allocation type export produced no data (DotNetAllocSampled events may be absent)"
+    }
+}
+catch {
+    Write-Warning "Allocation type export failed (non-fatal): $_"
+}
+
+$exportedPaths = @($cpuStacksPath)
+if ($allocExportSuccess) { $exportedPaths += $allocTypesPath }
+
 return @{
-    Success       = $cpuExportSuccess
-    ExportedPaths = @($cpuStacksPath)
-    Summary       = $summaryText
-    CpuStacksPath = $cpuStacksPath
+    Success        = $cpuExportSuccess
+    ExportedPaths  = $exportedPaths
+    Summary        = $summaryText
+    CpuStacksPath  = $cpuStacksPath
+    AllocTypesPath = if ($allocExportSuccess) { $allocTypesPath } else { $null }
 }
