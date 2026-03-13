@@ -80,6 +80,7 @@ $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
 
 $sourceFilePaths  = $analysisContext.SourceFilePaths
 $counterContext   = $analysisContext.CounterContext
+$trafficContext   = $analysisContext.TrafficContext
 $historyContext   = $analysisContext.HistoryContext
 $profilingContext = $analysisContext.ProfilingContext
 
@@ -102,6 +103,7 @@ Analyze this Web API's performance and identify 1-3 optimization opportunities r
 - Requests/sec: $([math]::Round($BaselineMetrics.HttpReqs.Rate, 1))
 - Error rate: $([math]::Round($BaselineMetrics.HttpReqFailed.Rate * 100, 2))%
 $counterContext
+$trafficContext
 $historyContext
 $profilingContext
 
@@ -173,11 +175,12 @@ try {
         # New multi-opportunity format — normalize each item to have all expected fields
         $opportunities = @($parsed.opportunities | ForEach-Object {
             [PSCustomObject]@{
-                filePath    = $_.filePath
-                title       = if ($_.title) { $_.title } else { $_.explanation }
-                explanation = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
-                scope       = if ($_.scope) { $_.scope } else { 'narrow' }
-                rootCause   = if ($_.rootCause) { $_.rootCause } else { $null }
+                filePath       = $_.filePath
+                title          = if ($_.title) { $_.title } else { $_.explanation }
+                explanation    = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
+                scope          = if ($_.scope) { $_.scope } else { 'narrow' }
+                rootCause      = if ($_.rootCause) { $_.rootCause } else { $null }
+                impactEstimate = if ($_.impactEstimate) { $_.impactEstimate } else { $null }
             }
         })
         $primaryOpp = $opportunities[0]
@@ -196,20 +199,22 @@ try {
     else {
         # Legacy single-item format — convert to opportunities array for consistency
         $legacyOpps = @([PSCustomObject]@{
-            filePath    = $parsed.filePath
-            title       = if ($parsed.title) { $parsed.title } else { $parsed.explanation }
-            explanation = $parsed.explanation
-            scope       = 'narrow'
-            rootCause   = $null
+            filePath       = $parsed.filePath
+            title          = if ($parsed.title) { $parsed.title } else { $parsed.explanation }
+            explanation    = $parsed.explanation
+            scope          = 'narrow'
+            rootCause      = $null
+            impactEstimate = if ($parsed.impactEstimate) { $parsed.impactEstimate } else { $null }
         })
         if ($parsed.additionalOpportunities) {
             foreach ($addl in $parsed.additionalOpportunities) {
                 $legacyOpps += [PSCustomObject]@{
-                    filePath    = if ($addl.filePath) { $addl.filePath } else { $parsed.filePath }
-                    title       = if ($addl.description) { $addl.description } else { $addl.explanation }
-                    explanation = if ($addl.description) { $addl.description } else { $addl.explanation }
-                    scope       = if ($addl.scope) { $addl.scope } else { 'narrow' }
-                    rootCause   = $null
+                    filePath       = if ($addl.filePath) { $addl.filePath } else { $parsed.filePath }
+                    title          = if ($addl.description) { $addl.description } else { $addl.explanation }
+                    explanation    = if ($addl.description) { $addl.description } else { $addl.explanation }
+                    scope          = if ($addl.scope) { $addl.scope } else { 'narrow' }
+                    rootCause      = $null
+                    impactEstimate = if ($addl.impactEstimate) { $addl.impactEstimate } else { $null }
                 }
             }
         }
@@ -235,6 +240,11 @@ try {
     Write-Status "    → $oppCount opportunities found (primary: $primaryFile)"
     if ($primaryTitle) {
         Write-Status "    → $primaryTitle"
+    }
+    $primaryOppForLog = if ($result.Opportunities.Count -gt 0) { $result.Opportunities[0] } else { $null }
+    if ($primaryOppForLog -and $primaryOppForLog.impactEstimate -and $primaryOppForLog.impactEstimate.overallP95ImprovementPct) {
+        $est = $primaryOppForLog.impactEstimate
+        Write-Status "    → Impact estimate: ~$($est.overallP95ImprovementPct)% p95 improvement ($($est.confidence) confidence)"
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
