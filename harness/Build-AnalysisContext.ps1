@@ -106,6 +106,32 @@ if ($PreviousRcaExplanation) {
     $historyContext += "`n## Last Experiment's Fix`n$PreviousRcaExplanation`n"
 }
 
+# ── Structured experiment history from run-metadata.json ─────────────────────
+$runMetadataPath = Join-Path $RepoRoot $Config.Api.ResultsPath 'run-metadata.json'
+if (Test-Path $runMetadataPath) {
+    try {
+        $runMeta = Get-Content $runMetadataPath -Raw | ConvertFrom-Json
+        $experiments = @($runMeta.Experiments | Where-Object { $null -ne $_ })
+        if ($experiments.Count -gt 0) {
+            $historyLines = @(
+                '| Exp | File | Outcome | p95 (ms) | RPS | Branch |'
+                '|-----|------|---------|----------|-----|--------|'
+            )
+            foreach ($exp in $experiments) {
+                $p95Display = if ($null -ne $exp.P95) { [math]::Round($exp.P95, 1) } else { 'N/A' }
+                $rpsDisplay = if ($null -ne $exp.RPS) { [math]::Round($exp.RPS, 1) } else { 'N/A' }
+                $branchDisplay = if ($exp.BranchName) { $exp.BranchName } else { '—' }
+                $historyLines += "| $($exp.Experiment) | — | $($exp.Outcome) | $p95Display | $rpsDisplay | $branchDisplay |"
+            }
+            $historyContext += "`n## Experiment History (with metrics)`nDo NOT re-attempt optimizations that were already tried and resulted in stale or regressed outcomes. Propose different targets or approaches instead.`n$($historyLines -join "`n")`n"
+        }
+    }
+    catch {
+        # Non-fatal: run-metadata is supplementary context
+        Write-Verbose "Could not read run-metadata.json for history context: $_"
+    }
+}
+
 # ── Diagnostic profiling context ─────────────────────────────────────────────
 $profilingContext = ''
 if ($DiagnosticReports -and $DiagnosticReports.Count -gt 0) {
