@@ -26,7 +26,14 @@ no code blocks wrapping it. The JSON must have this exact structure:
       "filePath": "SampleApi/Controllers/ExampleController.cs",
       "title": "Short descriptive title for this optimization",
       "scope": "narrow",
-      "rootCause": "## Evidence\n\nAt `ExampleController.cs:24`, the endpoint calls:\n\n```csharp\nvar items = await _context.Items.ToListAsync();\n```\n\nThis loads all items without including navigation properties...\n\n## Theory\n\nExplanation of why this causes poor performance...\n\n## Proposed Fixes\n\n1. **Fix name:** Description...\n\n## Expected Impact\n\n- p95 latency: estimated change..."
+      "rootCause": "## Evidence\n\nAt `ExampleController.cs:24`, the endpoint calls:\n\n```csharp\nvar items = await _context.Items.ToListAsync();\n```\n\nThis loads all items without including navigation properties...\n\n## Theory\n\nExplanation of why this causes poor performance...\n\n## Proposed Fixes\n\n1. **Fix name:** Description...\n\n## Expected Impact\n\n- p95 latency: estimated change...",
+      "impactEstimate": {
+        "trafficPct": 35,
+        "latencyReductionMs": 40,
+        "overallP95ImprovementPct": 8.5,
+        "confidence": "medium",
+        "reasoning": "The /cart endpoint accounts for ~35% of scenario traffic. Eliminating the N+1 query should reduce per-request latency by ~40ms, yielding ~8.5% overall p95 improvement."
+      }
     }
   ]
 }
@@ -52,7 +59,8 @@ where the change should be applied. Keep fixes scoped to a single file.
 
 ### Expected Impact
 Estimate which metrics should improve (p95 latency, RPS, error rate) and by roughly
-how much. Explain the reasoning behind the estimate.
+how much. Explain the reasoning behind the estimate. This narrative should be consistent
+with the structured `impactEstimate` field on the opportunity object.
 
 ## Rules
 
@@ -83,3 +91,13 @@ how much. Explain the reasoning behind the estimate.
    - `architecture`: schema migration, new dependency, multi-file change, API contract change
 
 8. **JSON only.** Your entire response must be valid JSON. Nothing else.
+
+9. **Impact estimation.** Each opportunity must include an `impactEstimate` object with:
+   - `trafficPct`: Percentage of total request volume hitting the affected endpoint/code path.
+     Derive this from the k6 scenario weights and endpoint distribution in the prompt context.
+   - `latencyReductionMs`: Expected reduction in per-request latency for affected requests.
+   - `overallP95ImprovementPct`: Estimated overall p95 improvement, accounting for traffic share.
+     Formula: roughly `(trafficPct / 100) * (latencyReductionMs / currentP95) * 100`.
+   - `confidence`: "high" (clear evidence, simple fix), "medium" (reasonable inference),
+     or "low" (speculative, limited data).
+   - `reasoning`: 1-2 sentences explaining how you derived the estimate.

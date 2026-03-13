@@ -68,6 +68,26 @@ if ($CounterMetrics) {
 "@
 }
 
+# ── Traffic distribution context ─────────────────────────────────────────────
+$trafficContext = ''
+$scenarioPath = if ($Config.ScaleTest.ScenarioPath) {
+    Join-Path $RepoRoot $Config.ScaleTest.ScenarioPath
+} else { $null }
+
+if ($scenarioPath -and (Test-Path $scenarioPath)) {
+    $scenarioContent = Get-Content $scenarioPath -Raw
+    $trafficContext = @"
+
+## Traffic Distribution (k6 Scenario)
+The following k6 load test scenario defines the request patterns and relative weights of each
+endpoint. Use this to estimate what percentage of total traffic each endpoint/code path receives.
+
+``````javascript
+$scenarioContent
+``````
+"@
+}
+
 # ── Optimization history context ─────────────────────────────────────────────
 $historyContext = ''
 $metadataDir = Join-Path $RepoRoot $Config.Api.MetadataPath
@@ -153,6 +173,7 @@ if ($DiagnosticReports -and $DiagnosticReports.Count -gt 0) {
 [PSCustomObject]@{
     SourceFilePaths  = @($sourceFilePaths)
     CounterContext   = $counterContext
+    TrafficContext   = $trafficContext
     HistoryContext   = $historyContext
     ProfilingContext = $profilingContext
 }

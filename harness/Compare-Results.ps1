@@ -281,8 +281,14 @@ if ($CurrentCounterMetrics) {
             Max = $CurrentCounterMetrics.Runtime.ThreadPoolQueue.Max
         }
         ExceptionCount     = $CurrentCounterMetrics.Runtime.ExceptionCount.Last
-        WorkingSetMB       = $CurrentCounterMetrics.Runtime.WorkingSetMB.Max
-        AllocRateMB        = $CurrentCounterMetrics.Runtime.AllocRateMB.Avg
+        WorkingSetMB = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.WorkingSetMB.Avg
+            Max = $CurrentCounterMetrics.Runtime.WorkingSetMB.Max
+        }
+        AllocRateMB = [ordered]@{
+            Avg = $CurrentCounterMetrics.Runtime.AllocRateMB.Avg
+            Max = $CurrentCounterMetrics.Runtime.AllocRateMB.Max
+        }
     }
 }
 
@@ -291,6 +297,11 @@ $logMessage = "vs baseline: ${improvementPct}% | " +
     "p95: $($p95Current)ms ($([math]::Round($p95Change * 100, 1))% vs prev) | " +
     "RPS: $([math]::Round($rpsCurrent, 1)) ($([math]::Round($rpsChange * 100, 1))% vs prev) | " +
     "Errors: $([math]::Round($errCurrent * 100, 2))% ($([math]::Round($errChange * 100, 1))% vs prev)"
+
+if ($efficiencyDeltas) {
+    $logMessage += " | CPU: $($efficiencyDeltas.CpuUsage.Current)% ($($efficiencyDeltas.CpuUsage.ChangePct)% delta)" +
+        " | WorkingSet: $($efficiencyDeltas.WorkingSet.Current)MB ($($efficiencyDeltas.WorkingSet.ChangePct)% delta)"
+}
 
 $level = if ($anyRegressed) { 'warning' } elseif ($anyImproved) { 'info' } else { 'info' }
 
