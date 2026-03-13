@@ -531,6 +531,7 @@ Pop-Location
 
 for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
+    $experimentsRun = $experiment - $startExperiment + 1
     $experimentStartedAt = Get-Date -Format 'o'
     $prNumber = $null
     $prUrl = $null
@@ -1787,8 +1788,8 @@ Write-Status '  HONE COMPLETE'
 Write-Status '══════════════════════════════════════════════════════════════'
 Write-Status ''
 Write-Status "  Exit reason:     $exitReason"
-Write-Status "  Experiments run:  $experiment"
-Write-Status "  Successful:      $successCount / $experiment"
+Write-Status "  Experiments run:  $experimentsRun"
+Write-Status "  Successful:      $successCount / $experimentsRun"
 Write-Status "  Best p95:        ${bestP95}ms (experiment $bestExperiment)"
 Write-Status "  Baseline p95:    $($baselineMetrics.HttpReqDuration.P95)ms"
 
@@ -1834,10 +1835,10 @@ Write-Status ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' `
-    -Message "Hone loop complete: $exitReason after $experiment experiments" `
+    -Message "Hone loop complete: $exitReason after $experimentsRun experiments" `
     -Data @{
         exitReason    = $exitReason
-        experiments    = $experiment
+        experiments    = $experimentsRun
         bestP95       = $bestP95
         bestExperiment = $bestExperiment
         successCount  = $successCount
@@ -1855,7 +1856,7 @@ $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -E
 # Return summary object
 [PSCustomObject][ordered]@{
     ExitReason        = $exitReason
-    Experiments        = $experiment
+    Experiments        = $experimentsRun
     SuccessCount      = $successCount
     BestP95           = $bestP95
     BestExperiment     = $bestExperiment
