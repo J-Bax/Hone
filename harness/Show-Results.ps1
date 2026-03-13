@@ -82,6 +82,23 @@ foreach ($dir in $experimentDirs) {
     $experiments += $metrics
 }
 
+# Load counter data from dotnet-counters.json files
+$counterDataMap = @{}
+foreach ($dir in $experimentDirs) {
+    $expNum = [int]($dir.Name -replace 'experiment-', '')
+    $counterFile = Join-Path $dir.FullName 'dotnet-counters.json'
+    if (Test-Path $counterFile) {
+        $counterDataMap[$expNum] = Get-Content $counterFile -Raw | ConvertFrom-Json
+    }
+}
+
+# Also try loading baseline counters
+$baselineCounterPath = Join-Path $ResultsPath 'baseline-counters.json'
+$baselineCounters = $null
+if (Test-Path $baselineCounterPath) {
+    $baselineCounters = Get-Content $baselineCounterPath -Raw | ConvertFrom-Json
+}
+
 # ── Thresholds ──────────────────────────────────────────────────────────────
 
 $tolerances = $config.Tolerances
@@ -158,8 +175,8 @@ Write-Host ""
 
 # ── Table header ────────────────────────────────────────────────────────────
 
-$colWidths = @{ Label = 14; P95 = 12; Avg = 12; RPS = 12; Err = 12; Delta = 12 }
-$totalWidth = 14 + 12 + 12 + 12 + 12 + 12 + 2
+$colWidths = @{ Label = 14; P95 = 12; Avg = 12; RPS = 12; Err = 12; Delta = 12; CPU = 12; Mem = 12 }
+$totalWidth = 14 + 12 + 12 + 12 + 12 + 12 + 12 + 12 + 2
 $separator = "  " + ("─" * $totalWidth)
 
 Write-Host "  " -NoNewline
@@ -168,7 +185,9 @@ Write-Host ("{0,$($colWidths.P95)}" -f "p95 (ms)") -NoNewline -ForegroundColor C
 Write-Host ("{0,$($colWidths.Avg)}" -f "Avg (ms)") -NoNewline -ForegroundColor Cyan
 Write-Host ("{0,$($colWidths.RPS)}" -f "RPS") -NoNewline -ForegroundColor Cyan
 Write-Host ("{0,$($colWidths.Err)}" -f "Error %") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.Delta)}" -f "p95 Δ") -ForegroundColor Cyan
+Write-Host ("{0,$($colWidths.Delta)}" -f "p95 Δ") -NoNewline -ForegroundColor Cyan
+Write-Host ("{0,$($colWidths.CPU)}" -f "CPU avg%") -NoNewline -ForegroundColor Cyan
+Write-Host ("{0,$($colWidths.Mem)}" -f "Mem MB") -ForegroundColor Cyan
 Write-Host $separator -ForegroundColor DarkGray
 
 # ── Baseline row ────────────────────────────────────────────────────────────
@@ -184,7 +203,11 @@ Write-Host ("{0,$($colWidths.P95)}" -f $bP95) -NoNewline -ForegroundColor White
 Write-Host ("{0,$($colWidths.Avg)}" -f $bAvg) -NoNewline -ForegroundColor White
 Write-Host ("{0,$($colWidths.RPS)}" -f $bRPS) -NoNewline -ForegroundColor White
 Write-Host ("{0,$($colWidths.Err)}" -f $bErr) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.Delta)}" -f "—") -ForegroundColor DarkGray
+Write-Host ("{0,$($colWidths.Delta)}" -f "—") -NoNewline -ForegroundColor DarkGray
+$bCpuAvg = if ($baselineCounters -and $baselineCounters.Runtime.CpuUsage) { [math]::Round($baselineCounters.Runtime.CpuUsage.Avg, 1) } else { '—' }
+$bMemMB = if ($baselineCounters -and $baselineCounters.Runtime.WorkingSetMB) { [math]::Round($baselineCounters.Runtime.WorkingSetMB.Max, 1) } else { '—' }
+Write-Host ("{0,$($colWidths.CPU)}" -f $bCpuAvg) -NoNewline -ForegroundColor White
+Write-Host ("{0,$($colWidths.Mem)}" -f $bMemMB) -ForegroundColor White
 Write-Host $separator -ForegroundColor DarkGray
 
 # ── Experiment rows ──────────────────────────────────────────────────────────
@@ -206,13 +229,29 @@ foreach ($exp in $experiments) {
     $rpsColor = if ($iRPS -gt $bRPS) { 'Green' } elseif ($iRPS -lt $bRPS) { 'Red' } else { 'White' }
     $errColor = if ($exp.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate) { 'Green' } elseif ($exp.HttpReqFailed.Rate -gt $baseline.HttpReqFailed.Rate) { 'Red' } else { 'White' }
 
+    $expCounters = if ($counterDataMap.ContainsKey($expNum)) { $counterDataMap[$expNum] } else { $null }
+    $iCpuAvg = if ($expCounters -and $expCounters.Runtime.CpuUsage) { [math]::Round($expCounters.Runtime.CpuUsage.Avg, 1) } else { '—' }
+    $iMemMB = if ($expCounters -and $expCounters.Runtime.WorkingSetMB) { [math]::Round($expCounters.Runtime.WorkingSetMB.Max, 1) } else { '—' }
+
+    # Color coding for CPU (green = lower than baseline)
+    $cpuColor = 'White'
+    if ($iCpuAvg -ne '—' -and $bCpuAvg -ne '—') {
+        $cpuColor = if ($iCpuAvg -lt $bCpuAvg) { 'Green' } elseif ($iCpuAvg -gt $bCpuAvg) { 'Red' } else { 'White' }
+    }
+    $memColor = 'White'
+    if ($iMemMB -ne '—' -and $bMemMB -ne '—') {
+        $memColor = if ($iMemMB -lt $bMemMB) { 'Green' } elseif ($iMemMB -gt $bMemMB) { 'Red' } else { 'White' }
+    }
+
     Write-Host "  " -NoNewline
     Write-Host ("{0,-$($colWidths.Label)}" -f "Experiment $expNum") -NoNewline -ForegroundColor White
     Write-Host ("{0,$($colWidths.P95)}" -f $iP95) -NoNewline -ForegroundColor $p95Color
     Write-Host ("{0,$($colWidths.Avg)}" -f $iAvg) -NoNewline -ForegroundColor White
     Write-Host ("{0,$($colWidths.RPS)}" -f $iRPS) -NoNewline -ForegroundColor $rpsColor
     Write-Host ("{0,$($colWidths.Err)}" -f $iErr) -NoNewline -ForegroundColor $errColor
-    Write-Host ("{0,$($colWidths.Delta)}" -f $deltaP95.Text) -ForegroundColor $deltaP95.Color
+    Write-Host ("{0,$($colWidths.Delta)}" -f $deltaP95.Text) -NoNewline -ForegroundColor $deltaP95.Color
+    Write-Host ("{0,$($colWidths.CPU)}" -f $iCpuAvg) -NoNewline -ForegroundColor $cpuColor
+    Write-Host ("{0,$($colWidths.Mem)}" -f $iMemMB) -ForegroundColor $memColor
 }
 
 if ($experiments.Count -eq 0 -or ($experiments.Count -eq 1 -and $experiments[0].Experiment -eq 0)) {
@@ -387,6 +426,19 @@ if ($latestIter) {
 }
 else {
     Write-Host "Baseline only — run Invoke-HoneLoop.ps1 to optimize" -ForegroundColor DarkGray
+}
+
+# Efficiency summary
+if ($latestIter -and $counterDataMap.ContainsKey($latestIter.Experiment) -and $baselineCounters) {
+    $latestCounters = $counterDataMap[$latestIter.Experiment]
+    if ($latestCounters.Runtime.CpuUsage -and $baselineCounters.Runtime.CpuUsage) {
+        $cpuDelta = Format-Delta -Current $latestCounters.Runtime.CpuUsage.Avg -Baseline $baselineCounters.Runtime.CpuUsage.Avg -LowerIsBetter $true
+        $memDelta = Format-Delta -Current $latestCounters.Runtime.WorkingSetMB.Max -Baseline $baselineCounters.Runtime.WorkingSetMB.Max -LowerIsBetter $true
+        Write-Host "  Efficiency: " -NoNewline -ForegroundColor DarkGray
+        Write-Host "CPU $($cpuDelta.Text)" -NoNewline -ForegroundColor $cpuDelta.Color
+        Write-Host " | " -NoNewline -ForegroundColor DarkGray
+        Write-Host "Memory $($memDelta.Text)" -ForegroundColor $memDelta.Color
+    }
 }
 
 Write-Host ""

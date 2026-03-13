@@ -135,6 +135,17 @@ foreach ($dir in $experimentDirs) {
     }
 }
 
+$counterChartData = $counterData | ForEach-Object {
+    @{
+        experiment    = $_.experiment
+        label        = "Experiment $($_.experiment)"
+        cpuAvg       = [math]::Round($_.cpuAvg, 1)
+        cpuMax       = [math]::Round($_.cpuMax, 1)
+        workingSetMB = [math]::Round($_.workingSetMB, 1)
+        heapMBMax    = [math]::Round($_.heapMBMax, 1)
+    }
+}
+
 # ── Counter time-series data (from CSV) ────────────────────────────────────
 
 $counterTimeSeries = @{}
@@ -278,6 +289,7 @@ $dataJson = ConvertTo-Json -InputObject @($allData) -Depth 5 -Compress
 $counterJson = ConvertTo-Json -InputObject @($counterData) -Depth 5 -Compress
 $scenarioJson = ConvertTo-Json -InputObject $scenarioData -Depth 5 -Compress
 $timeSeriesJson = ConvertTo-Json -InputObject $counterTimeSeries -Depth 10 -Compress
+$counterChartJson = ConvertTo-Json -InputObject @($counterChartData) -Depth 5 -Compress
 $minImprovePct = [math]::Round($tolerances.MinImprovementPct * 100, 1)
 $maxRegressPct = [math]::Round($tolerances.MaxRegressionPct * 100, 1)
 
@@ -413,6 +425,20 @@ $html = @'
 
     <div id="scenarioSection"></div>
 
+    <!-- Efficiency Metrics Section -->
+    <h2 class="section-header">Efficiency Metrics</h2>
+    <p class="section-subtitle">CPU and memory trends across optimization experiments</p>
+    <div class="chart-row">
+        <div class="chart-container">
+            <h3>CPU Usage Trend (%)</h3>
+            <canvas id="cpuTrendChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h3>Memory Usage Trend (MB)</h3>
+            <canvas id="memoryTrendChart"></canvas>
+        </div>
+    </div>
+
     <!-- .NET Runtime Diagnostics Section -->
     <div id="runtimeSection">
         <h2 class="section-header">Runtime Diagnostics (.NET Counters)</h2>
@@ -471,6 +497,7 @@ $html = @'
     var timeSeriesData = __TIMESERIES_JSON__;
     var runMetadata = __RUN_METADATA_JSON__;
     var config = { minImprovePct: __MIN_IMPROVE__, maxRegressPct: __MAX_REGRESS__ };
+    var counterChartData = __COUNTER_CHART_JSON__;
 
     // ── Machine info banner ───────────────────────────────────────────
     if (runMetadata && runMetadata.Machine) {
@@ -843,6 +870,63 @@ $html = @'
     renderTable();
     renderScenarios();
 
+    // ── Efficiency Metrics Charts ──────────────────────────────────────────
+
+    function renderCpuTrendChart() {
+        if (!counterChartData || !counterChartData.length) return;
+        var ctx = document.getElementById('cpuTrendChart').getContext('2d');
+        var labels = counterChartData.map(function(d) { return d.label; });
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'CPU Avg %', data: counterChartData.map(function(d) { return d.cpuAvg; }),
+                        borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                        fill: false, tension: 0.3, pointRadius: 5, borderWidth: 2
+                    },
+                    {
+                        label: 'CPU Max %', data: counterChartData.map(function(d) { return d.cpuMax; }),
+                        borderColor: '#f85149', borderDash: [6, 4],
+                        fill: false, tension: 0.3, pointRadius: 4, borderWidth: 2
+                    }
+                ]
+            },
+            options: chartDefaults
+        });
+    }
+
+    function renderMemoryTrendChart() {
+        if (!counterChartData || !counterChartData.length) return;
+        var ctx = document.getElementById('memoryTrendChart').getContext('2d');
+        var labels = counterChartData.map(function(d) { return d.label; });
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Working Set (MB)', data: counterChartData.map(function(d) { return d.workingSetMB; }),
+                        borderColor: '#3fb950', backgroundColor: 'rgba(63, 185, 80, 0.1)',
+                        fill: false, tension: 0.3, pointRadius: 5, borderWidth: 2
+                    },
+                    {
+                        label: 'Heap Max (MB)', data: counterChartData.map(function(d) { return d.heapMBMax; }),
+                        borderColor: '#bc8cff', borderDash: [6, 4],
+                        fill: false, tension: 0.3, pointRadius: 4, borderWidth: 2
+                    }
+                ]
+            },
+            options: chartDefaults
+        });
+    }
+
+    renderCpuTrendChart();
+    renderMemoryTrendChart();
+
     // ── Runtime Diagnostics (.NET Counters) ────────────────────────────────
 
     var runtimeCharts = {};
@@ -1045,6 +1129,7 @@ $html = $html.Replace('__SCENARIO_JSON__', $scenarioJson)
 $html = $html.Replace('__GENERATED_AT__', $generatedAt)
 $html = $html.Replace('__MIN_IMPROVE__', [string]$minImprovePct)
 $html = $html.Replace('__MAX_REGRESS__', [string]$maxRegressPct)
+$html = $html.Replace('__COUNTER_CHART_JSON__', $counterChartJson)
 
 # ── Write file ──────────────────────────────────────────────────────────────
 

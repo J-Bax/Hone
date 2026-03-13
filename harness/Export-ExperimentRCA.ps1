@@ -58,6 +58,12 @@ param(
 
     [PSCustomObject]$ComparisonResult,
 
+    [PSCustomObject]$ImpactEstimate,
+
+    [PSCustomObject]$CounterMetrics,
+
+    [PSCustomObject]$BaselineCounterMetrics,
+
     [int]$Experiment = 0,
 
     [string]$ConfigPath
@@ -112,9 +118,47 @@ $rca = @"
 
 Overall improvement vs baseline: **${improvPct}%** (p95 latency).
 
+$(if ($ImpactEstimate) {
+    $ie = $ImpactEstimate
+    @"
+## Impact Estimate
+
+| Metric | Estimate |
+|--------|----------|
+| Traffic share | $($ie.trafficPct)% |
+| Latency reduction | $($ie.latencyReductionMs)ms |
+| Overall p95 improvement | $($ie.overallP95ImprovementPct)% |
+| Confidence | $($ie.confidence) |
+
+> $($ie.reasoning)
+"@
+})
+
 $(if ($ComparisonResult -and $ComparisonResult.EfficiencyDeltas) {
     $ed = $ComparisonResult.EfficiencyDeltas
     "**Efficiency:** CPU $($ed.CpuUsage.Current)% ($($ed.CpuUsage.ChangePct)% delta) | Working Set $($ed.WorkingSet.Current)MB ($($ed.WorkingSet.ChangePct)% delta)"
+})
+
+$(if ($CounterMetrics) {
+    $cpuAvg = if ($CounterMetrics.Runtime.CpuUsage) { "$([math]::Round($CounterMetrics.Runtime.CpuUsage.Avg, 1))%" } else { 'N/A' }
+    $cpuMax = if ($CounterMetrics.Runtime.CpuUsage) { "$([math]::Round($CounterMetrics.Runtime.CpuUsage.Max, 1))%" } else { 'N/A' }
+    $memAvg = if ($CounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($CounterMetrics.Runtime.WorkingSetMB.Avg, 1))MB" } else { 'N/A' }
+    $memMax = if ($CounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($CounterMetrics.Runtime.WorkingSetMB.Max, 1))MB" } else { 'N/A' }
+    
+    $baselineCpuAvg = if ($BaselineCounterMetrics -and $BaselineCounterMetrics.Runtime.CpuUsage) { "$([math]::Round($BaselineCounterMetrics.Runtime.CpuUsage.Avg, 1))%" } else { 'N/A' }
+    $baselineMemMax = if ($BaselineCounterMetrics -and $BaselineCounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($BaselineCounterMetrics.Runtime.WorkingSetMB.Max, 1))MB" } else { 'N/A' }
+    
+    @"
+
+## Efficiency Metrics
+
+| Metric | Current | Baseline |
+|--------|---------|----------|
+| CPU avg | $cpuAvg | $baselineCpuAvg |
+| CPU peak | $cpuMax | — |
+| Memory avg | $memAvg | — |
+| Memory peak | $memMax | $baselineMemMax |
+"@
 })
 
 ## Root Cause / Rationale

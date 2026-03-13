@@ -50,6 +50,8 @@ param(
 
     [string[]]$Scopes,
 
+    [PSCustomObject]$ImpactEstimate,
+
     [string]$ConfigPath
 )
 
@@ -99,7 +101,10 @@ switch ($Action) {
     'AddTried' {
         $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm'
         $fileDisplay = if ($FilePath) { "``$FilePath``" } else { '—' }
-        $summaryDisplay = if ($Summary) { $Summary } else { '—' }
+        $impactSuffix = if ($ImpactEstimate -and $ImpactEstimate.overallP95ImprovementPct) {
+            " (est. ~$($ImpactEstimate.overallP95ImprovementPct)% p95 improvement)"
+        } else { '' }
+        $summaryDisplay = if ($Summary) { "$Summary$impactSuffix" } else { '—' }
         $outcomeDisplay = $Outcome
 
         $entry = "| $Experiment | $timestamp | $fileDisplay | $summaryDisplay | $outcomeDisplay |"
