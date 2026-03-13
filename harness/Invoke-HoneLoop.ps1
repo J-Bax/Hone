@@ -924,7 +924,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'build_failure' -BranchName $branchName `
-                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -1006,7 +1006,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'test_failure' -BranchName $branchName `
-                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -1127,7 +1127,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 Add-ExperimentMetadata `
                     -Experiment $experiment -StartedAt $experimentStartedAt `
                     -Outcome 'api_start_failure' -BranchName $branchName `
-                    -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                    -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
                     -PrNumber $prNumber -PrUrl $prUrl `
                     -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -1225,7 +1225,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'scale_test_failure' -BranchName $branchName `
-                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -1773,7 +1773,7 @@ $rcaDocument
     Add-ExperimentMetadata `
         -Experiment $experiment -StartedAt $experimentStartedAt `
         -Outcome $experimentOutcome -BranchName $branchName `
-        -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+        -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
         -Metrics $currentMetrics `
         -Improved $comparison.Improved -Regression $comparison.Regression `
         -PrNumber $experimentPrNumber -PrUrl $experimentPrUrl `
