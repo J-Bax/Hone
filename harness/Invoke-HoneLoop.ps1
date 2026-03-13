@@ -103,6 +103,57 @@ function Limit-String {
     return $truncated + '…'
 }
 
+function Add-ExperimentMetadata {
+    <#
+    .SYNOPSIS
+        Records an experiment entry in run-metadata.json.
+        Called from every code path (including early exits) to ensure no gaps.
+    #>
+    param(
+        [int]$Experiment,
+        [string]$StartedAt,
+        [string]$Outcome,
+        [string]$BranchName,
+        [string]$BaseBranch = 'master',
+        [PSCustomObject]$Metrics,
+        [bool]$Improved = $false,
+        [bool]$Regression = $false,
+        [int]$PrNumber,
+        [string]$PrUrl,
+        [int]$StaleCount = 0,
+        [int]$ConsecutiveFailures = 0
+    )
+
+    $p95 = if ($Metrics -and $Metrics.HttpReqDuration) { $Metrics.HttpReqDuration.P95 } else { $null }
+    $rps = if ($Metrics -and $Metrics.HttpReqs) { [math]::Round($Metrics.HttpReqs.Rate, 1) } else { $null }
+
+    $experimentMeta = [ordered]@{
+        Experiment          = $Experiment
+        StartedAt           = $StartedAt
+        CompletedAt         = (Get-Date -Format 'o')
+        Improved            = $Improved
+        Regression          = $Regression
+        P95                 = $p95
+        RPS                 = $rps
+        Outcome             = $Outcome
+        BranchName          = $BranchName
+        BaseBranch          = $BaseBranch
+        PrNumber            = if ($PrNumber) { $PrNumber } else { $null }
+        PrUrl               = if ($PrUrl) { "$PrUrl" } else { $null }
+        StaleCount          = $StaleCount
+        ConsecutiveFailures = $ConsecutiveFailures
+    }
+
+    if ($script:runMetadata.Experiments -is [System.Collections.IList]) {
+        $script:runMetadata.Experiments += [PSCustomObject]$experimentMeta
+    }
+    else {
+        $script:runMetadata | Add-Member -NotePropertyName Experiments -NotePropertyValue @([PSCustomObject]$experimentMeta) -Force
+    }
+
+    $script:runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $script:runMetadataPath -Encoding utf8
+}
+
 if (-not $ConfigPath) {
     $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
 }
@@ -296,7 +347,7 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
 
     # Restore best metrics
     foreach ($exp in $priorExperiments) {
-        if ($exp.Outcome -eq 'improved' -and $exp.P95 -lt $bestP95) {
+        if ($exp.Outcome -eq 'improved' -and $null -ne $exp.P95 -and $exp.P95 -lt $bestP95) {
             $bestP95 = $exp.P95
             $bestExperiment = $exp.Experiment
         }
@@ -305,10 +356,13 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
 
     # Restore stacked-diffs branch state
     if ($stackedDiffs) {
-        $currentBranch = $lastEntry.BranchName
+        # For early-exit experiments (e.g., analysis_failed), BranchName may be null.
+        # Walk backward to find the last experiment that had a branch.
+        $lastWithBranch = $priorExperiments | Where-Object { $_.BranchName } | Select-Object -Last 1
+        $currentBranch = if ($lastWithBranch) { $lastWithBranch.BranchName } else { 'master' }
         $lastImproved = $priorExperiments | Where-Object { $_.Outcome -eq 'improved' } | Select-Object -Last 1
         $lastSuccessfulBranch = if ($lastImproved) { $lastImproved.BranchName } else { 'master' }
-        $branchChain = @('master') + @($priorExperiments | ForEach-Object { $_.BranchName })
+        $branchChain = @('master') + @($priorExperiments | Where-Object { $_.BranchName } | ForEach-Object { $_.BranchName })
         $prChain = @($priorExperiments | Where-Object { $_.PrNumber } | ForEach-Object {
             [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)" }
         })
@@ -348,6 +402,7 @@ Pop-Location
 for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     $experimentStartedAt = Get-Date -Format 'o'
+    $branchName = $null  # Set properly after queue item is picked
 
     Write-Status ''
     Write-Status "━━━ Experiment $experiment / $loopEnd ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -425,6 +480,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Write-Warning '  Analysis agent failed — skipping experiment'
             $staleCount++
             if ($stackedDiffs) { $consecutiveFailures++ }
+            Add-ExperimentMetadata `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'analysis_failed' `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
                 $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
                 Write-Status '  Stopping: too many consecutive failures'
@@ -449,6 +508,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Write-Warning '  Failed to initialize optimization queue — skipping experiment'
             $staleCount++
             if ($stackedDiffs) { $consecutiveFailures++ }
+            Add-ExperimentMetadata `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'queue_init_failed' `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             continue
         }
 
@@ -466,6 +529,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning '  No actionable items in queue — skipping experiment'
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
+        Add-ExperimentMetadata `
+            -Experiment $experiment -StartedAt $experimentStartedAt `
+            -Outcome 'no_queue_items' `
+            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
             Write-Status '  Stopping: too many consecutive failures'
@@ -579,6 +646,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     if ($skipExperiment) {
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
+        Add-ExperimentMetadata `
+            -Experiment $experiment -StartedAt $experimentStartedAt `
+            -Outcome 'skipped' -BranchName $branchName `
+            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
             Write-Status '  Stopping: too many consecutive failures'
@@ -608,6 +679,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning '  Fix agent failed to generate code — skipping experiment'
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
+        Add-ExperimentMetadata `
+            -Experiment $experiment -StartedAt $experimentStartedAt `
+            -Outcome 'fix_failed' -BranchName $branchName `
+            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
 
@@ -622,6 +697,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
+        Add-ExperimentMetadata `
+            -Experiment $experiment -StartedAt $experimentStartedAt `
+            -Outcome 'invalid_target' -BranchName $branchName `
+            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
 
@@ -642,6 +721,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning "  Fix application failed: $($applyResult.Description)"
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
+        Add-ExperimentMetadata `
+            -Experiment $experiment -StartedAt $experimentStartedAt `
+            -Outcome 'apply_failed' -BranchName $branchName `
+            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
 
@@ -685,6 +768,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'build_failure' }
             $consecutiveFailures++
             $staleCount++
+
+            Add-ExperimentMetadata `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'build_failure' -BranchName $branchName `
+                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
@@ -740,6 +829,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'test_failure' }
             $consecutiveFailures++
             $staleCount++
+
+            Add-ExperimentMetadata `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'test_failure' -BranchName $branchName `
+                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
@@ -835,6 +930,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 $consecutiveFailures++
                 $staleCount++
 
+                Add-ExperimentMetadata `
+                    -Experiment $experiment -StartedAt $experimentStartedAt `
+                    -Outcome 'api_start_failure' -BranchName $branchName `
+                    -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                    -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+
                 if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                     $exitReason = 'max_consecutive_failures'
                     Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
@@ -905,6 +1006,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'scale_test_failure' }
             $consecutiveFailures++
             $staleCount++
+
+            Add-ExperimentMetadata `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'scale_test_failure' -BranchName $branchName `
+                -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
@@ -1382,33 +1489,14 @@ $scenarioBreakdown
     $experimentPrNumber = if ($experimentOutcome -eq 'improved' -and $prNumber) { $prNumber } else { $null }
     $experimentPrUrl = if ($experimentOutcome -eq 'improved' -and $prNumber -and $prUrl) { "$prUrl" } else { $null }
 
-    $experimentMeta = [ordered]@{
-        Experiment          = $experiment
-        StartedAt           = $experimentStartedAt
-        CompletedAt         = (Get-Date -Format 'o')
-        Improved            = $comparison.Improved
-        Regression          = $comparison.Regression
-        P95                 = $currentMetrics.HttpReqDuration.P95
-        RPS                 = [math]::Round($currentMetrics.HttpReqs.Rate, 1)
-        Outcome             = $experimentOutcome
-        BranchName          = $branchName
-        BaseBranch          = if ($stackedDiffs) { $baseBranch } else { 'master' }
-        PrNumber            = $experimentPrNumber
-        PrUrl               = $experimentPrUrl
-        StaleCount          = $staleCount
-        ConsecutiveFailures = $consecutiveFailures
-    }
-
-    # Append to the in-memory experiments list
-    if ($runMetadata.Experiments -is [System.Collections.IList]) {
-        $runMetadata.Experiments += [PSCustomObject]$experimentMeta
-    }
-    else {
-        $runMetadata | Add-Member -NotePropertyName Experiments -NotePropertyValue @([PSCustomObject]$experimentMeta) -Force
-    }
-
-    # Persist after each experiment so partial runs are captured
-    $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
+    Add-ExperimentMetadata `
+        -Experiment $experiment -StartedAt $experimentStartedAt `
+        -Outcome $experimentOutcome -BranchName $branchName `
+        -BaseBranch (if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+        -Metrics $currentMetrics `
+        -Improved $comparison.Improved -Regression $comparison.Regression `
+        -PrNumber $experimentPrNumber -PrUrl $experimentPrUrl `
+        -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 }
 
 # ── Summary ─────────────────────────────────────────────────────────────────
