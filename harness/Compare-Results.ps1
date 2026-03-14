@@ -224,6 +224,7 @@ $result = [ordered]@{
     Regression         = $anyRegressed
     RegressionDetail   = ($regressionDetails -join '; ')
     ImprovementPct     = $improvementPct
+    ReferenceIsBaseline = (-not $PreviousMetrics)
     EfficiencyImproved = $efficiencyImproved
     TiebreakerUsed     = $tiebreakerUsed
     EfficiencyDeltas   = $efficiencyDeltas

@@ -455,6 +455,7 @@ Write-Status "Baseline loaded: p95=$($baselineMetrics.HttpReqDuration.P95)ms"
 # ── Experiment Loop ──────────────────────────────────────────────────────────
 $previousMetrics = $null
 $previousCounterMetrics = $null
+$previousScenarioResults = $null
 $previousRcaExplanation = ''
 $exitReason = 'max_experiments'
 $bestExperiment = 0
@@ -1285,6 +1286,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -ConfigPath $ConfigPath `
         -Experiment $experiment
 
+    # Reference metrics used for delta computation (previous improved or baseline)
+    $referenceMetrics = if ($previousMetrics) { $previousMetrics } else { $baselineMetrics }
+    $referenceLabel = if ($previousMetrics) { "Experiment $($experiment - 1)" } else { 'Baseline' }
+
     # Display per-metric deltas
     $d = $comparison.Deltas
     Write-Information ("  p95: {0}ms ({1}%) | RPS: {2} ({3}%) | Errors: {4}% ({5}%) | vs baseline: {6}%" -f `
@@ -1361,12 +1366,12 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             $d = $comparison.Deltas
             $rejMetrics = @"
 
-### Performance Results
-| Metric | Baseline | After Fix | Delta |
+### Performance Results (vs $referenceLabel)
+| Metric | $referenceLabel | After Fix | Delta |
 |--------|----------|-----------|-------|
-| p95 Latency | $($baselineMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
-| Requests/sec | $([math]::Round($baselineMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
-| Error Rate | $([math]::Round($baselineMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
+| p95 Latency | $($referenceMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
+| Requests/sec | $([math]::Round($referenceMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
+| Error Rate | $([math]::Round($referenceMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
 
 "@
             $rejRcaSection = ''
@@ -1512,11 +1517,20 @@ $rcaDocument
             foreach ($sr in $scenarioResults) {
                 if (-not $sr.Metrics) { continue }
 
-                $scenarioBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
-                if (-not (Test-Path $scenarioBaselinePath)) { continue }
+                # Use previous experiment's scenario results if available, otherwise fall back to baseline
+                $scenarioRef = $null
+                $scenarioRefLabel = 'Baseline'
+                if ($previousScenarioResults -and $previousScenarioResults.ContainsKey($sr.ScenarioName)) {
+                    $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
+                    $scenarioRefLabel = $referenceLabel
+                }
+                else {
+                    $scenarioBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
+                    if (-not (Test-Path $scenarioBaselinePath)) { continue }
+                    $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
+                }
 
-                $scenarioBaseline = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
-                $sbP95 = $scenarioBaseline.HttpReqDuration.P95
+                $sbP95 = $scenarioRef.HttpReqDuration.P95
                 $scP95 = $sr.Metrics.HttpReqDuration.P95
 
                 $scenarioDelta = if ($sbP95 -gt 0) {
@@ -1532,8 +1546,8 @@ $rcaDocument
                 $scenarioTable = ($scenarioRows -join "`n")
                 $scenarioBreakdown = @"
 
-### Per-Scenario Breakdown
-| Scenario | Baseline p95 | Current p95 | Delta |
+### Per-Scenario Breakdown (vs $scenarioRefLabel)
+| Scenario | $scenarioRefLabel p95 | Current p95 | Delta |
 |----------|-------------|-------------|-------|
 $scenarioTable
 
@@ -1574,12 +1588,12 @@ $dryRunNotice$stackNote
 
 **File changed:** ``$($analysisResult.FilePath)``
 $rcaSection
-### Performance Results
-| Metric | Baseline | After Fix | Delta |
+### Performance Results (vs $referenceLabel)
+| Metric | $referenceLabel | After Fix | Delta |
 |--------|----------|-----------|-------|
-| p95 Latency | $($baselineMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
-| Requests/sec | $([math]::Round($baselineMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
-| Error Rate | $([math]::Round($baselineMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
+| p95 Latency | $($referenceMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
+| Requests/sec | $([math]::Round($referenceMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
+| Error Rate | $([math]::Round($referenceMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
 
 **vs baseline improvement:** $($comparison.ImprovementPct)%
 $scenarioBreakdown
@@ -1717,12 +1731,12 @@ $scenarioBreakdown
             $d = $comparison.Deltas
             $rejMetrics = @"
 
-### Performance Results
-| Metric | Baseline | After Fix | Delta |
+### Performance Results (vs $referenceLabel)
+| Metric | $referenceLabel | After Fix | Delta |
 |--------|----------|-----------|-------|
-| p95 Latency | $($baselineMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
-| Requests/sec | $([math]::Round($baselineMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
-| Error Rate | $([math]::Round($baselineMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
+| p95 Latency | $($referenceMetrics.HttpReqDuration.P95)ms | $($currentMetrics.HttpReqDuration.P95)ms | $($d.P95Latency.ChangePct)% |
+| Requests/sec | $([math]::Round($referenceMetrics.HttpReqs.Rate, 1)) | $([math]::Round($currentMetrics.HttpReqs.Rate, 1)) | $($d.RPS.ChangePct)% |
+| Error Rate | $([math]::Round($referenceMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
 
 "@
             $rejRcaSection = ''
@@ -1783,6 +1797,12 @@ $rcaDocument
     if ($experimentOutcome -eq 'improved') {
         $previousMetrics = $currentMetrics
         $previousCounterMetrics = $currentCounterMetrics
+        if ($scenarioResults -and $scenarioResults.Count -gt 0) {
+            $previousScenarioResults = @{}
+            foreach ($sr in $scenarioResults) {
+                if ($sr.Metrics) { $previousScenarioResults[$sr.ScenarioName] = $sr.Metrics }
+            }
+        }
     }
     $previousRcaExplanation = if ($analysisResult) { $analysisResult.Explanation } else { '' }
 
