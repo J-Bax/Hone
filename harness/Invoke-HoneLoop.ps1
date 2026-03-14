@@ -198,6 +198,13 @@ function New-ExperimentPR {
     }
     else {
         Write-Warning "  Failed to create pull request: $result"
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'publish' -Level 'error' `
+            -Message "Failed to create pull request for experiment $Experiment ($Outcome): $result" `
+            -Experiment $Experiment `
+            -Data @{ baseBranch = $BaseBranch; outcome = $Outcome; error = "$result" }
+
         return [PSCustomObject]@{
             Success  = $false
             PrUrl    = $null
@@ -912,6 +919,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Experiment $experiment -Description $analysisResult.Explanation `
                 -FilePath $analysisResult.FilePath -OutcomeLabel '❌ **Build failure**' `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+            Push-Location (Join-Path $repoRoot 'sample-api')
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -921,6 +929,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 $prUrl = $rejPrResult.PrUrl
                 $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'build_failure' }
             }
+            Pop-Location
 
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -994,6 +1003,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Experiment $experiment -Description $analysisResult.Explanation `
                 -FilePath $analysisResult.FilePath -OutcomeLabel '❌ **E2E test failure**' `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+            Push-Location (Join-Path $repoRoot 'sample-api')
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -1003,6 +1013,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 $prUrl = $rejPrResult.PrUrl
                 $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'test_failure' }
             }
+            Pop-Location
 
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -1115,6 +1126,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     -Experiment $experiment -Description $analysisResult.Explanation `
                     -FilePath $analysisResult.FilePath -OutcomeLabel '❌ **API failed to start**' `
                     -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+                Push-Location (Join-Path $repoRoot 'sample-api')
                 $rejPrResult = New-ExperimentPR `
                     -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                     -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -1124,6 +1136,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     $prUrl = $rejPrResult.PrUrl
                     $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'api_start_failure' }
                 }
+                Pop-Location
 
                 Add-ExperimentMetadata `
                     -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -1213,6 +1226,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Experiment $experiment -Description $analysisResult.Explanation `
                 -FilePath $analysisResult.FilePath -OutcomeLabel '❌ **Scale test failure**' `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+            Push-Location (Join-Path $repoRoot 'sample-api')
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -1222,6 +1236,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 $prUrl = $rejPrResult.PrUrl
                 $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'scale_test_failure' }
             }
+            Pop-Location
 
             Add-ExperimentMetadata `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -1376,6 +1391,7 @@ $rcaDocument
                 -OutcomeDetail $comparison.RegressionDetail `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -MetricsSection $rejMetrics -RcaSection $rejRcaSection
+            Push-Location (Join-Path $repoRoot 'sample-api')
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -1385,6 +1401,7 @@ $rcaDocument
                 $prUrl = $rejPrResult.PrUrl
                 $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'regressed' }
             }
+            Pop-Location
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
@@ -1729,6 +1746,7 @@ $rcaDocument
                 -OutcomeLabel "⚪ **No improvement detected**" `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -MetricsSection $rejMetrics -RcaSection $rejRcaSection
+            Push-Location (Join-Path $repoRoot 'sample-api')
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'stale' -Description $analysisResult.Explanation `
@@ -1738,6 +1756,7 @@ $rcaDocument
                 $prUrl = $rejPrResult.PrUrl
                 $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'stale' }
             }
+            Pop-Location
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
