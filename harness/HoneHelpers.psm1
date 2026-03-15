@@ -112,44 +112,61 @@ function Invoke-CopilotWithTimeout {
     <#
     .SYNOPSIS
         Runs the copilot CLI with a timeout. Kills the process if it exceeds the deadline.
+    .DESCRIPTION
+        Uses System.Diagnostics.ProcessStartInfo.ArgumentList for proper argument
+        quoting — essential because the prompt argument contains spaces, newlines,
+        and special characters that Start-Process -ArgumentList would mangle.
     .PARAMETER ArgumentList
-        Arguments to pass to copilot (e.g., '--agent hone-analyst --model claude-opus-4.6 -p "prompt" -s --no-auto-update --no-ask-user').
+        Arguments to pass to copilot as individual elements. Each element is
+        properly quoted by the .NET runtime (e.g., @('--agent', 'hone-analyst',
+        '-p', $prompt)).
     .PARAMETER TimeoutSec
         Maximum seconds to wait. Default: 600.
     .OUTPUTS
-        PSCustomObject with Success, Output, TimedOut properties.
+        PSCustomObject with Success, Output, TimedOut, ExitCode properties.
     #>
     param(
         [Parameter(Mandatory)]
         [string[]]$ArgumentList,
         [int]$TimeoutSec = 600
     )
-    $outFile = [System.IO.Path]::GetTempFileName()
-    $errFile = [System.IO.Path]::GetTempFileName()
-    try {
-        $proc = Start-Process -FilePath 'copilot' -ArgumentList $ArgumentList `
-            -PassThru -NoNewWindow -RedirectStandardOutput $outFile -RedirectStandardError $errFile
-        $exited = $proc.WaitForExit($TimeoutSec * 1000)
-        if (-not $exited) {
-            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
-            $partialOutput = if (Test-Path $outFile) { Get-Content $outFile -Raw } else { '' }
-            return [PSCustomObject]@{
-                Success  = $false
-                Output   = $partialOutput
-                TimedOut = $true
-                ExitCode = -1
-            }
-        }
-        $output = if (Test-Path $outFile) { Get-Content $outFile -Raw } else { '' }
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = 'copilot'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($arg in $ArgumentList) {
+        $psi.ArgumentList.Add($arg)
+    }
+
+    $proc = [System.Diagnostics.Process]::new()
+    $proc.StartInfo = $psi
+    $proc.Start() | Out-Null
+
+    # Read streams asynchronously to prevent deadlocks from buffer fill
+    $stdoutTask = $proc.StandardOutput.ReadToEndAsync()
+    $null = $proc.StandardError.ReadToEndAsync()
+
+    $exited = $proc.WaitForExit($TimeoutSec * 1000)
+    if (-not $exited) {
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        $partialOutput = ''
+        try { $partialOutput = $stdoutTask.GetAwaiter().GetResult() } catch {}
         return [PSCustomObject]@{
-            Success  = ($proc.ExitCode -eq 0)
-            Output   = $output
-            TimedOut = $false
-            ExitCode = $proc.ExitCode
+            Success  = $false
+            Output   = $partialOutput
+            TimedOut = $true
+            ExitCode = -1
         }
     }
-    finally {
-        Remove-Item $outFile, $errFile -Force -ErrorAction SilentlyContinue
+
+    $output = $stdoutTask.GetAwaiter().GetResult()
+    return [PSCustomObject]@{
+        Success  = ($proc.ExitCode -eq 0)
+        Output   = $output
+        TimedOut = $false
+        ExitCode = $proc.ExitCode
     }
 }
 
