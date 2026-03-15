@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Starts the sample API as a background process.
 
@@ -73,15 +73,13 @@ if ($healthy) {
     try {
         $apiProcess.PriorityClass = [System.Diagnostics.ProcessPriorityClass]::High
         Write-Verbose "API process priority elevated to High"
-    }
-    catch {
+    } catch {
         Write-Verbose "Could not elevate API process priority: $_"
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'info' -Message "API is healthy at $baseUrl"
-}
-else {
+} else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' -Message "API failed to become healthy within ${timeout}s"
 

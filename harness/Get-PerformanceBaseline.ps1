@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Establishes a performance baseline by running scale tests.
 
@@ -51,7 +51,7 @@ if (-not $buildResult.Success) {
 # (experiment log, optimization queue, root-cause docs, event log) must be
 # cleared to avoid duplicate experiment numbers and stale queue items.
 $metadataDir = Join-Path $repoRoot $config.Api.MetadataPath
-$resultsDir  = Join-Path $repoRoot $config.Api.ResultsPath
+$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath
 
 $clearedFiles = @()
 foreach ($file in @('experiment-log.md', 'experiment-queue.json', 'experiment-queue.md')) {
@@ -104,12 +104,12 @@ try {
     # Save machine info and run metadata
     $runMetadataPath = Join-Path $repoRoot $config.Api.ResultsPath 'run-metadata.json'
     $runMetadata = [ordered]@{
-        Machine     = $machineInfo
+        Machine = $machineInfo
         BaselineRun = [ordered]@{
-            StartedAt  = $machineInfo.CollectedAt
+            StartedAt = $machineInfo.CollectedAt
             CompletedAt = (Get-Date -Format 'o')
         }
-        Experiments  = @()
+        Experiments = @()
     }
     $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
 
@@ -133,9 +133,9 @@ try {
         -Phase 'baseline' -Level 'info' `
         -Message "Baseline saved to: $baselinePath" `
         -Data @{
-            p95 = $scaleResult.Metrics.HttpReqDuration.P95
-            rps = $scaleResult.Metrics.HttpReqs.Rate
-        }
+        p95 = $scaleResult.Metrics.HttpReqDuration.P95
+        rps = $scaleResult.Metrics.HttpReqs.Rate
+    }
 
     Write-Status "Baseline established:"
     Write-Status "  p95 latency: $($scaleResult.Metrics.HttpReqDuration.P95)ms"
@@ -167,8 +167,7 @@ try {
                 -Phase 'baseline' -Level 'info' `
                 -Message "Scenario baseline saved: $($sr.ScenarioName) — p95: $($sr.Metrics.HttpReqDuration.P95)ms" `
                 -Experiment 0
-        }
-        else {
+        } else {
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'baseline' -Level 'warning' `
                 -Message "Scenario '$($sr.ScenarioName)' produced no metrics" `
@@ -178,8 +177,7 @@ try {
 
     Write-Status ''
     Write-Status "All scenario baselines captured ($($allScenarioResults.Count) additional scenarios)"
-}
-finally {
+} finally {
     # ── Step 5: Stop API ────────────────────────────────────────────────────
     & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
 }

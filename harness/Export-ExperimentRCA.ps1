@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates a root cause analysis document for a harness experiment.
 
@@ -86,11 +86,11 @@ $changeScope = if ($ChangeScope) { $ChangeScope } else { 'architecture' }
 $scopeReasoning = if ($ScopeReasoning) { $ScopeReasoning } else { '' }
 
 # ── Build metric context ────────────────────────────────────────────────────
-$p95Current  = $CurrentMetrics.HttpReqDuration.P95
+$p95Current = $CurrentMetrics.HttpReqDuration.P95
 $p95Baseline = $BaselineMetrics.HttpReqDuration.P95
-$rpsCurrent  = [math]::Round($CurrentMetrics.HttpReqs.Rate, 1)
+$rpsCurrent = [math]::Round($CurrentMetrics.HttpReqs.Rate, 1)
 $rpsBaseline = [math]::Round($BaselineMetrics.HttpReqs.Rate, 1)
-$errCurrent  = [math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2)
+$errCurrent = [math]::Round($CurrentMetrics.HttpReqFailed.Rate * 100, 2)
 $errBaseline = [math]::Round($BaselineMetrics.HttpReqFailed.Rate * 100, 2)
 
 # Handle optional comparison result
@@ -141,10 +141,10 @@ $(if ($CounterMetrics) {
     $cpuMax = if ($CounterMetrics.Runtime.CpuUsage) { "$([math]::Round($CounterMetrics.Runtime.CpuUsage.Max, 1))%" } else { 'N/A' }
     $memAvg = if ($CounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($CounterMetrics.Runtime.WorkingSetMB.Avg, 1))MB" } else { 'N/A' }
     $memMax = if ($CounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($CounterMetrics.Runtime.WorkingSetMB.Max, 1))MB" } else { 'N/A' }
-    
+
     $baselineCpuAvg = if ($BaselineCounterMetrics -and $BaselineCounterMetrics.Runtime.CpuUsage) { "$([math]::Round($BaselineCounterMetrics.Runtime.CpuUsage.Avg, 1))%" } else { 'N/A' }
     $baselineMemMax = if ($BaselineCounterMetrics -and $BaselineCounterMetrics.Runtime.WorkingSetMB) { "$([math]::Round($BaselineCounterMetrics.Runtime.WorkingSetMB.Max, 1))MB" } else { 'N/A' }
-    
+
     @"
 
 ## Efficiency Metrics
@@ -188,10 +188,10 @@ $rca | Out-File -FilePath $rcaPath -Encoding utf8
 
 # ── Return result ───────────────────────────────────────────────────────────
 [PSCustomObject][ordered]@{
-    Success     = $true
-    Path        = $rcaPath
-    FilePath    = $filePath
+    Success = $true
+    Path = $rcaPath
+    FilePath = $filePath
     Explanation = $explanation
-    CodeBlock   = $codeBlock
+    CodeBlock = $codeBlock
     ChangeScope = $changeScope
 }

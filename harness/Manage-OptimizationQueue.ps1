@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Manages the structured optimization queue for the Hone harness.
 
@@ -63,18 +63,17 @@ if (-not (Test-Path $metadataDir)) {
 }
 
 $queueJsonPath = Join-Path $metadataDir 'experiment-queue.json'
-$queueMdPath   = Join-Path $metadataDir 'experiment-queue.md'
+$queueMdPath = Join-Path $metadataDir 'experiment-queue.md'
 
 # ── Helper: Load queue from JSON ─────────────────────────────────────────────
 function Read-Queue {
     if (Test-Path $queueJsonPath) {
         Get-Content $queueJsonPath -Raw | ConvertFrom-Json
-    }
-    else {
+    } else {
         [PSCustomObject]@{
             generatedByExperiment = 0
-            generatedAt           = $null
-            items                 = @()
+            generatedAt = $null
+            items = @()
         }
     }
 }
@@ -109,8 +108,8 @@ function Sync-Markdown {
         $scopeTag = if ($item.scope -eq 'architecture') { '[ARCHITECTURE] ' } else { '' }
         $statusNote = switch ($item.status) {
             'in_progress' { ' *(in progress)*' }
-            'done'        { " *(experiment $($item.triedByExperiment) — $($item.outcome))*" }
-            default       { '' }
+            'done' { " *(experiment $($item.triedByExperiment) — $($item.outcome))*" }
+            default { '' }
         }
         $lines += "- [$check] **#$($item.id)** ${scopeTag}``$($item.filePath)`` — $($item.title)$statusNote"
     }
@@ -145,22 +144,22 @@ switch ($Action) {
             }
 
             [PSCustomObject][ordered]@{
-                id                = $i + 1
-                filePath          = $opp.filePath
-                title             = $itemTitle
-                explanation       = if ($opp.explanation) { $opp.explanation } else { $itemTitle }
-                scope             = if ($opp.scope) { $opp.scope } else { 'narrow' }
-                rootCausePath     = $rcaPath
-                status            = 'pending'
+                id = $i + 1
+                filePath = $opp.filePath
+                title = $itemTitle
+                explanation = if ($opp.explanation) { $opp.explanation } else { $itemTitle }
+                scope = if ($opp.scope) { $opp.scope } else { 'narrow' }
+                rootCausePath = $rcaPath
+                status = 'pending'
                 triedByExperiment = $null
-                outcome           = $null
+                outcome = $null
             }
         }
 
         $queue = [PSCustomObject][ordered]@{
             generatedByExperiment = $Experiment
-            generatedAt           = (Get-Date -Format 'o')
-            items                 = @($items)
+            generatedAt = (Get-Date -Format 'o')
+            items = @($items)
         }
 
         Write-Queue -Queue $queue

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs every registered k6 scenario and returns per-scenario results.
 
@@ -91,8 +91,8 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         -Experiment $Experiment
 
     $params = @{
-        ConfigPath   = $ConfigPath
-        Experiment    = $Experiment
+        ConfigPath = $ConfigPath
+        Experiment = $Experiment
         ScenarioPath = $scenarioFile
     }
     if ($scenarioNameArg) { $params.ScenarioName = $scenarioNameArg }
@@ -102,8 +102,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     $result = $null
     try {
         $result = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') @params
-    }
-    catch {
+    } catch {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Scenario '$name' threw an error: $_" `
@@ -114,18 +113,18 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     $metrics = if ($result) { $result.Metrics } else { $null }
 
     $results.Add([PSCustomObject][ordered]@{
-        ScenarioName       = $name
-        Description        = $scenario.description
-        UseForOptimization = [bool]$scenario.use_for_optimization
-        Success            = $success
-        Metrics            = $metrics
-        CounterMetrics     = if ($result) { $result.CounterMetrics } else { $null }
-        SummaryPath        = if ($result) { $result.SummaryPath } else { $null }
-    })
+            ScenarioName = $name
+            Description = $scenario.description
+            UseForOptimization = [bool]$scenario.use_for_optimization
+            Success = $success
+            Metrics = $metrics
+            CounterMetrics = if ($result) { $result.CounterMetrics } else { $null }
+            SummaryPath = if ($result) { $result.SummaryPath } else { $null }
+        })
 
     $status = if ($success) { 'OK' } else { 'FAIL' }
     $p95 = if ($metrics) { "$($metrics.HttpReqDuration.P95)ms" } else { 'N/A' }
     Write-Status "  [$status] $name — p95: $p95"
 }
 
-return ,$results.ToArray()
+return , $results.ToArray()

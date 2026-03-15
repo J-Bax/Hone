@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Stops the PerfView CPU collection and waits for merge/zip.
 .DESCRIPTION
@@ -19,7 +19,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$process    = $Handle.Process
+$process = $Handle.Process
 $outputPath = $Handle.OutputPath
 $waitTimeoutSec = if ($Handle.Settings -and $Handle.Settings.StopTimeoutSec) {
     [int]$Handle.Settings.StopTimeoutSec
@@ -28,8 +28,8 @@ $waitTimeoutSec = if ($Handle.Settings -and $Handle.Settings.StopTimeoutSec) {
 if (-not $process) {
     Write-Warning 'No PerfView process in handle — collection may not have started.'
     return [PSCustomObject][ordered]@{
-        Success       = $false
-        Error         = 'No PerfView process in handle.'
+        Success = $false
+        Error = 'No PerfView process in handle.'
         ArtifactPaths = @()
     }
 }
@@ -69,8 +69,7 @@ try {
 
         if ($process.HasExited) {
             Write-Verbose "PerfView exited on its own."
-        }
-        elseif ($workComplete) {
+        } elseif ($workComplete) {
             # PerfView completed its work but didn't exit (known /NoGui bug).
             # Give a short grace period, then terminate cleanly.
             $graceExited = $process.WaitForExit(5000)
@@ -81,8 +80,7 @@ try {
                     Write-Warning "PerfView process $($process.Id) did not terminate — may be orphaned."
                 }
             }
-        }
-        else {
+        } else {
             # Deadline reached without completion — force stop
             Write-Warning "PerfView did not complete within ${waitTimeoutSec}s — forcing stop."
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -99,8 +97,7 @@ try {
         if (Test-Path $abortFilePath) {
             Remove-Item $abortFilePath -Force -ErrorAction SilentlyContinue
         }
-    }
-    else {
+    } else {
         Write-Verbose "PerfView process already exited (exit code: $($process.ExitCode))."
     }
 
@@ -111,8 +108,8 @@ try {
         $msg = "ETL artifact not found at '$outputPath' after PerfView exited."
         Write-Information $msg
         return [PSCustomObject][ordered]@{
-            Success       = $false
-            Error         = $msg
+            Success = $false
+            Error = $msg
             ArtifactPaths = @()
         }
     }
@@ -121,16 +118,15 @@ try {
     Write-Information "PerfView collection stopped. Artifact: $outputPath ($sizeMB MB)"
 
     return [PSCustomObject][ordered]@{
-        Success       = $true
+        Success = $true
         ArtifactPaths = @($outputPath)
     }
-}
-catch {
+} catch {
     $msg = "Failed to stop PerfView collector: $_"
     Write-Information $msg
     return [PSCustomObject][ordered]@{
-        Success       = $false
-        Error         = $msg
+        Success = $false
+        Error = $msg
         ArtifactPaths = @()
     }
 }

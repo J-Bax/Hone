@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs diagnostic measurement passes with all enabled profiling plugins.
 
@@ -54,7 +54,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $harnessRoot = $PSScriptRoot
-$repoRoot    = Split-Path -Parent $harnessRoot
+$repoRoot = Split-Path -Parent $harnessRoot
 
 # ── Load config ─────────────────────────────────────────────────────────────
 $config = Get-HoneConfig -ConfigPath $ConfigPath
@@ -64,7 +64,7 @@ if (-not $config.Diagnostics -or -not $config.Diagnostics.Enabled) {
 }
 
 $diagnostics = $config.Diagnostics
-$resultsDir  = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
+$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
 
 if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
@@ -162,15 +162,13 @@ foreach ($groupName in $groupNames) {
                         Stop-Process -Id $k6Proc.Id -Force -ErrorAction SilentlyContinue
                         Write-Warning "     k6 diagnostic run $run timed out after ${k6TimeoutSec}s — killing"
                     }
-                }
-                finally {
+                } finally {
                     Remove-Item $k6OutFile -Force -ErrorAction SilentlyContinue
                 }
             }
 
             Write-Status '     k6 complete'
-        }
-        finally {
+        } finally {
             # ── Stop collectors (always) ────────────────────────────────────
             Write-Status '     Stopping collectors...'
             $stopResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
@@ -204,8 +202,7 @@ foreach ($groupName in $groupNames) {
 
         $exportedNames = ($exportResult.CollectorData.Keys -join ', ')
         Write-Status "     Exported: $exportedNames"
-    }
-    finally {
+    } finally {
         # ── Stop API (always) ───────────────────────────────────────────────
         Write-Status '     Stopping API...'
         & (Join-Path $harnessRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process | Out-Null
@@ -231,7 +228,7 @@ Write-Status "  Analyzers complete: $analyzerNames"
 Write-Status '  ────────────────────────────────────────────────────────'
 
 return @{
-    Success         = $true
-    CollectorData   = $mergedCollectorData
+    Success = $true
+    CollectorData = $mergedCollectorData
     AnalyzerReports = $analysisResult.Reports
 }

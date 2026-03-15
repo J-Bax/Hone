@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Applies an optimization suggestion on a new git branch.
 
@@ -97,17 +97,16 @@ try {
         -Experiment $Experiment
 
     $result = [ordered]@{
-        Success     = $true
-        BranchName  = $branchName
-        FilePath    = $FilePath
+        Success = $true
+        BranchName = $branchName
+        FilePath = $FilePath
         Description = $Description
     }
-}
-catch {
+} catch {
     $result = [ordered]@{
-        Success     = $false
-        BranchName  = $branchName
-        FilePath    = $FilePath
+        Success = $false
+        BranchName = $branchName
+        FilePath = $FilePath
         Description = "Error: $_"
     }
 
@@ -115,8 +114,7 @@ catch {
         -Phase 'experiment' -Level 'error' `
         -Message "Failed to apply fix: $_" `
         -Experiment $Experiment
-}
-finally {
+} finally {
     Pop-Location
 }
 

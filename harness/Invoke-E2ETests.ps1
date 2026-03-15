@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs E2E tests as the regression gate.
 
@@ -45,15 +45,14 @@ try {
         --verbosity normal 2>&1
 
     $testExitCode = $LASTEXITCODE
-}
-finally {
+} finally {
     # Parse the output for test counts
     $testOutputString = ($testOutput | Out-String)
     $totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
     $passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
     $failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
 
-    $totalTests  = if ($totalMatch) { [int]$Matches[1] } else { 0 }
+    $totalTests = if ($totalMatch) { [int]$Matches[1] } else { 0 }
     $passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
     $failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
 
@@ -62,20 +61,20 @@ finally {
 }
 
 $result = [ordered]@{
-    Success     = ($testExitCode -eq 0)
-    ExitCode    = $testExitCode
-    TotalTests  = $totalTests
+    Success = ($testExitCode -eq 0)
+    ExitCode = $testExitCode
+    TotalTests = $totalTests
     PassedTests = $passedTests
     FailedTests = $failedTests
-    TrxPath     = $trxPath
-    Output      = $testOutputString
+    TrxPath = $trxPath
+    Output = $testOutputString
 }
 
 # Save test log to experiment directory
 $testOutputString | Out-File -FilePath (Join-Path $resultsDir 'e2e-tests.log') -Encoding utf8
 
 $logData = @{
-    total  = $result.TotalTests
+    total = $result.TotalTests
     passed = $result.PassedTests
     failed = $result.FailedTests
 }
@@ -85,8 +84,7 @@ if ($result.Success) {
         -Phase 'verify' -Level 'info' `
         -Message "E2E tests passed ($($result.PassedTests)/$($result.TotalTests))" `
         -Experiment $Experiment -Data $logData
-}
-else {
+} else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'verify' -Level 'error' `
         -Message "E2E tests FAILED ($($result.FailedTests) failures out of $($result.TotalTests))" `

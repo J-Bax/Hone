@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Unified handler for experiment failures in stacked-diffs mode.
 
@@ -58,7 +58,7 @@ param(
     [Parameter(Mandatory)][string]$BranchName,
     [Parameter(Mandatory)][string]$FilePath,
     [Parameter(Mandatory)][int]$Experiment,
-    [Parameter(Mandatory)][ValidateSet('regressed','stale')][string]$Outcome,
+    [Parameter(Mandatory)][ValidateSet('regressed', 'stale')][string]$Outcome,
     [Parameter(Mandatory)][string]$RevertDescription,
     [string]$ConfigPath,
 
@@ -106,6 +106,6 @@ if (-not $SkipQueueMarkDone) {
 }
 
 return [PSCustomObject]@{
-    Success      = $revertResult.Success
+    Success = $revertResult.Success
     RevertResult = $revertResult
 }

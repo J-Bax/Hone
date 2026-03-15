@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Stages experiment artifacts for git commit.
 
@@ -28,7 +28,7 @@ try {
     if (Test-Path $experimentDir) {
         # Analysis artifacts
         foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
-                               'classification-response.json', 'root-cause.md')) {
+                'classification-response.json', 'root-cause.md')) {
             $f = Join-Path $experimentDir $pattern
             if (Test-Path $f) {
                 git add "results/experiment-$Experiment/$pattern" 2>&1 | Out-Null
@@ -46,7 +46,7 @@ try {
         }
         # Parsed metric summaries from collectors
         foreach ($summary in @('diagnostics/dotnet-counters/dotnet-counters.json',
-                               'diagnostics/perfview-gc/gc-report.json')) {
+                'diagnostics/perfview-gc/gc-report.json')) {
             if (Test-Path (Join-Path $experimentDir $summary)) {
                 git add "results/experiment-$Experiment/$summary" 2>&1 | Out-Null
             }
@@ -74,7 +74,6 @@ try {
     if (Test-Path $runMetadataFile) {
         git add results/run-metadata.json 2>&1 | Out-Null
     }
-}
-finally {
+} finally {
     Pop-Location
 }

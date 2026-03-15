@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Displays performance results in the terminal.
 
@@ -58,7 +58,7 @@ foreach ($dir in $experimentDirs) {
     # Parse from the raw k6 summary
     $raw = Get-Content $summaryFile -Raw | ConvertFrom-Json
     $metrics = [PSCustomObject]@{
-        Experiment       = $expNum
+        Experiment = $expNum
         HttpReqDuration = [PSCustomObject]@{
             Avg = $raw.metrics.http_req_duration.avg
             P50 = $raw.metrics.http_req_duration.med
@@ -67,11 +67,11 @@ foreach ($dir in $experimentDirs) {
             P99 = $raw.metrics.http_req_duration.'p(99)'
             Max = $raw.metrics.http_req_duration.max
         }
-        HttpReqs        = [PSCustomObject]@{
+        HttpReqs = [PSCustomObject]@{
             Count = $raw.metrics.http_reqs.count
-            Rate  = $raw.metrics.http_reqs.rate
+            Rate = $raw.metrics.http_reqs.rate
         }
-        HttpReqFailed   = [PSCustomObject]@{
+        HttpReqFailed = [PSCustomObject]@{
             Rate = $raw.metrics.http_req_failed.value ?? 0
         }
     }
@@ -219,7 +219,6 @@ foreach ($exp in $experiments) {
     $iErr = Format-Pct ($exp.HttpReqFailed.Rate)
 
     $deltaP95 = Format-Delta -Current $iP95 -Baseline $bP95 -LowerIsBetter $true
-    $deltaRPS = Format-Delta -Current $iRPS -Baseline $bRPS -LowerIsBetter $false
 
     # Color by direction of change vs baseline (green = improved, red = worse)
     $p95Color = if ($iP95 -lt $bP95) { 'Green' } elseif ($iP95 -gt $bP95) { 'Red' } else { 'White' }
@@ -269,7 +268,6 @@ if ($scenarioBaselineFiles.Count -gt 0) {
 
     # Header
     $sColWidths = @{ Name = 22; P95 = 12; RPS = 12; Err = 12; Delta = 12 }
-    $sTotalWidth = 22 + 12 + 12 + 12 + 12 + 2
 
     foreach ($sbFile in $scenarioBaselineFiles) {
         $scenarioName = $sbFile.BaseName -replace '^baseline-', ''
@@ -341,8 +339,8 @@ Write-Host ""
 
 $barMax = 50
 $maxVal = @($baseline.HttpReqDuration.P50, $baseline.HttpReqDuration.P90,
-            $baseline.HttpReqDuration.P95, $baseline.HttpReqDuration.Max) |
-          Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+    $baseline.HttpReqDuration.P95, $baseline.HttpReqDuration.Max) |
+    Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
 
 $percentiles = @(
     @{ Label = 'p50'; Value = $baseline.HttpReqDuration.P50 }
@@ -372,8 +370,8 @@ if ($latestIter) {
     Write-Host ""
 
     $latestMaxVal = @($latestIter.HttpReqDuration.P50, $latestIter.HttpReqDuration.P90,
-                      $latestIter.HttpReqDuration.P95, $latestIter.HttpReqDuration.Max) |
-                    Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
+        $latestIter.HttpReqDuration.P95, $latestIter.HttpReqDuration.Max) |
+        Measure-Object -Maximum | Select-Object -ExpandProperty Maximum
 
     # Use same scale as baseline for visual comparison
     $scaleMax = [math]::Max($maxVal, $latestMaxVal)
@@ -410,18 +408,16 @@ $rpsDelta = Format-Delta -Current $latestResult.HttpReqs.Rate -Baseline $baselin
 Write-Host "  Status: " -NoNewline -ForegroundColor DarkGray
 if ($latestIter) {
     $improved = ($latestResult.HttpReqDuration.P95 -lt $baseline.HttpReqDuration.P95) -or
-                ($latestResult.HttpReqs.Rate -gt $baseline.HttpReqs.Rate) -or
-                ($latestResult.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate)
+    ($latestResult.HttpReqs.Rate -gt $baseline.HttpReqs.Rate) -or
+    ($latestResult.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate)
     if ($improved) {
         Write-Host "IMPROVED vs BASELINE" -NoNewline -ForegroundColor Green
         Write-Host " | p95 $($p95Delta.Text)" -NoNewline -ForegroundColor $p95Delta.Color
         Write-Host " | RPS $($rpsDelta.Text)" -ForegroundColor $rpsDelta.Color
-    }
-    else {
+    } else {
         Write-Host "NO NET IMPROVEMENT vs BASELINE" -ForegroundColor Yellow
     }
-}
-else {
+} else {
     Write-Host "Baseline only — run Invoke-HoneLoop.ps1 to optimize" -ForegroundColor DarkGray
 }
 

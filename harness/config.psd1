@@ -1,17 +1,17 @@
-@{
+﻿@{
     # ── Target API ──────────────────────────────────────────────
     Api = @{
         # Path to the .NET solution file (relative to repo root)
-        SolutionPath    = 'sample-api/SampleApi.sln'
+        SolutionPath = 'sample-api/SampleApi.sln'
 
         # Path to the API project directory (relative to repo root)
-        ProjectPath     = 'sample-api/SampleApi'
+        ProjectPath = 'sample-api/SampleApi'
 
         # Subdirectories to scan for source code context (relative to ProjectPath)
         SourceCodePaths = @('Controllers', 'Data', 'Models')
 
         # File pattern for source files to include in analysis prompts
-        SourceFileGlob  = '*.cs'
+        SourceFileGlob = '*.cs'
 
         # Path to the E2E test project directory (relative to repo root)
         TestProjectPath = 'sample-api/SampleApi.Tests'
@@ -19,22 +19,22 @@
         # URL where the API listens when started.
         # Use port 0 for automatic ephemeral port assignment (recommended).
         # A specific port (e.g. http://localhost:5050) is also supported.
-        BaseUrl         = 'http://localhost:0'
+        BaseUrl = 'http://localhost:0'
 
         # Health check endpoint (GET, must return 200)
-        HealthEndpoint  = '/health'
+        HealthEndpoint = '/health'
 
         # Optional endpoint (POST) to trigger server-side GC between runs
-        GcEndpoint      = '/diag/gc'
+        GcEndpoint = '/diag/gc'
 
         # Seconds to wait for API to become healthy after start
-        StartupTimeout  = 90
+        StartupTimeout = 90
 
         # Directory for all performance results (relative to repo root)
-        ResultsPath     = 'sample-api/results'
+        ResultsPath = 'sample-api/results'
 
         # Directory for optimization metadata (log + queue) (relative to repo root)
-        MetadataPath    = 'sample-api/results/metadata'
+        MetadataPath = 'sample-api/results/metadata'
     }
 
     # ── Performance Tolerances ───────────────────────────────────
@@ -45,7 +45,7 @@
         # Pure steady-state measurement (no ramp/setup contamination) with
         # median-of-5 runs, GC settling, and 3s cooldowns between runs.
         # Re-evaluate after baselining if CV drops below 8%.
-        MaxRegressionPct  = 0.10
+        MaxRegressionPct = 0.10
 
         # Minimum absolute p95 delta (in milliseconds) to consider a regression
         # meaningful.  Prevents false positives on fast-baseline scenarios where
@@ -86,7 +86,7 @@
             Enabled = $true
 
             # Minimum reduction in avg CPU usage to count as efficiency gain (0.05 = 5%)
-            MinCpuReductionPct       = 0.05
+            MinCpuReductionPct = 0.05
 
             # Minimum reduction in peak working set to count as efficiency gain (0.05 = 5%)
             MinWorkingSetReductionPct = 0.05
@@ -102,11 +102,11 @@
         ScenarioRegistryPath = 'sample-api/scale-tests/thresholds.json'
 
         # Additional k6 CLI arguments
-        ExtraArgs    = @()
+        ExtraArgs = @()
         # ── Warmup ──────────────────────────────────────────
         # Run a short 1-VU warmup pass before the measured run to ensure
         # the application is fully warmed up before measured runs.
-        WarmupEnabled      = $true
+        WarmupEnabled = $true
         WarmupScenarioPath = 'sample-api/scale-tests/scenarios/warmup.js'
 
         # ── Multi-run averaging ─────────────────────────────
@@ -116,7 +116,8 @@
 
         # Seconds to pause between consecutive measured runs.
         # Allows GC, thread pool, and TCP TIME_WAIT connections to settle.
-        CooldownSeconds = 3    }
+        CooldownSeconds = 3
+    }
 
     # ── .NET Performance Counters ───────────────────────────────
     DotnetCounters = @{
@@ -141,21 +142,21 @@
         MaxExperiments = 999
 
         # Git branch prefix for optimization branches
-        BranchPrefix  = 'hone/experiment'
+        BranchPrefix = 'hone/experiment'
 
         # Stacked diffs: each experiment branches from the previous one,
         # forming a linear chain.  PRs compare N+1 against the last
         # successful experiment instead of master.
         # When $false (legacy mode): each experiment branches from master
         # and PRs target master directly.
-        StackedDiffs  = $true
+        StackedDiffs = $true
 
         # When $false the loop creates PRs and continues immediately
         # (fire-and-forget).  When $true the loop blocks until each PR
         # is merged before starting the next experiment.
         # In stacked mode $false is recommended; $true is the legacy
         # behaviour when StackedDiffs = $false.
-        WaitForMerge  = $false
+        WaitForMerge = $false
     }
 
     # ── Copilot CLI ─────────────────────────────────────────────
@@ -164,21 +165,21 @@
         Model = 'claude-sonnet-4.5'
 
         # Per-agent model overrides (null = use default Model above)
-        AnalysisModel       = 'claude-opus-4.6'
+        AnalysisModel = 'claude-opus-4.6'
         ClassificationModel = 'claude-opus-4.6'    # needs strong reasoning for scope decisions
-        FixModel            = 'claude-sonnet-4.6'
+        FixModel = 'claude-sonnet-4.6'
 
         # Maximum seconds to wait for a copilot agent invocation before killing it
-        AgentTimeoutSec     = 600
+        AgentTimeoutSec = 600
     }
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
         # Log level: 'verbose', 'info', 'warning', 'error'
-        Level          = 'info'
+        Level = 'info'
 
         # Maximum log file size in MB before rotation
-        MaxFileSizeMB  = 50
+        MaxFileSizeMB = 50
     }
 
     # ── Diagnostic Profiling (Plugin Framework) ─────────────────
@@ -191,7 +192,7 @@
 
         # Directories containing collector / analyzer plugins (relative to repo root)
         CollectorsPath = 'harness/collectors'
-        AnalyzersPath  = 'harness/analyzers'
+        AnalyzersPath = 'harness/analyzers'
 
         # PerfView executable path (downloaded by Setup-DevEnvironment.ps1)
         PerfViewExePath = 'tools/PerfView/PerfView.exe'
@@ -211,19 +212,19 @@
         # Collectors in different Groups run in separate diagnostic passes.
         CollectorSettings = @{
             'perfview-cpu' = @{
-                Enabled          = $true
-                MaxCollectSec    = 150    # must exceed k6 scenario duration (120s) + margin
-                StopTimeoutSec   = 300    # rundown + merge + zip can be slow
+                Enabled = $true
+                MaxCollectSec = 150    # must exceed k6 scenario duration (120s) + margin
+                StopTimeoutSec = 300    # rundown + merge + zip can be slow
                 ExportTimeoutSec = 300    # UserCommand export can hang on large ETLs
-                BufferSizeMB     = 256
-                MaxStacks        = 100    # truncate CPU folded stacks to top-N
+                BufferSizeMB = 256
+                MaxStacks = 100    # truncate CPU folded stacks to top-N
             }
             'perfview-gc' = @{
-                Enabled          = $true
-                MaxCollectSec    = 150    # must exceed k6 scenario duration (120s) + margin
-                StopTimeoutSec   = 300
+                Enabled = $true
+                MaxCollectSec = 150    # must exceed k6 scenario duration (120s) + margin
+                StopTimeoutSec = 300
                 ExportTimeoutSec = 300
-                BufferSizeMB     = 256
+                BufferSizeMB = 256
             }
             'dotnet-counters' = @{
                 Enabled = $true
@@ -235,13 +236,13 @@
         # Keys must match the directory name under AnalyzersPath.
         AnalyzerSettings = @{
             'cpu-hotspots' = @{
-                Enabled   = $true
-                Model     = 'claude-opus-4.6'
+                Enabled = $true
+                Model = 'claude-opus-4.6'
                 MaxStacks = 100     # Truncate folded stacks to top-N by sample count
             }
             'memory-gc' = @{
                 Enabled = $true
-                Model   = 'claude-opus-4.6'
+                Model = 'claude-opus-4.6'
             }
         }
     }

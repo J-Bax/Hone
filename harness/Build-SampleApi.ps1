@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds the sample API project.
 
@@ -30,8 +30,7 @@ $spinner = Start-Spinner -Message 'Building solution'
 try {
     $buildOutput = dotnet build $solutionPath --configuration Release 2>&1
     $buildExitCode = $LASTEXITCODE
-}
-finally {
+} finally {
     $buildMsg = if ($buildExitCode -eq 0) { 'Build succeeded' } else { "Build failed (exit code $buildExitCode)" }
     Stop-Spinner -Spinner $spinner -CompletionMessage $buildMsg
 }
@@ -48,17 +47,16 @@ if ($Experiment -gt 0) {
 }
 
 $result = [ordered]@{
-    Success    = ($buildExitCode -eq 0)
-    ExitCode   = $buildExitCode
-    Output     = $buildOutputString
+    Success = ($buildExitCode -eq 0)
+    ExitCode = $buildExitCode
+    Output = $buildOutputString
     SolutionPath = $solutionPath
 }
 
 if ($result.Success) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'experiment' -Level 'info' -Message 'Build succeeded'
-}
-else {
+} else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'experiment' -Level 'error' -Message "Build failed with exit code $buildExitCode" `
         -Data @{ output = $result.Output }

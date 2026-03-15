@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Stops dotnet-counters collection and parses the captured metrics.
 
@@ -45,8 +45,7 @@ if ($process -and -not $process.HasExited) {
             -Phase 'measure' -Level 'info' `
             -Message "dotnet-counters process stopped (PID: $($process.Id))" `
             -Experiment $Experiment
-    }
-    catch {
+    } catch {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Error stopping dotnet-counters: $_" `
@@ -120,52 +119,52 @@ try {
     $metrics = [ordered]@{
         Timestamp = (Get-Date -Format 'o')
         Experiment = $Experiment
-        CsvPath   = $csvPath
+        CsvPath = $csvPath
         TotalSamples = $rows.Count
 
         # System.Runtime counters
         Runtime = [ordered]@{
-            CpuUsage           = Get-CounterStats 'System.Runtime' 'CPU Usage'
-            WorkingSetMB       = Get-CounterStats 'System.Runtime' 'Working Set'
-            GcHeapSizeMB       = Get-CounterStats 'System.Runtime' 'GC Heap Size'
-            Gen0Collections    = Get-CounterStats 'System.Runtime' 'Gen 0'
-            Gen1Collections    = Get-CounterStats 'System.Runtime' 'Gen 1'
-            Gen2Collections    = Get-CounterStats 'System.Runtime' 'Gen 2'
-            Gen0SizeMB         = Get-CounterStats 'System.Runtime' 'Gen 0 Size'
-            Gen1SizeMB         = Get-CounterStats 'System.Runtime' 'Gen 1 Size'
-            Gen2SizeMB         = Get-CounterStats 'System.Runtime' 'Gen 2 Size'
-            LOHSizeMB          = Get-CounterStats 'System.Runtime' 'LOH Size'
-            POHSizeMB          = Get-CounterStats 'System.Runtime' 'POH'
-            GcPauseRatio       = Get-CounterStats 'System.Runtime' 'time in GC'
-            AllocRateMB        = Get-CounterStats 'System.Runtime' 'Allocation Rate'
-            ExceptionCount     = Get-CounterStats 'System.Runtime' 'Exception'
-            ThreadPoolThreads  = Get-CounterStats 'System.Runtime' 'ThreadPool Thread'
-            ThreadPoolQueue    = Get-CounterStats 'System.Runtime' 'ThreadPool Queue'
+            CpuUsage = Get-CounterStats 'System.Runtime' 'CPU Usage'
+            WorkingSetMB = Get-CounterStats 'System.Runtime' 'Working Set'
+            GcHeapSizeMB = Get-CounterStats 'System.Runtime' 'GC Heap Size'
+            Gen0Collections = Get-CounterStats 'System.Runtime' 'Gen 0'
+            Gen1Collections = Get-CounterStats 'System.Runtime' 'Gen 1'
+            Gen2Collections = Get-CounterStats 'System.Runtime' 'Gen 2'
+            Gen0SizeMB = Get-CounterStats 'System.Runtime' 'Gen 0 Size'
+            Gen1SizeMB = Get-CounterStats 'System.Runtime' 'Gen 1 Size'
+            Gen2SizeMB = Get-CounterStats 'System.Runtime' 'Gen 2 Size'
+            LOHSizeMB = Get-CounterStats 'System.Runtime' 'LOH Size'
+            POHSizeMB = Get-CounterStats 'System.Runtime' 'POH'
+            GcPauseRatio = Get-CounterStats 'System.Runtime' 'time in GC'
+            AllocRateMB = Get-CounterStats 'System.Runtime' 'Allocation Rate'
+            ExceptionCount = Get-CounterStats 'System.Runtime' 'Exception'
+            ThreadPoolThreads = Get-CounterStats 'System.Runtime' 'ThreadPool Thread'
+            ThreadPoolQueue = Get-CounterStats 'System.Runtime' 'ThreadPool Queue'
             ThreadPoolCompleted = Get-CounterStats 'System.Runtime' 'ThreadPool Completed'
             MonitorContentions = Get-CounterStats 'System.Runtime' 'Monitor Lock'
-            ActiveTimers       = Get-CounterStats 'System.Runtime' 'Active Timer'
-            Assemblies         = Get-CounterStats 'System.Runtime' 'Assemblies'
+            ActiveTimers = Get-CounterStats 'System.Runtime' 'Active Timer'
+            Assemblies = Get-CounterStats 'System.Runtime' 'Assemblies'
         }
 
         # ASP.NET Core Hosting counters
         AspNetCore = [ordered]@{
-            RequestRate        = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Request Rate'
-            TotalRequests      = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Total Requests'
-            CurrentRequests    = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Current Requests'
-            FailedRequests     = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Failed Requests'
+            RequestRate = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Request Rate'
+            TotalRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Total Requests'
+            CurrentRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Current Requests'
+            FailedRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Failed Requests'
         }
 
         # HTTP Connection counters
         HttpConnections = [ordered]@{
             CurrentConnections = Get-CounterStats 'Microsoft.AspNetCore.Http.Connections' 'Current Connections'
-            TotalConnections   = Get-CounterStats 'Microsoft.AspNetCore.Http.Connections' 'Total Connections'
+            TotalConnections = Get-CounterStats 'Microsoft.AspNetCore.Http.Connections' 'Total Connections'
         }
 
         # Outbound HTTP counters
         HttpClient = [ordered]@{
-            CurrentRequests    = Get-CounterStats 'System.Net.Http' 'Current Requests'
-            RequestsStarted    = Get-CounterStats 'System.Net.Http' 'Requests Started'
-            RequestsFailed     = Get-CounterStats 'System.Net.Http' 'Requests Failed'
+            CurrentRequests = Get-CounterStats 'System.Net.Http' 'Current Requests'
+            RequestsStarted = Get-CounterStats 'System.Net.Http' 'Requests Started'
+            RequestsFailed = Get-CounterStats 'System.Net.Http' 'Requests Failed'
         }
     }
 
@@ -182,12 +181,12 @@ try {
         -Message "Counter summary — CPU avg: $cpuAvg, GC heap max: $heapMax, Gen2: $gen2, GC pause: $gcPause, Threads max: $threads, Exceptions: $exceptions" `
         -Experiment $Experiment `
         -Data @{
-            cpuAvg = $metrics.Runtime.CpuUsage.Avg
-            gcHeapMax = $metrics.Runtime.GcHeapSizeMB.Max
-            gen2Collections = $metrics.Runtime.Gen2Collections.Last
-            gcPauseMax = $metrics.Runtime.GcPauseRatio.Max
-            threadPoolMax = $metrics.Runtime.ThreadPoolThreads.Max
-        }
+        cpuAvg = $metrics.Runtime.CpuUsage.Avg
+        gcHeapMax = $metrics.Runtime.GcHeapSizeMB.Max
+        gen2Collections = $metrics.Runtime.Gen2Collections.Last
+        gcPauseMax = $metrics.Runtime.GcPauseRatio.Max
+        threadPoolMax = $metrics.Runtime.ThreadPoolThreads.Max
+    }
 
     # Save the parsed metrics as JSON alongside the CSV
     $jsonPath = [System.IO.Path]::ChangeExtension($csvPath, '.json')
@@ -199,8 +198,7 @@ try {
         -Experiment $Experiment
 
     return [PSCustomObject]$metrics
-}
-catch {
+} catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to parse counter data: $_" `

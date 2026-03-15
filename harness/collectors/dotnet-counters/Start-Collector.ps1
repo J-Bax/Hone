@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Starts the dotnet-counters collector plugin.
 
@@ -38,7 +38,7 @@ $outputPath = Join-Path $OutputDir 'dotnet-counters.csv'
 # Build parameters for the existing harness script
 $startScript = Join-Path $PSScriptRoot '..\..\Start-DotnetCounters.ps1'
 $startParams = @{
-    ProcessId  = $ProcessId
+    ProcessId = $ProcessId
     OutputPath = $outputPath
 }
 
@@ -53,15 +53,14 @@ $result = & $startScript @startParams
 if ($result.Success) {
     return @{
         Success = $true
-        Handle  = @{
+        Handle = @{
             InnerHandle = $result
-            OutputPath  = $outputPath
+            OutputPath = $outputPath
         }
     }
-}
-else {
+} else {
     return @{
         Success = $false
-        Error   = "dotnet-counters failed to start (exit code or missing tool). Check dotnet tool install --global dotnet-counters."
+        Error = "dotnet-counters failed to start (exit code or missing tool). Check dotnet tool install --global dotnet-counters."
     }
 }

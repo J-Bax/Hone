@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Resets the sample API database to ensure clean state between experiments.
 
@@ -35,7 +35,7 @@ $appSettings = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
 $connectionString = $appSettings.ConnectionStrings.DefaultConnection
 
 $serverMatch = [regex]::Match($connectionString, 'Server=([^;]+)')
-$dbMatch     = [regex]::Match($connectionString, 'Database=([^;]+)')
+$dbMatch = [regex]::Match($connectionString, 'Database=([^;]+)')
 
 if (-not $serverMatch.Success -or -not $dbMatch.Success) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -89,8 +89,7 @@ try {
         -Experiment $Experiment
 
     return [PSCustomObject]@{ Success = $true; Database = $dbName }
-}
-catch {
+} catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' `
         -Message "Failed to reset database: $_" `

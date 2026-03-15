@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Reverts the code change from a failed experiment while preserving artifacts.
 
@@ -32,6 +32,8 @@
     Path to the harness config.psd1 file.
 #>
 [CmdletBinding()]
+# ConfigPath is part of the harness script interface; kept for consistency
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'ConfigPath')]
 param(
     [Parameter(Mandatory)]
     [string]$BranchName,
@@ -54,7 +56,6 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-$config = Get-HoneConfig -ConfigPath $ConfigPath
 $submoduleDir = Join-Path $repoRoot 'sample-api'
 $submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
 
@@ -105,26 +106,24 @@ try {
         -Experiment $Experiment
 
     $result = [ordered]@{
-        Success    = $true
+        Success = $true
         BranchName = $BranchName
-        FilePath   = $FilePath
-        Outcome    = $Outcome
+        FilePath = $FilePath
+        Outcome = $Outcome
     }
-}
-catch {
+} catch {
     $result = [ordered]@{
-        Success    = $false
+        Success = $false
         BranchName = $BranchName
-        FilePath   = $FilePath
-        Outcome    = "RevertError: $_"
+        FilePath = $FilePath
+        Outcome = "RevertError: $_"
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'publish' -Level 'error' `
         -Message "Failed to revert experiment code: $_" `
         -Experiment $Experiment
-}
-finally {
+} finally {
     Pop-Location
 }
 

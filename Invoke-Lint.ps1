@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs PSScriptAnalyzer on Hone harness PowerShell scripts.
 
@@ -160,7 +160,7 @@ foreach ($file in $filesToLint) {
     }
 
     $analyzerParams = @{
-        Path     = $file
+        Path = $file
         Settings = $SettingsPath
     }
 
@@ -173,11 +173,11 @@ foreach ($file in $filesToLint) {
     if ($results) {
         foreach ($r in $results) {
             $allResults += [PSCustomObject]@{
-                File     = $relPath
-                Line     = $r.Line
+                File = $relPath
+                Line = $r.Line
                 Severity = $r.Severity
-                Rule     = $r.RuleName
-                Message  = $r.Message
+                Rule = $r.RuleName
+                Message = $r.Message
             }
         }
     }

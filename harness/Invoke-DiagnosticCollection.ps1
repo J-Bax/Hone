@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Discovers and runs all enabled diagnostic collector plugins.
 
@@ -111,12 +111,12 @@ function Get-EnabledCollectors {
         $merged['PerfViewExePath'] = $Diag.PerfViewExePath
 
         $result.Add(@{
-            Name     = $name
-            Dir      = $dir.FullName
-            Meta     = $meta
-            Settings = $merged
-            Group    = $meta.Group ?? 'default'
-        })
+                Name = $name
+                Dir = $dir.FullName
+                Meta = $meta
+                Settings = $merged
+                Group = $meta.Group ?? 'default'
+            })
     }
     return $result
 }
@@ -141,8 +141,7 @@ function Get-CollectorGroups {
     if ($nonDefaultCollectors.Count -eq 0) {
         # Only default collectors — single pass
         $groups['default'] = @($defaultCollectors)
-    }
-    else {
+    } else {
         # Group non-default collectors, include default collectors in each group
         $nonDefaultCollectors | Group-Object -Property Group | ForEach-Object {
             $groups[$_.Name] = @($_.Group) + @($defaultCollectors)
@@ -192,8 +191,7 @@ if ($Action -eq 'Start') {
 
         if ($result.Success) {
             $handles[$c.Name] = $result.Handle
-        }
-        else {
+        } else {
             $errMsg = if ($result.ContainsKey('Error')) { $result.Error } else { 'unknown error (no Error property returned)' }
             Write-Warning "  Collector '$($c.Name)' failed to start: $errMsg"
             $allSuccess = $false
@@ -225,8 +223,7 @@ if ($Action -eq 'Stop') {
 
         if ($result.Success) {
             $artifactMap[$c.Name] = $result.ArtifactPaths
-        }
-        else {
+        } else {
             Write-Warning "  Collector '$($c.Name)' failed to stop"
             $allSuccess = $false
         }
@@ -238,7 +235,7 @@ if ($Action -eq 'Stop') {
 # ── Action: Export ──────────────────────────────────────────────────────────
 if ($Action -eq 'Export') {
     if (-not $ArtifactMap) { throw 'ArtifactMap is required for Export action' }
-    if (-not $OutputDir)   { throw 'OutputDir is required for Export action' }
+    if (-not $OutputDir) { throw 'OutputDir is required for Export action' }
 
     $collectorData = @{}
     $allSuccess = $true
@@ -268,7 +265,7 @@ if ($Action -eq 'Export') {
         if ($result.Success) {
             $entry = @{
                 ExportedPaths = $result.ExportedPaths
-                Summary       = $result.Summary
+                Summary = $result.Summary
             }
             # Pass through extra keys (e.g. CpuStacksPath, GcReportPath)
             $skipKeys = @('Success', 'ExportedPaths', 'Summary')
@@ -278,11 +275,10 @@ if ($Action -eq 'Export') {
                 }
             }
             $collectorData[$c.Name] = $entry
-        }
-        else {
+        } else {
             $errDetail = if ($result.PSObject.Properties['Summary']) { $result.Summary }
-                         elseif ($result.PSObject.Properties['Error']) { $result.Error }
-                         else { 'unknown error' }
+            elseif ($result.PSObject.Properties['Error']) { $result.Error }
+            else { 'unknown error' }
             Write-Warning "  Export failed for '$($c.Name)': $errDetail"
             $allSuccess = $false
         }

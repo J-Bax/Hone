@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Provides dynamic terminal progress indicators (spinners) for long-running operations.
 
@@ -22,6 +22,7 @@ function Start-Spinner {
         A spinner object to pass to Stop-Spinner.
     #>
     [CmdletBinding()]
+    [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
         [string]$Message
@@ -34,15 +35,15 @@ function Start-Spinner {
     }
 
     $state = [hashtable]::Synchronized(@{
-        Message   = $Message
-        Frames    = @(
-            [char]0x280B, [char]0x2819, [char]0x2839, [char]0x2838,
-            [char]0x283C, [char]0x2834, [char]0x2826, [char]0x2827,
-            [char]0x2807, [char]0x280F
-        )
-        Index     = 0
-        Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    })
+            Message = $Message
+            Frames = @(
+                [char]0x280B, [char]0x2819, [char]0x2839, [char]0x2838,
+                [char]0x283C, [char]0x2834, [char]0x2826, [char]0x2827,
+                [char]0x2807, [char]0x280F
+            )
+            Index = 0
+            Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        })
 
     $timer = [System.Timers.Timer]::new(120)
     $timer.AutoReset = $true
@@ -54,7 +55,7 @@ function Start-Spinner {
         $elapsed = [math]::Floor($s.Stopwatch.Elapsed.TotalSeconds)
         $frame = $s.Frames[$s.Index % $s.Frames.Count]
         $line = "  $frame $($s.Message)... ${elapsed}s"
-        try { [Console]::Write("`r$($line.PadRight(78))") } catch {}
+        try { [Console]::Write("`r$($line.PadRight(78))") } catch { Write-Verbose "Console write failed: $_" }
         $s.Index++
     } -MessageData $state | Out-Null
 

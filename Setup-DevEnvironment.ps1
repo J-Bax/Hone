@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Sets up the development environment for Hone.
 
@@ -60,8 +60,8 @@ function Test-CommandExists {
 function Update-SessionPath {
     # Refresh PATH from the registry so newly-installed tools are visible
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-    $userPath    = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $env:Path    = "$machinePath;$userPath"
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path = "$machinePath;$userPath"
 }
 
 function Install-WingetPackage {
@@ -78,8 +78,7 @@ function Install-WingetPackage {
         Write-Ok "$Name installed via winget"
         $script:packagesInstalled = $true
         return $true
-    }
-    catch {
+    } catch {
         Write-Fail "Failed to install $Name via winget: $_"
         return $false
     }
@@ -95,11 +94,9 @@ Write-Step "Checking PowerShell version"
 $psVersion = $PSVersionTable.PSVersion
 if ($psVersion.Major -ge 7 -and $psVersion.Minor -ge 2) {
     Write-Ok "PowerShell $psVersion"
-}
-elseif ($psVersion.Major -ge 7) {
+} elseif ($psVersion.Major -ge 7) {
     Write-Host "  ⚠ PowerShell $psVersion detected — 7.2+ recommended" -ForegroundColor Yellow
-}
-else {
+} else {
     Write-Fail "PowerShell $psVersion detected — 7.2+ required"
     Write-Host "    Install: winget install Microsoft.PowerShell" -ForegroundColor Gray
     $allSucceeded = $false
@@ -111,8 +108,7 @@ Write-Step "Checking .NET SDK"
 if ((Test-CommandExists 'dotnet') -and -not $Force) {
     $dotnetVersion = & dotnet --version 2>$null
     Write-Ok ".NET SDK $dotnetVersion"
-}
-else {
+} else {
     if ($SkipWinget) { Write-Skip ".NET SDK" }
     else {
         $result = Install-WingetPackage -PackageId 'Microsoft.DotNet.SDK.6' -Name '.NET SDK 6.0'
@@ -127,12 +123,10 @@ if ((Test-CommandExists 'sqllocaldb') -and -not $Force) {
     try {
         $localdbInfo = & sqllocaldb info 2>$null
         Write-Ok "SQL Server LocalDB available (instances: $($localdbInfo -join ', '))"
-    }
-    catch {
+    } catch {
         Write-Ok "sqllocaldb found but could not list instances"
     }
-}
-else {
+} else {
     if ($SkipWinget) { Write-Skip "SQL Server LocalDB" }
     else {
         # No dedicated LocalDB winget package; install SQL Server Express which includes LocalDB
@@ -151,8 +145,7 @@ Write-Step "Checking k6"
 if ((Test-CommandExists 'k6') -and -not $Force) {
     $k6Version = & k6 version 2>$null
     Write-Ok "k6: $k6Version"
-}
-else {
+} else {
     if ($SkipWinget) { Write-Skip "k6" }
     else {
         $result = Install-WingetPackage -PackageId 'GrafanaLabs.k6' -Name 'k6'
@@ -178,8 +171,7 @@ if ((Test-CommandExists 'gh') -and -not $Force) {
     } else {
         Write-Ok "$ghVersionLine (could not parse version)"
     }
-}
-else {
+} else {
     if ($SkipWinget) { Write-Skip "GitHub CLI" }
     else {
         $result = Install-WingetPackage -PackageId 'GitHub.cli' -Name 'GitHub CLI'
@@ -198,8 +190,7 @@ Write-Step "Checking GitHub Copilot CLI"
 if (Test-CommandExists 'copilot') {
     $copilotVer = & copilot --version 2>$null | Select-Object -First 1
     Write-Ok "copilot CLI installed ($copilotVer)"
-}
-else {
+} else {
     Write-Fail "Standalone copilot CLI not found — install it from https://docs.github.com/copilot/how-tos/copilot-cli"
     $allSucceeded = $false
 }
@@ -218,28 +209,24 @@ if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
     $dcVersionOutput = & dotnet-counters --version 2>&1
     if ($LASTEXITCODE -eq 0 -and $dcVersionOutput -match '^\d+\.\d+') {
         Write-Ok "dotnet-counters $dcVersionOutput"
-    }
-    else {
+    } else {
         Write-Fail "dotnet-counters is installed but cannot run (likely targets a .NET runtime not present on this machine)."
         Write-Host "    Fix: dotnet tool uninstall --global dotnet-counters" -ForegroundColor Gray
         Write-Host "    Then: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec" -ForegroundColor Gray
         $allSucceeded = $false
     }
-}
-else {
+} else {
     if (Test-CommandExists 'dotnet') {
         try {
             & dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
             $dcInstalledVersion = & dotnet-counters --version 2>$null
             Write-Ok "dotnet-counters $dcInstalledVersion installed (pinned to $dotnetCountersVersionSpec)"
-        }
-        catch {
+        } catch {
             Write-Fail "Failed to install dotnet-counters ($dotnetCountersVersionSpec). Run: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec"
             $allSucceeded = $false
         }
-    }
-    else {
+    } else {
         Write-Fail "Cannot install dotnet-counters — .NET SDK not found"
         $allSucceeded = $false
     }
@@ -248,13 +235,12 @@ else {
 # ── 8. PerfView (diagnostic profiling) ─────────────────────────────────────
 
 Write-Step "Checking PerfView"
-$perfViewDir  = Join-Path $PSScriptRoot 'tools' 'PerfView'
-$perfViewExe  = Join-Path $perfViewDir 'PerfView.exe'
+$perfViewDir = Join-Path $PSScriptRoot 'tools' 'PerfView'
+$perfViewExe = Join-Path $perfViewDir 'PerfView.exe'
 
 if ((Test-Path $perfViewExe) -and -not $Force) {
     Write-Ok "PerfView found at $perfViewExe"
-}
-else {
+} else {
     Write-Host "  Downloading PerfView from GitHub releases..." -ForegroundColor Gray
     try {
         if (-not (Test-Path $perfViewDir)) {
@@ -262,10 +248,10 @@ else {
         }
 
         # Fetch latest release asset URL from GitHub API
-        $releaseUrl  = 'https://api.github.com/repos/microsoft/perfview/releases/latest'
-        $headers     = @{ 'User-Agent' = 'Hone-Setup' }
-        $release     = Invoke-RestMethod -Uri $releaseUrl -Headers $headers -ErrorAction Stop
-        $asset       = $release.assets | Where-Object { $_.name -eq 'PerfView.exe' } | Select-Object -First 1
+        $releaseUrl = 'https://api.github.com/repos/microsoft/perfview/releases/latest'
+        $headers = @{ 'User-Agent' = 'Hone-Setup' }
+        $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers -ErrorAction Stop
+        $asset = $release.assets | Where-Object { $_.name -eq 'PerfView.exe' } | Select-Object -First 1
 
         if (-not $asset) {
             throw "Could not find PerfView.exe asset in the latest release"
@@ -274,8 +260,7 @@ else {
         $downloadUrl = $asset.browser_download_url
         Invoke-WebRequest -Uri $downloadUrl -OutFile $perfViewExe -UseBasicParsing -ErrorAction Stop
         Write-Ok "PerfView downloaded to $perfViewExe"
-    }
-    catch {
+    } catch {
         Write-Fail "Failed to download PerfView: $_"
         Write-Host "    Manual download: https://github.com/microsoft/perfview/releases" -ForegroundColor Gray
         $allSucceeded = $false
@@ -290,12 +275,10 @@ if (Test-CommandExists 'sqllocaldb') {
         & sqllocaldb create MSSQLLocalDB 2>$null
         & sqllocaldb start MSSQLLocalDB 2>$null
         Write-Ok "MSSQLLocalDB instance is running"
-    }
-    catch {
+    } catch {
         Write-Host "  ⚠ Could not start MSSQLLocalDB — check sqllocaldb manually" -ForegroundColor Yellow
     }
-}
-else {
+} else {
     Write-Skip "LocalDB instance (sqllocaldb not available)"
 }
 
@@ -309,21 +292,17 @@ if (Test-CommandExists 'git') {
         git submodule update --init --recursive 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Ok "Git submodules initialized"
-        }
-        else {
+        } else {
             Write-Fail "git submodule update failed (exit code $LASTEXITCODE)"
             $allSucceeded = $false
         }
-    }
-    catch {
+    } catch {
         Write-Fail "Failed to initialize submodules: $_"
         $allSucceeded = $false
-    }
-    finally {
+    } finally {
         Pop-Location
     }
-}
-else {
+} else {
     Write-Fail "git is not available — cannot initialize submodules"
     $allSucceeded = $false
 }
@@ -337,13 +316,11 @@ if (Test-CommandExists 'dotnet') {
     if (Test-Path $slnPath) {
         & dotnet restore $slnPath
         Write-Ok "NuGet packages restored"
-    }
-    else {
+    } else {
         Write-Fail "Solution not found at $slnPath"
         $allSucceeded = $false
     }
-}
-else {
+} else {
     Write-Skip "NuGet restore (.NET SDK not available)"
 }
 
@@ -353,14 +330,12 @@ Write-Step "Checking PSScriptAnalyzer"
 $psaModule = Get-Module -ListAvailable -Name PSScriptAnalyzer | Select-Object -First 1
 if ($psaModule -and -not $Force) {
     Write-Ok "PSScriptAnalyzer $($psaModule.Version)"
-}
-else {
+} else {
     try {
         Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
         $psaInstalled = Get-Module -ListAvailable -Name PSScriptAnalyzer | Select-Object -First 1
         Write-Ok "PSScriptAnalyzer $($psaInstalled.Version) installed"
-    }
-    catch {
+    } catch {
         Write-Fail "Failed to install PSScriptAnalyzer: $_"
         Write-Host "    Run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser" -ForegroundColor Gray
         $allSucceeded = $false
@@ -378,20 +353,16 @@ if (Test-CommandExists 'git') {
         try {
             git config core.hooksPath .githooks
             Write-Ok "Git hooks path set to .githooks/"
-        }
-        catch {
+        } catch {
             Write-Fail "Failed to configure git hooks path: $_"
             $allSucceeded = $false
-        }
-        finally {
+        } finally {
             Pop-Location
         }
-    }
-    else {
+    } else {
         Write-Skip "Git hooks (.githooks/ directory not found)"
     }
-}
-else {
+} else {
     Write-Skip "Git hooks (git not available)"
 }
 
@@ -401,8 +372,7 @@ Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━
 if ($allSucceeded) {
     Write-Host "  Setup complete — all dependencies are ready!" -ForegroundColor Green
     Write-Host "  Next step: .\harness\Get-PerformanceBaseline.ps1" -ForegroundColor Gray
-}
-else {
+} else {
     Write-Host "  Setup finished with errors — review the output above." -ForegroundColor Yellow
     Write-Host "  Fix the failures and re-run: .\Setup-DevEnvironment.ps1" -ForegroundColor Gray
 }

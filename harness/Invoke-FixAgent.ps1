@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Calls the hone-fixer CLI agent to generate optimized file content.
 
@@ -100,9 +100,9 @@ if ($agentResult.ResponseText -match '(?ms)```(?:\w+)?\s*\r?\n(.+?)```') {
 }
 
 $result = [ordered]@{
-    Success      = ($agentResult.ExitCode -eq 0 -and $null -ne $codeBlock)
-    CodeBlock    = $codeBlock
-    Response     = $agentResult.ResponseText
+    Success = ($agentResult.ExitCode -eq 0 -and $null -ne $codeBlock)
+    CodeBlock = $codeBlock
+    Response = $agentResult.ResponseText
     ResponsePath = $responsePath
 }
 
@@ -111,8 +111,7 @@ if ($codeBlock) {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
         -Experiment $Experiment
-}
-else {
+} else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'experiment' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
         -Experiment $Experiment

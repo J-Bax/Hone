@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Unified runner for Copilot CLI agent invocations.
 
@@ -76,20 +76,20 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
 if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
     $mockResponse = Get-Content $MockResponsePath -Raw
     $parsedJson = $null
-    try { $parsedJson = $mockResponse | ConvertFrom-Json } catch {}
+    try { $parsedJson = $mockResponse | ConvertFrom-Json } catch { Write-Verbose "Mock JSON parse failed: $_" }
     if ($ResponsePath) {
         $responseDir = Split-Path -Parent $ResponsePath
         if (-not (Test-Path $responseDir)) { New-Item -ItemType Directory -Path $responseDir -Force | Out-Null }
         $mockResponse | Out-File -FilePath $ResponsePath -Encoding utf8
     }
     return [PSCustomObject]([ordered]@{
-        Success      = $true
-        ExitCode     = 0
-        RawOutput    = $mockResponse
-        ResponseText = $mockResponse
-        ParsedJson   = $parsedJson
-        TimedOut     = $false
-    })
+            Success = $true
+            ExitCode = 0
+            RawOutput = $mockResponse
+            ResponseText = $mockResponse
+            ParsedJson = $parsedJson
+            TimedOut = $false
+        })
 }
 
 # ── Resolve model ───────────────────────────────────────────────────────────
@@ -151,13 +151,13 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
         if ($copilotResult.TimedOut) {
             [Console]::OutputEncoding = $prevEncoding
             return [PSCustomObject]([ordered]@{
-                Success      = $false
-                ExitCode     = -1
-                RawOutput    = $responseText
-                ResponseText = $responseText
-                ParsedJson   = $null
-                TimedOut     = $true
-            })
+                    Success = $false
+                    ExitCode = -1
+                    RawOutput = $responseText
+                    ResponseText = $responseText
+                    ParsedJson = $null
+                    TimedOut = $true
+                })
         }
 
         # Parse JSON — strip code fences, sanitize JS literals, extract first JSON object
@@ -169,20 +169,19 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
             try {
                 $parsedJson = $Matches[1] | ConvertFrom-Json
             } catch {
-                # JSON parse failed — will be null
+                Write-Verbose "JSON parse failed: $_"
             }
         }
 
         return [PSCustomObject]([ordered]@{
-            Success      = ($copilotResult.ExitCode -eq 0)
-            ExitCode     = $copilotResult.ExitCode
-            RawOutput    = $copilotResult.Output
-            ResponseText = $responseText
-            ParsedJson   = $parsedJson
-            TimedOut     = $false
-        })
-    }
-    catch {
+                Success = ($copilotResult.ExitCode -eq 0)
+                ExitCode = $copilotResult.ExitCode
+                RawOutput = $copilotResult.Output
+                ResponseText = $responseText
+                ParsedJson = $parsedJson
+                TimedOut = $false
+            })
+    } catch {
         if ($spinner) { Stop-Spinner -Spinner $spinner -CompletionMessage $null }
         [Console]::OutputEncoding = $prevEncoding
         if ($_ -is [System.Management.Automation.PipelineStoppedException]) { throw }
@@ -193,10 +192,10 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
 
 # All retries exhausted
 return [PSCustomObject]([ordered]@{
-    Success      = $false
-    ExitCode     = -1
-    RawOutput    = ''
-    ResponseText = "Error after $($MaxRetries + 1) attempts: $lastError"
-    ParsedJson   = $null
-    TimedOut     = $false
-})
+        Success = $false
+        ExitCode = -1
+        RawOutput = ''
+        ResponseText = "Error after $($MaxRetries + 1) attempts: $lastError"
+        ParsedJson = $null
+        TimedOut = $false
+    })

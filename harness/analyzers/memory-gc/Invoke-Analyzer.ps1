@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Analyzes GC statistics and allocation data using the hone-memory-profiler agent.
 
@@ -46,10 +46,10 @@ $perfviewData = $CollectorData['perfview-gc']
 if (-not $perfviewData) {
     Write-Warning "No perfview-gc collector data available — skipping memory-gc analysis."
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = 'No GC collector data available'
-        PromptPath   = $null
+        Success = $false
+        Report = $null
+        Summary = 'No GC collector data available'
+        PromptPath = $null
         ResponsePath = $null
     }
 }
@@ -64,10 +64,10 @@ Write-Verbose "Reading GC report from: $gcReportPath"
 if (-not (Test-Path -LiteralPath $gcReportPath)) {
     Write-Warning "GC report file not found: $gcReportPath"
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = "GC report file not found: $gcReportPath"
-        PromptPath   = $null
+        Success = $false
+        Report = $null
+        Summary = "GC report file not found: $gcReportPath"
+        PromptPath = $null
         ResponsePath = $null
     }
 }
@@ -79,15 +79,14 @@ $allocTypesContent = $null
 $cpuData = $CollectorData['perfview-cpu']
 if ($cpuData) {
     $allocPath = if ($cpuData -is [hashtable] -and $cpuData.ContainsKey('AllocTypesPath') -and $cpuData.AllocTypesPath) {
-                     $cpuData.AllocTypesPath
-                 } elseif ($cpuData.ExportedPaths -and $cpuData.ExportedPaths.Count -ge 2) {
-                     $cpuData.ExportedPaths[1]
-                 } else { $null }
+        $cpuData.AllocTypesPath
+    } elseif ($cpuData.ExportedPaths -and $cpuData.ExportedPaths.Count -ge 2) {
+        $cpuData.ExportedPaths[1]
+    } else { $null }
     if ($allocPath -and (Test-Path -LiteralPath $allocPath)) {
         $allocTypesContent = Get-Content -LiteralPath $allocPath -Raw -Encoding utf8
         Write-Verbose "Including allocation type data from: $allocPath"
-    }
-    else {
+    } else {
         Write-Information "No allocation type data available — GC analysis will proceed without it"
     }
 }
@@ -172,20 +171,19 @@ try {
     Write-Information "Memory-GC analysis complete: $summary"
 
     return [PSCustomObject][ordered]@{
-        Success      = ($copilotExitCode -eq 0 -and $null -ne $parsed)
-        Report       = $parsed
-        Summary      = $summary
-        PromptPath   = $promptPath
+        Success = ($copilotExitCode -eq 0 -and $null -ne $parsed)
+        Report = $parsed
+        Summary = $summary
+        PromptPath = $promptPath
         ResponsePath = $responsePath
     }
-}
-catch {
+} catch {
     Write-Warning "Memory-GC analysis agent failed: $_"
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = "Analysis agent error: $_"
-        PromptPath   = $promptPath
+        Success = $false
+        Report = $null
+        Summary = "Analysis agent error: $_"
+        PromptPath = $promptPath
         ResponsePath = $null
     }
 }
