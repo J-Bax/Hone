@@ -662,9 +662,60 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Status '[2/5] 🧠 Analyzing... (queue has items — skipping analysis)'
     }
 
-    # Pick the next actionable item from the queue
-    $currentItem = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-        -Action 'GetNext' -Experiment $experiment -ConfigPath $ConfigPath
+    # Pick the next actionable item from the queue.
+    # If an item is classified as architecture, skip it and try the next one
+    # rather than wasting the entire experiment iteration.
+    $currentItem = $null
+    $classificationResult = $null
+    $changeScope = $null
+    $queueItemId = $null
+    $skipExperiment = $false
+
+    while ($true) {
+        $currentItem = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'GetNext' -Experiment $experiment -ConfigPath $ConfigPath
+
+        if (-not $currentItem) { break }
+
+        $queueItemId = $currentItem.id
+        Write-Status "  Queue item #$($currentItem.id): $($currentItem.filePath)"
+
+        # ── Classification ────────────────────────────────────────────────
+        $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
+            -FilePath $currentItem.filePath `
+            -Explanation $currentItem.explanation `
+            -Experiment $experiment `
+            -ConfigPath $ConfigPath
+
+        $changeScope = $classificationResult.Scope
+        Write-Status "  Classification: $changeScope — $($classificationResult.Reasoning)"
+
+        if ($changeScope -ne 'architecture') { break }
+
+        # Architecture-level change — mark skipped and try the next queue item
+        Write-Status "  ⚠ Architecture-level change detected — skipping to next queue item"
+        Write-Status "    Scope: $changeScope | File: $($currentItem.filePath)"
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'analyze' -Level 'info' `
+            -Message "Architecture change skipped: $(Limit-String $currentItem.explanation 100)" `
+            -Experiment $experiment
+
+        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+            -Action 'MarkDone' -ItemId $queueItemId `
+            -Experiment $experiment -Outcome 'skipped' `
+            -ConfigPath $ConfigPath
+
+        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+            -Action 'AddTried' `
+            -Experiment $experiment `
+            -Summary $currentItem.explanation `
+            -FilePath $currentItem.filePath `
+            -Outcome 'queued' `
+            -ConfigPath $ConfigPath
+
+        $currentItem = $null
+    }
 
     if (-not $currentItem) {
         Write-Warning '  No actionable items in queue — skipping experiment'
@@ -689,25 +740,11 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Explanation  = $currentItem.explanation
         ResponsePath = $null
     }
-    $queueItemId = $currentItem.id
 
     $rcaResult = $null
     $applyResult = $null
     $branchName = "$($config.Loop.BranchPrefix)-$experiment"
     $applySuccess = $false
-    $skipExperiment = $false
-
-    Write-Status "  Queue item #$($currentItem.id): $($currentItem.filePath)"
-
-    # ── Classification ────────────────────────────────────────────────────
-    $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
-        -FilePath $analysisResult.FilePath `
-        -Explanation $analysisResult.Explanation `
-        -Experiment $experiment `
-        -ConfigPath $ConfigPath
-
-    $changeScope = $classificationResult.Scope
-    Write-Status "  Classification: $changeScope — $($classificationResult.Reasoning)"
 
     # Save root-cause analysis to experiment directory.
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
@@ -754,49 +791,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($rcaResult.Success) {
             Write-Status "  Root cause analysis saved to: $($rcaResult.Path)"
         }
-    }
-
-    $isArchitecture = ($changeScope -eq 'architecture')
-
-    if ($isArchitecture) {
-        Write-Status '  ⚠ Architecture-level change detected — skipping'
-        Write-Status "    Scope: $changeScope | File: $($analysisResult.FilePath)"
-
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'analyze' -Level 'info' `
-            -Message "Architecture change skipped: $(Limit-String $analysisResult.Explanation 100)" `
-            -Experiment $experiment
-
-        # Mark queue item as skipped
-        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-            -Action 'MarkDone' -ItemId $queueItemId `
-            -Experiment $experiment -Outcome 'skipped' `
-            -ConfigPath $ConfigPath
-
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddTried' `
-            -Experiment $experiment `
-            -Summary $analysisResult.Explanation `
-            -FilePath $analysisResult.FilePath `
-            -Outcome 'queued' `
-            -ConfigPath $ConfigPath
-
-        $skipExperiment = $true
-    }
-
-    if ($skipExperiment) {
-        $staleCount++
-        if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadata `
-            -Experiment $experiment -StartedAt $experimentStartedAt `
-            -Outcome 'skipped' -BranchName $branchName `
-            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-        if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
-            $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
-            Write-Status '  Stopping: too many consecutive failures'
-            break
-        }
-        continue
     }
 
     # ── Phase 3: Experiment (fix + build) ──────────────────────────────────
