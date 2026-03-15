@@ -1,0 +1,5 @@
+#!/bin/sh
+# Git pre-commit hook shim — delegates to the PowerShell script.
+# Git for Windows runs hooks via MSYS2 bash, so this sh wrapper is needed
+# because PowerShell requires scripts to have a .ps1 extension.
+exec pwsh -NoProfile -NonInteractive -File "$(dirname "$0")/pre-commit.ps1"

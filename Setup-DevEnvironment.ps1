@@ -347,6 +347,54 @@ else {
     Write-Skip "NuGet restore (.NET SDK not available)"
 }
 
+# ── 12. PSScriptAnalyzer (PowerShell linting) ────────────────────────────────
+
+Write-Step "Checking PSScriptAnalyzer"
+$psaModule = Get-Module -ListAvailable -Name PSScriptAnalyzer | Select-Object -First 1
+if ($psaModule -and -not $Force) {
+    Write-Ok "PSScriptAnalyzer $($psaModule.Version)"
+}
+else {
+    try {
+        Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+        $psaInstalled = Get-Module -ListAvailable -Name PSScriptAnalyzer | Select-Object -First 1
+        Write-Ok "PSScriptAnalyzer $($psaInstalled.Version) installed"
+    }
+    catch {
+        Write-Fail "Failed to install PSScriptAnalyzer: $_"
+        Write-Host "    Run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser" -ForegroundColor Gray
+        $allSucceeded = $false
+    }
+}
+
+# ── 13. Git hooks ────────────────────────────────────────────────────────────
+
+Write-Step "Configuring git hooks"
+if (Test-CommandExists 'git') {
+    $repoRoot = $PSScriptRoot
+    $hooksDir = Join-Path $repoRoot '.githooks'
+    if (Test-Path $hooksDir) {
+        Push-Location $repoRoot
+        try {
+            git config core.hooksPath .githooks
+            Write-Ok "Git hooks path set to .githooks/"
+        }
+        catch {
+            Write-Fail "Failed to configure git hooks path: $_"
+            $allSucceeded = $false
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    else {
+        Write-Skip "Git hooks (.githooks/ directory not found)"
+    }
+}
+else {
+    Write-Skip "Git hooks (git not available)"
+}
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 
 Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
