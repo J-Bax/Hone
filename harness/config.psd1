@@ -170,7 +170,7 @@
         FixModel = 'claude-sonnet-4.6'
 
         # Maximum seconds to wait for a copilot agent invocation before killing it
-        AgentTimeoutSec = 600
+        AgentTimeoutSec = 1800
     }
 
     # ── Logging ─────────────────────────────────────────────────
@@ -214,16 +214,16 @@
             'perfview-cpu' = @{
                 Enabled = $true
                 MaxCollectSec = 150    # must exceed k6 scenario duration (120s) + margin
-                StopTimeoutSec = 300    # rundown + merge + zip can be slow
-                ExportTimeoutSec = 300    # UserCommand export can hang on large ETLs
+                StopTimeoutSec = 600    # rundown + merge + zip can be slow on large traces
+                ExportTimeoutSec = 600    # UserCommand export can hang on large ETLs
                 BufferSizeMB = 256
                 MaxStacks = 100    # truncate CPU folded stacks to top-N
             }
             'perfview-gc' = @{
                 Enabled = $true
                 MaxCollectSec = 150    # must exceed k6 scenario duration (120s) + margin
-                StopTimeoutSec = 300
-                ExportTimeoutSec = 300
+                StopTimeoutSec = 600
+                ExportTimeoutSec = 600
                 BufferSizeMB = 256
             }
             'dotnet-counters' = @{
