@@ -157,7 +157,7 @@
 
         # Per-agent model overrides (null = use default Model above)
         AnalysisModel       = 'claude-opus-4.6'
-        ClassificationModel = 'claude-haiku-4.5'   # faster for binary scope decisions
+        ClassificationModel = 'claude-opus-4.6'    # needs strong reasoning for scope decisions
         FixModel            = 'claude-sonnet-4.6'
     }
 

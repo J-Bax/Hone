@@ -36,9 +36,16 @@ A change is NARROW if ALL of these are true:
 - Does NOT create migration files or new database tables
 - Does NOT change any public API endpoint route, request/response schema, or HTTP contract
 - Does NOT require changes to test files to accommodate new behavior
-- Examples: query optimization, adding `.Where()` clauses, replacing N+1 with joins,
-  adding in-memory caching, algorithm improvements, removing redundant work,
-  adding indexes or query configuration in DbContext `OnModelCreating`
+
+NARROW examples (these are all single-file implementation changes):
+- Query optimization: adding `.Where()`, `.Include()`, `.AsNoTracking()`, replacing N+1 with joins
+- In-memory caching using static fields, `Lazy<T>`, `ConcurrentDictionary`, or `Stopwatch`-based TTL
+  (does NOT require DI/IMemoryCache — a static field in the same class is sufficient)
+- Injecting `IMemoryCache` when `AddControllersWithViews()` or `AddRazorPages()` already registers it
+  (ASP.NET Core registers IMemoryCache by default — no startup change needed)
+- Database index hints or query configuration in DbContext `OnModelCreating`
+- Algorithm improvements, removing redundant work, batching `SaveChangesAsync` calls
+- Adding computed columns or navigation property configuration in DbContext
 
 ### ARCHITECTURE
 A change is ARCHITECTURE if ANY of these are true:
@@ -47,9 +54,22 @@ A change is ARCHITECTURE if ANY of these are true:
 - Creates migration files, adds new database tables, or changes column types/constraints
 - Changes an API endpoint route, adds/removes endpoints, or alters response shape
 - Introduces a new architectural pattern (repository layer, middleware, etc.)
-- Requires configuration changes (appsettings.json, connection strings)
-- Examples: adding Redis caching layer, database migration files, response pagination,
-  new middleware, switching ORM strategy
+- Requires NEW configuration in appsettings.json or Program.cs/Startup.cs that doesn't already exist
+  (note: using services already registered by the framework is NOT a configuration change)
+
+ARCHITECTURE examples:
+- Adding Redis or distributed caching layer (new package + configuration)
+- Database migration files that alter schema
+- Response pagination that changes API contracts
+- New middleware or filter registration
+- Switching ORM strategy
+
+### Common Misclassifications to Avoid
+- **Database indexes in OnModelCreating** → NARROW (single file, no migration needed with EnsureCreated)
+- **Static in-memory cache in a PageModel/Controller** → NARROW (no DI needed)
+- **Using IMemoryCache in ASP.NET Core** → NARROW (already registered by framework defaults)
+- **Replacing ToListAsync() + LINQ with server-side query** → NARROW (same file, same contract)
+- **Adding `.AsNoTracking()` to read queries** → NARROW
 
 ## Rules
 
