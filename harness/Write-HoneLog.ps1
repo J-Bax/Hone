@@ -50,7 +50,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 # Cache the resolved log path to avoid reloading config on every call
 if (-not $LogPath) {
-    if (-not $script:_cachedLogPath) {
+    if (-not (Get-Variable '_cachedLogPath' -Scope Script -ValueOnly -ErrorAction SilentlyContinue)) {
         $config = Get-HoneConfig
         $script:_cachedLogPath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'hone.jsonl'
     }
