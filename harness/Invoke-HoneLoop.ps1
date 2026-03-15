@@ -1465,6 +1465,13 @@ $rcaDocument
             # k6 performance summaries
             Get-ChildItem $experimentDir -Filter 'k6-summary*.json' -ErrorAction SilentlyContinue |
                 ForEach-Object { git add "results/experiment-$experiment/$($_.Name)" 2>&1 | Out-Null }
+            # Top-level dotnet-counters data (produced by Invoke-ScaleTests.ps1)
+            foreach ($counterFile in @('dotnet-counters.json', 'dotnet-counters.csv')) {
+                $f = Join-Path $experimentDir $counterFile
+                if (Test-Path $f) {
+                    git add "results/experiment-$experiment/$counterFile" 2>&1 | Out-Null
+                }
+            }
             # Parsed metric summaries from collectors
             foreach ($summary in @('diagnostics/dotnet-counters/dotnet-counters.json',
                                    'diagnostics/perfview-gc/gc-report.json')) {
