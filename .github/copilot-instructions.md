@@ -33,6 +33,7 @@ Hone is an **agentic performance optimization harness** that automatically impro
 - Target PowerShell 7.2+ (`$PSVersionTable.PSVersion`)
 - Use `Write-Information` / `Write-Verbose` over `Write-Host`
 - Return structured objects, not formatted strings
+- **Linting is required** for all PowerShell changes. After modifying any `.ps1`, `.psm1`, or `.psd1` file under `harness/` or in the repo root, run `./Invoke-Lint.ps1` and fix all blocking errors before committing. The pre-commit hook (`.githooks/pre-commit`) enforces this automatically. Configuration is in `.PSScriptAnalyzerSettings.psd1`.
 
 ### C# / .NET
 - .NET 6 minimal API style (`WebApplication.CreateBuilder`)
