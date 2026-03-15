@@ -20,12 +20,9 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'measure' -Level 'info' `
@@ -51,6 +48,9 @@ if (-not $serverMatch.Success -or -not $dbMatch.Success) {
 
 $server = $serverMatch.Groups[1].Value
 $dbName = $dbMatch.Groups[1].Value
+
+# Escape closing brackets to prevent SQL injection
+$dbName = $dbName.Replace(']', ']]')
 
 # ── Drop the database via sqlcmd ────────────────────────────────────────────
 $dropQuery = @"

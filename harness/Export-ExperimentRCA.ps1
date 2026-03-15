@@ -70,12 +70,9 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Generating root cause analysis for experiment $Experiment" `

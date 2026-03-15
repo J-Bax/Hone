@@ -17,21 +17,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Write-Status ([string]$Message) {
-    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
-        Write-Information $Message -InformationAction Continue
-    } else {
-        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
-    }
-}
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 # ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
 if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {

@@ -31,16 +31,14 @@ param(
     [int]$Experiment = 0,
     [string]$ScenarioPath,
     [string]$ScenarioName,
-    [string]$BaseUrl
+    [string]$BaseUrl,
+    [switch]$SkipHealthCheck
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 if (-not $ScenarioPath) {
     $ScenarioPath = Join-Path $repoRoot $config.ScaleTest.ScenarioPath
@@ -75,27 +73,17 @@ if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
 }
 
 # ── Pre-flight: verify API is healthy ───────────────────────────────────────
-$healthEndpoint = $config.Api.HealthEndpoint
-if ($healthEndpoint) {
-    $healthUrl = "$baseUrl$healthEndpoint"
-    $healthOk = $false
-    for ($attempt = 1; $attempt -le 5; $attempt++) {
-        try {
-            $healthRes = Invoke-RestMethod -Uri $healthUrl -Method Get -TimeoutSec 3 -ErrorAction Stop
-            if ($healthRes.status -eq 'healthy') {
-                $healthOk = $true
-                break
-            }
-        } catch {
-            Write-Verbose "Health check attempt $attempt/5 — not ready"
+if (-not $SkipHealthCheck) {
+    $healthEndpoint = $config.Api.HealthEndpoint
+    if ($healthEndpoint) {
+        $healthUrl = "$baseUrl$healthEndpoint"
+        $healthOk = Wait-ApiHealthy -HealthUrl $healthUrl -TimeoutSec 10 -IntervalSec 2
+        if (-not $healthOk) {
+            $msg = "API is not healthy at $healthUrl — cannot run scale test '$ScenarioName'"
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'measure' -Level 'error' -Message $msg -Experiment $Experiment
+            throw $msg
         }
-        Start-Sleep -Seconds 2
-    }
-    if (-not $healthOk) {
-        $msg = "API is not healthy at $healthUrl — cannot run scale test '$ScenarioName'"
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'error' -Message $msg -Experiment $Experiment
-        throw $msg
     }
 }
 
@@ -169,6 +157,8 @@ if ($countersEnabled) {
             -Experiment $Experiment
     }
 }
+
+try {
 
 # Build k6 arguments
 $k6Args = @(
@@ -351,11 +341,13 @@ else {
         -Experiment $Experiment
 }
 
-# ── Stop .NET counter collection ────────────────────────────────────────────
-if ($counterHandle) {
-    $counterMetrics = & (Join-Path $PSScriptRoot 'Stop-DotnetCounters.ps1') `
-        -CounterHandle $counterHandle `
-        -Experiment $Experiment
+} finally {
+    # ── Stop .NET counter collection ────────────────────────────────────────────
+    if ($counterHandle) {
+        $counterMetrics = & (Join-Path $PSScriptRoot 'Stop-DotnetCounters.ps1') `
+            -CounterHandle $counterHandle `
+            -Experiment $Experiment
+    }
 }
 
 $result = [ordered]@{

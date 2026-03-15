@@ -19,12 +19,9 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
 $resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
 $trxPath = Join-Path $resultsDir "e2e-results.trx"

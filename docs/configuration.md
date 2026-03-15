@@ -87,3 +87,17 @@ Diagnostics = @{
 **Important**: PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal. PerfView is downloaded automatically by `Setup-DevEnvironment.ps1`.
 
 To disable diagnostic profiling entirely, set `Diagnostics.Enabled = $false`. Individual collectors and analyzers can be disabled independently via their `Enabled` flag.
+
+## Configuration Interactions
+
+Some configuration combinations interact in non-obvious ways:
+
+| Setting A | Setting B | Interaction |
+|-----------|-----------|-------------|
+| `StackedDiffs = $true` | `WaitForMerge = $true` | Works but defeats the purpose of stacked diffs — each PR blocks the loop until merged |
+| `Diagnostics.Enabled = $true` | `Diagnostics.DiagnosticRuns = 0` | Collectors start but no k6 load test data is collected during the diagnostic pass |
+| `ScaleTest.MeasuredRuns = 1` | `Tolerances.MaxRegressionPct < 0.05` | A single run produces noisy metrics that may exceed tight tolerances, causing false regressions |
+| `Tolerances.MaxConsecutiveFailures` | `MaxExperiments` | If MaxConsecutiveFailures ≥ MaxExperiments, the consecutive failure limit never triggers |
+| `Diagnostics.Enabled = $true` | Running without admin | PerfView requires Administrator privileges for kernel-level CPU sampling — diagnostic collection will fail |
+
+The `Test-HoneConfig.ps1` script detects some of these interactions and emits warnings at startup.

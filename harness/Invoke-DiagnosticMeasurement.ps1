@@ -51,20 +51,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Status ([string]$Message) {
-    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
-        Write-Information $Message -InformationAction Continue
-    } else {
-        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
-    }
-}
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $harnessRoot = $PSScriptRoot
 $repoRoot    = Split-Path -Parent $harnessRoot
 
 # ── Load config ─────────────────────────────────────────────────────────────
-if (-not $ConfigPath) { $ConfigPath = Join-Path $harnessRoot 'config.psd1' }
-$config = Import-PowerShellDataFile $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 if (-not $config.Diagnostics -or -not $config.Diagnostics.Enabled) {
     throw 'Diagnostics are not enabled in config. Set Diagnostics.Enabled = $true.'
@@ -145,31 +138,49 @@ foreach ($groupName in $groupNames) {
         $startedCollectors = ($startResult.Handles.Keys -join ', ')
         Write-Status "     Active: $startedCollectors"
 
-        Start-Sleep -Seconds 2
+        $stopResult = $null
+        try {
+            Start-Sleep -Seconds 2
 
-        # ── Run k6 diagnostic pass ──────────────────────────────────────────
-        $baseUrl = $apiResult.BaseUrl
-        Write-Status "     Running k6 ($diagnosticRuns run(s))..."
+            # ── Run k6 diagnostic pass ──────────────────────────────────────
+            $baseUrl = $apiResult.BaseUrl
+            Write-Status "     Running k6 ($diagnosticRuns run(s))..."
 
-        for ($run = 1; $run -le $diagnosticRuns; $run++) {
-            if ($run -gt 1) {
-                & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3 | Out-Null
+            for ($run = 1; $run -le $diagnosticRuns; $run++) {
+                if ($run -gt 1) {
+                    & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3 | Out-Null
+                }
+                $k6SummaryPath = Join-Path $resultsDir "k6-diagnostic-$groupName-run$run.json"
+                $k6TimeoutSec = if ($config.Diagnostics.K6TimeoutSec) { $config.Diagnostics.K6TimeoutSec } else { 300 }
+                $k6OutFile = [System.IO.Path]::GetTempFileName()
+                try {
+                    $k6Proc = Start-Process -FilePath 'k6' `
+                        -ArgumentList @('run', '--env', "BASE_URL=$baseUrl", '--summary-export', $k6SummaryPath, '--quiet', $scenarioFullPath) `
+                        -PassThru -NoNewWindow -RedirectStandardOutput $k6OutFile
+                    $k6Exited = $k6Proc.WaitForExit($k6TimeoutSec * 1000)
+                    if (-not $k6Exited) {
+                        Stop-Process -Id $k6Proc.Id -Force -ErrorAction SilentlyContinue
+                        Write-Warning "     k6 diagnostic run $run timed out after ${k6TimeoutSec}s — killing"
+                    }
+                }
+                finally {
+                    Remove-Item $k6OutFile -Force -ErrorAction SilentlyContinue
+                }
             }
-            $k6SummaryPath = Join-Path $resultsDir "k6-diagnostic-$groupName-run$run.json"
-            & k6 run --env "BASE_URL=$baseUrl" --summary-export $k6SummaryPath --quiet $scenarioFullPath 2>&1 | Out-Null
+
+            Write-Status '     k6 complete'
         }
+        finally {
+            # ── Stop collectors (always) ────────────────────────────────────
+            Write-Status '     Stopping collectors...'
+            $stopResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
+                -Action 'Stop' `
+                -Config $config `
+                -Handles $startResult.Handles
 
-        Write-Status '     k6 complete'
-
-        # ── Stop collectors ─────────────────────────────────────────────────
-        Write-Status '     Stopping collectors...'
-        $stopResult = & (Join-Path $harnessRoot 'Invoke-DiagnosticCollection.ps1') `
-            -Action 'Stop' `
-            -Config $config `
-            -Handles $startResult.Handles
-
-        if (-not $stopResult.Success) {
-            Write-Warning "     Some collectors failed to stop — continuing with available data"
+            if (-not $stopResult.Success) {
+                Write-Warning "     Some collectors failed to stop — continuing with available data"
+            }
         }
 
         # ── Export collector data ───────────────────────────────────────────

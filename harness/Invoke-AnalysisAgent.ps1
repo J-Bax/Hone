@@ -52,21 +52,11 @@ param(
     [hashtable]$DiagnosticReports
 )
 
-function Write-Status ([string]$Message) {
-    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
-        Write-Information $Message -InformationAction Continue
-    } else {
-        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
-    }
-}
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message 'Preparing analysis agent prompt' `
@@ -129,106 +119,42 @@ $prompt | Out-File -FilePath $promptPath -Encoding utf8
     -Experiment $Experiment
 
 # ── Call the hone-analyst agent ─────────────────────────────────────────────
-. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
+$agentResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAgent.ps1') `
+    -AgentName 'hone-analyst' `
+    -Prompt $prompt `
+    -ModelConfigKey 'AnalysisModel' `
+    -DefaultModel 'claude-opus-4.6' `
+    -SpinnerMessage 'Analyzing performance data' `
+    -CompletionMessage 'Analysis complete' `
+    -ResponsePath (Join-Path $iterDir 'analysis-response.json') `
+    -ConfigPath $ConfigPath
 
-try {
-    $copilotModel = if ($config.Copilot -and $config.Copilot.AnalysisModel) {
-        $config.Copilot.AnalysisModel
-    } elseif ($config.Copilot -and $config.Copilot.Model) {
-        $config.Copilot.Model
-    } else {
-        'claude-opus-4.6'
-    }
+$responsePath = Join-Path $iterDir 'analysis-response.json'
+$parsed = $agentResult.ParsedJson
 
-    # Ensure UTF-8 decoding of copilot CLI output (prevents mojibake like ΓÇö for em-dash)
-    $prevEncoding = [Console]::OutputEncoding
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-    $spinner = Start-Spinner -Message "Analyzing performance data ($copilotModel)"
-
-    $copilotOutput = copilot --agent hone-analyst --model $copilotModel -p $prompt -s `
-        --no-auto-update --no-ask-user 2>&1
-    $copilotExitCode = $LASTEXITCODE
-
-    [Console]::OutputEncoding = $prevEncoding
-
-    $responseText = ($copilotOutput | Out-String).Trim()
-
-    # Show brief result from agent
-    $oppPreview = if ($responseText.Length -gt 80) { $responseText.Substring(0, 80) + '…' } else { $responseText }
-    Stop-Spinner -Spinner $spinner -CompletionMessage "Analysis complete"
-
-    # Save the response
-    $responsePath = Join-Path $iterDir 'analysis-response.json'
-    $responseText | Out-File -FilePath $responsePath -Encoding utf8
-
-    # Parse JSON — the agent may output exploration text before the JSON response.
-    # Strip code fences, then extract the first complete JSON object ({...}).
-    $jsonText = $responseText -replace '(?s)^```(?:json)?\s*', '' -replace '(?s)\s*```$', ''
-    if ($jsonText -match '(?s)(\{.+\})') {
-        $jsonText = $Matches[1]
-    }
-    $parsed = $jsonText | ConvertFrom-Json
-
-    # Support both new format ({opportunities: [...]}) and legacy ({filePath, explanation, additionalOpportunities}).
-    if ($parsed.opportunities) {
-        # New multi-opportunity format — normalize each item to have all expected fields
-        $opportunities = @($parsed.opportunities | ForEach-Object {
-            [PSCustomObject]@{
-                filePath       = $_.filePath
-                title          = if ($_.title) { $_.title } else { $_.explanation }
-                explanation    = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
-                scope          = if ($_.scope) { $_.scope } else { 'narrow' }
-                rootCause      = if ($_.rootCause) { $_.rootCause } else { $null }
-                impactEstimate = if ($_.impactEstimate) { $_.impactEstimate } else { $null }
-            }
-        })
-        $primaryOpp = $opportunities[0]
-        $result = [ordered]@{
-            Success       = ($copilotExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
-            ExitCode      = $copilotExitCode
-            FilePath      = $primaryOpp.filePath
-            Explanation   = if ($primaryOpp.explanation) { $primaryOpp.explanation } else { $primaryOpp.title }
-            Opportunities = $opportunities
-            Prompt        = $prompt
-            Response      = $responseText
-            PromptPath    = $promptPath
-            ResponsePath  = $responsePath
+if ($parsed -and $parsed.opportunities) {
+    # Normalize each opportunity to have all expected fields
+    $opportunities = @($parsed.opportunities | ForEach-Object {
+        [PSCustomObject]@{
+            filePath       = $_.filePath
+            title          = if ($_.title) { $_.title } else { $_.explanation }
+            explanation    = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
+            scope          = if ($_.scope) { $_.scope } else { 'narrow' }
+            rootCause      = if ($_.rootCause) { $_.rootCause } else { $null }
+            impactEstimate = if ($_.impactEstimate) { $_.impactEstimate } else { $null }
         }
-    }
-    else {
-        # Legacy single-item format — convert to opportunities array for consistency
-        $legacyOpps = @([PSCustomObject]@{
-            filePath       = $parsed.filePath
-            title          = if ($parsed.title) { $parsed.title } else { $parsed.explanation }
-            explanation    = $parsed.explanation
-            scope          = 'narrow'
-            rootCause      = $null
-            impactEstimate = if ($parsed.impactEstimate) { $parsed.impactEstimate } else { $null }
-        })
-        if ($parsed.additionalOpportunities) {
-            foreach ($addl in $parsed.additionalOpportunities) {
-                $legacyOpps += [PSCustomObject]@{
-                    filePath       = if ($addl.filePath) { $addl.filePath } else { $parsed.filePath }
-                    title          = if ($addl.description) { $addl.description } else { $addl.explanation }
-                    explanation    = if ($addl.description) { $addl.description } else { $addl.explanation }
-                    scope          = if ($addl.scope) { $addl.scope } else { 'narrow' }
-                    rootCause      = $null
-                    impactEstimate = if ($addl.impactEstimate) { $addl.impactEstimate } else { $null }
-                }
-            }
-        }
-        $result = [ordered]@{
-            Success       = ($copilotExitCode -eq 0 -and $null -ne $parsed.filePath)
-            ExitCode      = $copilotExitCode
-            FilePath      = $parsed.filePath
-            Explanation   = $parsed.explanation
-            Opportunities = $legacyOpps
-            Prompt        = $prompt
-            Response      = $responseText
-            PromptPath    = $promptPath
-            ResponsePath  = $responsePath
-        }
+    })
+    $primaryOpp = $opportunities[0]
+    $result = [ordered]@{
+        Success       = ($agentResult.ExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
+        ExitCode      = $agentResult.ExitCode
+        FilePath      = $primaryOpp.filePath
+        Explanation   = if ($primaryOpp.explanation) { $primaryOpp.explanation } else { $primaryOpp.title }
+        Opportunities = $opportunities
+        Prompt        = $prompt
+        Response      = $agentResult.ResponseText
+        PromptPath    = $promptPath
+        ResponsePath  = $responsePath
     }
 
     $oppCount = @($result.Opportunities).Count
@@ -252,23 +178,21 @@ try {
         -Message "Analysis agent returned $oppCount opportunities (primary: $($result.FilePath))" `
         -Experiment $Experiment
 }
-catch {
-    Stop-Spinner -Spinner $spinner -CompletionMessage $null
-    if ($_ -is [System.Management.Automation.PipelineStoppedException]) { throw }
+else {
     $result = [ordered]@{
         Success       = $false
-        ExitCode      = -1
+        ExitCode      = $agentResult.ExitCode
         FilePath      = $null
         Explanation   = $null
         Opportunities = @()
         Prompt        = $prompt
-        Response      = "Error: $_"
+        Response      = $agentResult.ResponseText
         PromptPath    = $promptPath
-        ResponsePath  = $null
+        ResponsePath  = $responsePath
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'analyze' -Level 'warning' -Message "Analysis agent failed: $_" `
+        -Phase 'analyze' -Level 'warning' -Message "Analysis agent failed: $($agentResult.ResponseText)" `
         -Experiment $Experiment
 }
 

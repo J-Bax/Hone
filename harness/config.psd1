@@ -54,6 +54,14 @@
         # AND this absolute threshold are exceeded.
         MinAbsoluteP95DeltaMs = 5
 
+        # Minimum absolute RPS delta to consider a regression meaningful.
+        # Ignores RPS changes smaller than this value (e.g. 5 req/s).
+        MinAbsoluteRPSDelta = 5
+
+        # Minimum absolute error rate delta to consider a regression meaningful.
+        # Ignores error rate changes smaller than this value (e.g. 0.005 = 0.5%).
+        MinAbsoluteErrorRateDelta = 0.005
+
         # Minimum improvement (any single metric) to accept an experiment.
         # Set to 0 so any measurable improvement is accepted; regressions are
         # still gated by MaxRegressionPct.
@@ -159,12 +167,18 @@
         AnalysisModel       = 'claude-opus-4.6'
         ClassificationModel = 'claude-opus-4.6'    # needs strong reasoning for scope decisions
         FixModel            = 'claude-sonnet-4.6'
+
+        # Maximum seconds to wait for a copilot agent invocation before killing it
+        AgentTimeoutSec     = 600
     }
 
     # ── Logging ─────────────────────────────────────────────────
     Logging = @{
         # Log level: 'verbose', 'info', 'warning', 'error'
-        Level      = 'info'
+        Level          = 'info'
+
+        # Maximum log file size in MB before rotation
+        MaxFileSizeMB  = 50
     }
 
     # ── Diagnostic Profiling (Plugin Framework) ─────────────────
@@ -188,6 +202,9 @@
         # Number of k6 runs during diagnostic pass (accuracy is less
         # important than coverage — a single run is usually sufficient)
         DiagnosticRuns = 1
+
+        # Maximum seconds to wait for a k6 diagnostic run before killing it
+        K6TimeoutSec = 300
 
         # ── Per-collector settings ─────────────────────────────
         # Keys must match the directory name under CollectorsPath.

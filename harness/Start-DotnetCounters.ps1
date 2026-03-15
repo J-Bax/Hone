@@ -36,12 +36,9 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 # Resolve output path
 if (-not $OutputPath) {
@@ -114,6 +111,18 @@ try {
             Success    = $false
             Process    = $null
             OutputPath = $OutputPath
+        }
+    }
+
+    # Verify the counter process actually attached and is writing data
+    if (-not $counterProcess.HasExited) {
+        $waitAttempts = 0
+        while ($waitAttempts -lt 5 -and -not (Test-Path $OutputPath)) {
+            Start-Sleep -Milliseconds 500
+            $waitAttempts++
+        }
+        if (-not (Test-Path $OutputPath)) {
+            Write-Warning "dotnet-counters may not have attached — CSV output file not found at $OutputPath"
         }
     }
 

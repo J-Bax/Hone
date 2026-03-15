@@ -1,0 +1,15 @@
+{
+    "opportunities": [
+        {
+            "filePath": "SampleApi/Controllers/ProductsController.cs",
+            "title": "Mock: Replace N+1 query with eager loading",
+            "explanation": "The GetAll endpoint executes a separate query for each product's category. Use Include() for eager loading.",
+            "scope": "narrow",
+            "rootCause": "N+1 query pattern in Entity Framework — each product triggers a lazy-loaded navigation property query.",
+            "impactEstimate": {
+                "overallP95ImprovementPct": 15,
+                "confidence": "high"
+            }
+        }
+    ]
+}

@@ -46,11 +46,15 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
+# Cache the resolved log path to avoid reloading config on every call
 if (-not $LogPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-    $config = Import-PowerShellDataFile -Path $ConfigPath
-    $LogPath = Join-Path $repoRoot $config.Api.ResultsPath 'hone.jsonl'
+    if (-not $script:_cachedLogPath) {
+        $config = Get-HoneConfig
+        $script:_cachedLogPath = Join-Path $repoRoot $config.Api.ResultsPath 'hone.jsonl'
+    }
+    $LogPath = $script:_cachedLogPath
 }
 
 # Ensure the output directory exists
@@ -69,6 +73,19 @@ $entry = [ordered]@{
 }
 
 $json = $entry | ConvertTo-Json -Compress -Depth 5
+
+# Rotate log if it exceeds the configured maximum size
+$maxSizeMB = 50  # default
+if ($config -and $config.Logging -and $config.Logging.MaxFileSizeMB) {
+    $maxSizeMB = $config.Logging.MaxFileSizeMB
+}
+if (Test-Path $LogPath) {
+    $logFile = Get-Item $LogPath
+    if ($logFile.Length -gt ($maxSizeMB * 1MB)) {
+        $rotatedPath = "$LogPath.1"
+        Move-Item -Path $LogPath -Destination $rotatedPath -Force
+    }
+}
 
 # Append to log file
 $json | Out-File -FilePath $LogPath -Append -Encoding utf8

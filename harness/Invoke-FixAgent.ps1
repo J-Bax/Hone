@@ -39,21 +39,11 @@ param(
     [int]$Experiment = 0
 )
 
-function Write-Status ([string]$Message) {
-    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
-        Write-Information $Message -InformationAction Continue
-    } else {
-        Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
-    }
-}
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'experiment' -Level 'info' -Message "Calling fix agent for: $FilePath" `
@@ -86,74 +76,45 @@ No explanation, no commentary — just the code block.
 "@
 
 # ── Call the hone-fixer agent ───────────────────────────────────────────────
-. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
-
-try {
-    $copilotModel = if ($config.Copilot -and $config.Copilot.FixModel) {
-        $config.Copilot.FixModel
-    } elseif ($config.Copilot -and $config.Copilot.Model) {
-        $config.Copilot.Model
-    } else {
-        'claude-opus-4.6'
-    }
-
-    # Ensure UTF-8 decoding of copilot CLI output (prevents mojibake like ΓÇö for em-dash)
-    $prevEncoding = [Console]::OutputEncoding
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-    $spinner = Start-Spinner -Message "Generating optimized code for $FilePath"
-
-    $copilotOutput = copilot --agent hone-fixer --model $copilotModel -p $prompt -s `
-        --no-auto-update --no-ask-user 2>&1
-    $copilotExitCode = $LASTEXITCODE
-
-    [Console]::OutputEncoding = $prevEncoding
-
-    $responseText = ($copilotOutput | Out-String).Trim()
-
-    Stop-Spinner -Spinner $spinner -CompletionMessage "Code generation complete"
-
-    # Save the response
-    $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
-    if (-not (Test-Path $iterDir)) {
-        New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
-    }
-    $responsePath = Join-Path $iterDir 'fix-response.md'
-    $responseText | Out-File -FilePath $responsePath -Encoding utf8
-
-    # Extract code block content
-    $codeBlock = $null
-    if ($responseText -match '(?ms)```(?:\w+)?\s*\r?\n(.+?)```') {
-        $codeBlock = $Matches[1].TrimEnd()
-    }
-
-    $result = [ordered]@{
-        Success      = ($copilotExitCode -eq 0 -and $null -ne $codeBlock)
-        CodeBlock    = $codeBlock
-        Response     = $responseText
-        ResponsePath = $responsePath
-    }
-
-    if ($codeBlock) {
-        Write-Status "    → Generated $($codeBlock.Length) chars for $FilePath"
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
-            -Experiment $Experiment
-    }
-    else {
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'experiment' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
-            -Experiment $Experiment
-    }
+$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+if (-not (Test-Path $iterDir)) {
+    New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
-catch {
-    Stop-Spinner -Spinner $spinner -CompletionMessage $null
-    if ($_ -is [System.Management.Automation.PipelineStoppedException]) { throw }
-    $result = [ordered]@{
-    }
 
+$agentResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAgent.ps1') `
+    -AgentName 'hone-fixer' `
+    -Prompt $prompt `
+    -ModelConfigKey 'FixModel' `
+    -DefaultModel 'claude-opus-4.6' `
+    -SpinnerMessage "Generating optimized code for $FilePath" `
+    -CompletionMessage 'Code generation complete' `
+    -ResponsePath (Join-Path $iterDir 'fix-response.md') `
+    -ConfigPath $ConfigPath
+
+$responsePath = Join-Path $iterDir 'fix-response.md'
+
+# Extract code block content
+$codeBlock = $null
+if ($agentResult.ResponseText -match '(?ms)```(?:\w+)?\s*\r?\n(.+?)```') {
+    $codeBlock = $Matches[1].TrimEnd()
+}
+
+$result = [ordered]@{
+    Success      = ($agentResult.ExitCode -eq 0 -and $null -ne $codeBlock)
+    CodeBlock    = $codeBlock
+    Response     = $agentResult.ResponseText
+    ResponsePath = $responsePath
+}
+
+if ($codeBlock) {
+    Write-Status "    → Generated $($codeBlock.Length) chars for $FilePath"
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'experiment' -Level 'warning' -Message "Fix agent failed: $_" `
+        -Phase 'experiment' -Level 'info' -Message "Fix agent returned code ($($codeBlock.Length) chars)" `
+        -Experiment $Experiment
+}
+else {
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+        -Phase 'experiment' -Level 'warning' -Message 'Fix agent response did not contain a code block' `
         -Experiment $Experiment
 }
 

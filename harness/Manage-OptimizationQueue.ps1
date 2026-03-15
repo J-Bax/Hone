@@ -53,12 +53,9 @@ param(
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-if (-not $ConfigPath) {
-    $ConfigPath = Join-Path $PSScriptRoot 'config.psd1'
-}
-
-$config = Import-PowerShellDataFile -Path $ConfigPath
+$config = Get-HoneConfig -ConfigPath $ConfigPath
 
 $metadataDir = Join-Path $repoRoot $config.Api.MetadataPath
 if (-not (Test-Path $metadataDir)) {
@@ -85,7 +82,9 @@ function Read-Queue {
 # ── Helper: Save queue to JSON ───────────────────────────────────────────────
 function Write-Queue {
     param([PSCustomObject]$Queue)
-    $Queue | ConvertTo-Json -Depth 10 | Out-File -FilePath $queueJsonPath -Encoding utf8
+    $tempPath = "$queueJsonPath.tmp"
+    $Queue | ConvertTo-Json -Depth 10 | Out-File -FilePath $tempPath -Encoding utf8
+    Move-Item -Path $tempPath -Destination $queueJsonPath -Force
 }
 
 # ── Helper: Regenerate markdown from JSON ────────────────────────────────────

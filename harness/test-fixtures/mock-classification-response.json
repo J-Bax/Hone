@@ -1,0 +1,4 @@
+{
+    "scope": "narrow",
+    "reasoning": "Mock: The optimization targets a single controller file and only changes the LINQ query pattern. No schema, dependency, or multi-file changes required."
+}
