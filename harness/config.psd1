@@ -8,7 +8,7 @@
         ProjectPath = 'sample-api/SampleApi'
 
         # Subdirectories to scan for source code context (relative to ProjectPath)
-        SourceCodePaths = @('Controllers', 'Data', 'Models')
+        SourceCodePaths = @('Controllers', 'Data', 'Models', 'Pages')
 
         # File pattern for source files to include in analysis prompts
         SourceFileGlob = '*.cs'

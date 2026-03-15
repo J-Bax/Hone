@@ -585,15 +585,29 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     $fullTargetPath = Join-Path $repoRoot $targetFile
     if (-not (Test-Path (Split-Path $fullTargetPath -Parent))) {
-        Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
-        $staleCount++
-        if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
-            -Experiment $experiment -StartedAt $experimentStartedAt `
-            -Outcome 'invalid_target' -BranchName $branchName `
-            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
-            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-        continue
+        # Fallback: search for the file under the project directory
+        $projectDir = Join-Path $repoRoot $config.Api.ProjectPath
+        $fileName = Split-Path $targetFile -Leaf
+        $candidates = @(Get-ChildItem -Path $projectDir -Filter $fileName -Recurse -File -ErrorAction SilentlyContinue)
+        if ($candidates.Count -eq 1) {
+            $correctedPath = $candidates[0].FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'experiment' -Level 'warning' `
+                -Message "Path corrected: '$targetFile' → '$correctedPath'" `
+                -Experiment $experiment
+            $targetFile = $correctedPath
+            $fullTargetPath = $candidates[0].FullName
+        } else {
+            Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
+            $staleCount++
+            if ($stackedDiffs) { $consecutiveFailures++ }
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'invalid_target' -BranchName $branchName `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+            continue
+        }
     }
 
     Write-Status "  Applying fix to: $targetFile"
