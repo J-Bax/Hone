@@ -174,6 +174,8 @@ Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15
 
 The diagnostic framework uses a **plugin model** for both data collection and analysis. New profiling tools can be added by dropping in a directory — no orchestrator changes needed.
 
+> For detailed documentation of each agent's role, inputs, outputs, and model configuration, see [Agent Designs](agent-designs.md). For design ideas on evolving the agent pipeline, see [Future Extensions](future-extensions.md).
+
 ### Collector Plugins (`harness/collectors/<name>/`)
 
 Each collector is a self-contained directory with 4 files:
@@ -203,16 +205,190 @@ Built-in analyzers: `cpu-hotspots` (reads folded CPU stacks from `perfview-cpu`)
 
 Each analyzer declares its `RequiredCollectors` in `analyzer.psd1`. If a required collector's data is not available (e.g., the collector is disabled or failed), the analyzer is automatically skipped with a warning — it does not block other analyzers from running.
 
-### Adding a New Plugin
+### Adding a New Collector Plugin
 
-**New collector** (e.g., `thread-contention`):
-1. Create `harness/collectors/thread-contention/` with the 4 standard files
-2. Set `Group` in `collector.psd1` — use an existing group if compatible, or create a new one
-3. Add settings under `Diagnostics.CollectorSettings.'thread-contention'` in `config.psd1`
+Collectors gather raw profiling data during diagnostic measurement passes. To add a new collector:
 
-**New analyzer** (e.g., `thread-hotspots`):
-1. Create `harness/analyzers/thread-hotspots/` with the 3 standard files
-2. Add settings under `Diagnostics.AnalyzerSettings.'thread-hotspots'` in `config.psd1`
-3. Copy or symlink `agent.md` to `.github/agents/`
+1. **Create the plugin directory** with 4 standard files:
 
-The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticAnalysis.ps1`, `Invoke-DiagnosticMeasurement.ps1`) automatically discover and run all enabled plugins.
+   ```
+   harness/collectors/<name>/
+   ├── collector.psd1          # Metadata
+   ├── Start-Collector.ps1     # Start data collection
+   ├── Stop-Collector.ps1      # Stop collection, return artifact paths
+   └── Export-CollectorData.ps1  # Convert raw artifacts to analysis-friendly format
+   ```
+
+2. **Define metadata** in `collector.psd1`:
+
+   ```powershell
+   @{
+       Name            = 'thread-contention'
+       Description     = 'Thread contention analysis via ETW events'
+       Group           = 'etw-cpu'     # Run with CPU sampling, or create a new group
+       RequiresAdmin   = $true
+       OverheadImpact  = 'medium'
+       DefaultSettings = @{
+           Enabled       = $true
+           MaxCollectSec = 90
+       }
+   }
+   ```
+
+   The `Group` field controls pass scheduling:
+   - Collectors in the **same group** run together in one pass
+   - **Different groups** get separate passes (each with its own API instance + k6 run)
+   - `Group = 'default'` collectors run in **every** pass (use for lightweight, non-interfering tools)
+
+3. **Add configuration** under `Diagnostics.CollectorSettings` in `harness/config.psd1`:
+
+   ```powershell
+   CollectorSettings = @{
+       'thread-contention' = @{ Enabled = $true; MaxCollectSec = 90 }
+   }
+   ```
+
+4. **Follow the existing collector contracts** — use `perfview-cpu` or `dotnet-counters` as templates:
+   - `Start-Collector.ps1` receives the API process ID and settings, returns a handle object
+   - `Stop-Collector.ps1` receives the handle, stops collection, returns raw artifact paths
+   - `Export-CollectorData.ps1` converts raw artifacts into formats suitable for analyzer consumption
+
+The orchestrators (`Invoke-DiagnosticCollection.ps1`, `Invoke-DiagnosticMeasurement.ps1`) automatically discover and run all enabled collectors — no orchestrator changes needed.
+
+### Adding a New Analyzer Plugin
+
+Analyzers consume collector data and produce AI-generated analysis reports. To add a new analyzer:
+
+1. **Create the plugin directory** with 3 standard files:
+
+   ```
+   harness/analyzers/<name>/
+   ├── analyzer.psd1       # Metadata
+   ├── Invoke-Analyzer.ps1 # Build prompt, call agent, parse response
+   └── agent.md            # Copilot agent definition
+   ```
+
+2. **Define metadata** in `analyzer.psd1`:
+
+   ```powershell
+   @{
+       Name               = 'thread-hotspots'
+       Description        = 'Thread contention hotspot analysis'
+       RequiredCollectors = @('thread-contention')
+       OptionalCollectors = @()
+       AgentName          = 'hone-thread-profiler'
+       DefaultSettings    = @{
+           Model = 'claude-opus-4.6'
+       }
+   }
+   ```
+
+   The `RequiredCollectors` field declares dependencies. If a required collector's data is unavailable (disabled, failed, or not yet run), the analyzer is **automatically skipped** with a warning — it does not block other analyzers.
+
+3. **Write the agent definition** in `agent.md` following the standard format:
+
+   ```markdown
+   ---
+   name: hone-thread-profiler
+   description: >
+     Thread contention analysis agent...
+   tools: []
+   ---
+
+   # System prompt with role, output schema, and analysis rules
+   ```
+
+   Analyzer agents typically have `tools: []` (no tools) — they receive all data in the prompt rather than reading files.
+
+4. **Symlink the agent definition** into `.github/agents/`:
+
+   ```powershell
+   New-Item -ItemType SymbolicLink `
+       -Path '.github/agents/hone-thread-profiler.agent.md' `
+       -Target '../../harness/analyzers/thread-hotspots/agent.md'
+   ```
+
+5. **Add configuration** under `Diagnostics.AnalyzerSettings` in `harness/config.psd1`:
+
+   ```powershell
+   AnalyzerSettings = @{
+       'thread-hotspots' = @{ Enabled = $true; Model = 'claude-opus-4.6' }
+   }
+   ```
+
+The orchestrator (`Invoke-DiagnosticAnalysis.ps1`) automatically discovers and runs all enabled analyzers. Reports are injected into the hone-analyst prompt under the "Diagnostic Profiling Reports" section.
+
+### Adding a New Main Pipeline Agent
+
+Adding an agent to the main experiment pipeline (as opposed to an analyzer agent) requires integration with the loop orchestrator. Follow this pattern:
+
+1. **Create the agent definition** in `.github/agents/<name>.agent.md` with YAML frontmatter (`name`, `description`, `tools`) and the system prompt.
+
+2. **Write an invoker script** in `harness/` following conventions:
+   - Use `[CmdletBinding()]` and `param()` blocks
+   - Resolve the model from config: per-agent override → `Copilot.Model` → hardcoded fallback
+   - Set `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` before calling `copilot`
+   - Parse structured JSON output with error handling
+   - Save prompt and response artifacts to `experiment-N/`
+   - Return a `[PSCustomObject]` with a `Success` property
+
+3. **Integrate into `Invoke-HoneLoop.ps1`** at the appropriate phase. The current pipeline is: analyst → classifier → fixer. New agents can be inserted between existing stages or added as new phases.
+
+4. **Add model configuration** in `harness/config.psd1` under the `Copilot` section.
+
+### Supporting a Different Target API
+
+Hone treats the target API as a blackbox (see [Design Principles](#design-principles)). It requires three contracts:
+
+1. **Buildable source** — a project that compiles with `dotnet build`
+2. **Functional test suite** — E2E tests runnable with `dotnet test` that act as a regression gate
+3. **k6 stress test scenarios** — load test scripts that produce measurable performance metrics
+
+To point Hone at a different API, update these settings in `harness/config.psd1`:
+
+| Setting | Purpose | Example |
+|---------|---------|---------|
+| `Api.SolutionPath` | Solution file path | `my-api/MyApi.sln` |
+| `Api.ProjectPath` | API project directory | `my-api/MyApi/` |
+| `Api.TestProjectPath` | Test project directory | `my-api/MyApi.Tests/` |
+| `Api.BaseUrl` | API base URL when running | `http://localhost:5000` |
+| `Api.HealthEndpoint` | Health check path for readiness | `/health` |
+| `Api.ResultsPath` | Where to store measurement results | `my-api/results/` |
+| `ScaleTest.ScenarioPath` | Primary k6 scenario | `my-api/scale-tests/scenarios/baseline.js` |
+
+The harness scripts, agent definitions, and decision logic remain unchanged.
+
+### Adding New k6 Scenarios
+
+1. **Create the scenario** in `scale-tests/scenarios/`:
+
+   ```javascript
+   import http from 'k6/http';
+   import { check } from 'k6';
+
+   export const options = {
+       stages: [/* ramp-up, sustain, ramp-down */],
+   };
+
+   export default function () {
+       const base = __ENV.BASE_URL;
+       // Request logic with check() for validation
+   }
+   ```
+
+2. **Register the scenario** in `ScaleTest.Scenarios` in `harness/config.psd1` with its k6 scenario path.
+
+3. **Set thresholds** in `scale-tests/thresholds.json` for the new scenario.
+
+4. **Establish a baseline** by running `Get-PerformanceBaseline.ps1`, which will capture baseline metrics for all registered scenarios.
+
+### Custom Exit Conditions and Decision Logic
+
+The accept/reject decision for each experiment is implemented in `harness/Compare-Results.ps1`. It compares three metrics (p95 latency, requests/sec, error rate) against the previous baseline using configurable tolerances from `harness/config.psd1`.
+
+To modify the decision logic:
+
+- **Adjust thresholds**: Change `Tolerances.MaxRegressionPct` (default 10%) and `Tolerances.MinAbsoluteP95DeltaMs` (default 5ms) in config
+- **Add new metrics**: Extend `Compare-Results.ps1` to compare additional metrics (e.g., p99 latency, custom k6 counters)
+- **Modify the efficiency tiebreaker**: Tune `Tolerances.Efficiency` settings to control when flat-performance experiments are accepted based on reduced resource usage (CPU, working set)
+- **Change exit conditions**: Adjust `Loop.MaxConsecutiveFailures` and `Loop.MaxExperiments` in config

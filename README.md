@@ -6,7 +6,7 @@
 
 **Agentic performance optimization for web APIs.**
 
-Hone is a PowerShell-driven harness that automatically optimizes API performance through an iterative agentic loop. It measures with k6 load tests, analyzes bottlenecks with GitHub Copilot CLI, applies fixes, validates correctness, and repeats — producing a stack of reviewable PRs with measurable improvements.
+Hone is an experimental harness that automatically optimizes API performance through an iterative agentic loop. It measures with k6 load tests, analyzes bottlenecks with GitHub Copilot CLI, applies fixes, validates correctness, and repeats — producing a stack of reviewable PRs with measurable improvements.
 
 ```mermaid
 graph LR
@@ -52,6 +52,9 @@ graph LR
 - 🔌 **Plugin architecture** — add new profiling tools by dropping in a directory
 - 📋 **HTML dashboard and terminal results display** for at-a-glance comparison
 
+> [!WARNING]
+> Hone is **not architected for production use cases**. It is an experimental project intended for research and learning purposes only. Use at your own risk.
+
 ## Prerequisites
 
 | Tool | Version | Install |
@@ -96,8 +99,10 @@ See [docs/configuration.md](docs/configuration.md) for runtime override syntax.
 ## Documentation
 
 - [Architecture](docs/architecture.md) — Design principles, loop flow, and decision logic
+- [Agent Designs](docs/agent-designs.md) — Five-agent AI pipeline: roles, inputs, outputs, and model configuration
 - [Getting Started](docs/getting-started.md) — Detailed setup guide
 - [Configuration](docs/configuration.md) — Config overview and runtime overrides
+- [Future Extensions](docs/future-extensions.md) — Design ideas: actor-critic fixer, correction of error, optimization knowledge base
 
 ## License
 
