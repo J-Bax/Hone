@@ -56,6 +56,7 @@ do {
 
     if (-not $healthy -and $apiProcess.HasExited -and $configuredPort -eq 0) {
         Write-Verbose "Port $freePort may have been claimed — retrying ($portAttempts/$maxPortAttempts)"
+        Stop-Process -Id $apiProcess.Id -Force -ErrorAction SilentlyContinue
         continue
     }
     break
@@ -78,7 +79,7 @@ if ($healthy) {
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'measure' -Level 'info' -Message "API is healthy at $baseUrl (took ${elapsed}s)"
+        -Phase 'measure' -Level 'info' -Message "API is healthy at $baseUrl"
 }
 else {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

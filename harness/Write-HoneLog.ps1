@@ -74,11 +74,14 @@ $entry = [ordered]@{
 
 $json = $entry | ConvertTo-Json -Compress -Depth 5
 
-# Rotate log if it exceeds the configured maximum size
-$maxSizeMB = 50  # default
-if ($config -and $config.Logging -and $config.Logging.MaxFileSizeMB) {
-    $maxSizeMB = $config.Logging.MaxFileSizeMB
+# Script-scoped cache for log rotation config
+if (-not $script:_cachedMaxLogSizeMB) {
+    $rotConfig = Get-HoneConfig
+    $script:_cachedMaxLogSizeMB = if ($rotConfig.Logging -and $rotConfig.Logging.MaxFileSizeMB) {
+        $rotConfig.Logging.MaxFileSizeMB
+    } else { 50 }
 }
+$maxSizeMB = $script:_cachedMaxLogSizeMB
 if (Test-Path $LogPath) {
     $logFile = Get-Item $LogPath
     if ($logFile.Length -gt ($maxSizeMB * 1MB)) {
