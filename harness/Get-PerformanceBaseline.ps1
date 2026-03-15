@@ -56,6 +56,31 @@ if (-not $buildResult.Success) {
 # ── Step 1.5: Reset Database ────────────────────────────────────────────────
 & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment 0
 
+# ── Step 1.6: Clear optimization metadata from prior runs ───────────────────
+# Experiment numbering restarts from 1 on each baseline, so stale metadata
+# (experiment log, optimization queue, root-cause docs, event log) must be
+# cleared to avoid duplicate experiment numbers and stale queue items.
+$metadataDir = Join-Path $repoRoot $config.Api.MetadataPath
+$resultsDir  = Join-Path $repoRoot $config.Api.ResultsPath
+
+$clearedFiles = @()
+foreach ($file in @('experiment-log.md', 'experiment-queue.json', 'experiment-queue.md')) {
+    $path = Join-Path $metadataDir $file
+    if (Test-Path $path) { Remove-Item $path -Force; $clearedFiles += $file }
+}
+$rcDir = Join-Path $metadataDir 'root-causes'
+if (Test-Path $rcDir) { Remove-Item $rcDir -Recurse -Force; $clearedFiles += 'root-causes/' }
+
+$honeLog = Join-Path $resultsDir 'hone.jsonl'
+if (Test-Path $honeLog) { Remove-Item $honeLog -Force; $clearedFiles += 'hone.jsonl' }
+
+if ($clearedFiles.Count -gt 0) {
+    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+        -Phase 'baseline' -Level 'info' `
+        -Message "Cleared optimization metadata from prior run: $($clearedFiles -join ', ')" `
+        -Experiment 0
+}
+
 # ── Step 2: Start API ──────────────────────────────────────────────────────
 $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
 if (-not $apiResult.Success) {
