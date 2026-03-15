@@ -110,6 +110,8 @@ if ($config.Copilot -and $config.Copilot.AgentTimeoutSec) {
 $lastError = $null
 for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
     $spinner = $null
+    # Capture encoding before try so catch/early-return can always restore it
+    $prevEncoding = [Console]::OutputEncoding
     try {
         $effectivePrompt = if ($attempt -gt 0 -and $RetryPromptSuffix) {
             $Prompt + "`n`n$RetryPromptSuffix"
@@ -121,7 +123,6 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
         $spinMsg = if ($SpinnerMessage) { "$SpinnerMessage$retryLabel" } else { "Running $AgentName$retryLabel" }
 
         # UTF-8 encoding for copilot CLI output
-        $prevEncoding = [Console]::OutputEncoding
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
         $spinner = Start-Spinner -Message $spinMsg
@@ -148,6 +149,7 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
         }
 
         if ($copilotResult.TimedOut) {
+            [Console]::OutputEncoding = $prevEncoding
             return [PSCustomObject]([ordered]@{
                 Success      = $false
                 ExitCode     = -1

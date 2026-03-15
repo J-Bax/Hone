@@ -71,10 +71,8 @@ function Wait-ApiHealthy {
         [int]$TimeoutSec = 90,
         [int]$IntervalSec = 1
     )
-    $elapsed = 0
-    while ($elapsed -lt $TimeoutSec) {
-        Start-Sleep -Seconds $IntervalSec
-        $elapsed += $IntervalSec
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($stopwatch.Elapsed.TotalSeconds -lt $TimeoutSec) {
         try {
             $response = Invoke-RestMethod -Uri $HealthUrl -Method Get -TimeoutSec 2 -ErrorAction Stop
             if ($response.status -eq 'healthy') {
@@ -82,8 +80,11 @@ function Wait-ApiHealthy {
             }
         }
         catch {
-            Write-Verbose "Health check attempt $elapsed/${TimeoutSec}s — not ready"
+            Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s — not ready"
         }
+        $remainingSec = $TimeoutSec - $stopwatch.Elapsed.TotalSeconds
+        if ($remainingSec -le 0) { break }
+        Start-Sleep -Seconds ([Math]::Min($IntervalSec, [Math]::Max(1, [int]$remainingSec)))
     }
     return $false
 }

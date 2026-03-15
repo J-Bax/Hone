@@ -33,6 +33,7 @@ param(
     [string]$ConfigPath,
     [int]$Experiment = 0,
     [switch]$SkipPrimary,
+    [switch]$SkipHealthCheck,
     [string]$BaseUrl
 )
 
@@ -96,6 +97,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     }
     if ($scenarioNameArg) { $params.ScenarioName = $scenarioNameArg }
     if ($BaseUrl) { $params.BaseUrl = $BaseUrl }
+    if ($SkipHealthCheck) { $params.SkipHealthCheck = $true }
 
     $result = $null
     try {

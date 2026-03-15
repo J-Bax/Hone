@@ -386,6 +386,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'analysis_failed' `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
                 $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
@@ -414,6 +415,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'queue_init_failed' `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             continue
         }
@@ -486,6 +488,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'no_queue_items' `
+            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
@@ -579,6 +582,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'fix_failed' -BranchName $branchName `
+            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
@@ -597,6 +601,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'invalid_target' -BranchName $branchName `
+            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
@@ -621,6 +626,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'apply_failed' -BranchName $branchName `
+            -BaseBranch $baseBranch `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
@@ -882,7 +888,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 # Run additional (diagnostic) scenarios only on success
                 Write-Status '      Running additional scenarios...'
                 $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -BaseUrl $apiResult.BaseUrl
+                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -SkipHealthCheck -BaseUrl $apiResult.BaseUrl
             }
         }
         finally {
