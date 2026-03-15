@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Builds the sample API project.
 
@@ -39,7 +39,7 @@ $buildOutputString = ($buildOutput | Out-String)
 
 # Save build log to experiment directory
 if ($Experiment -gt 0) {
-    $logDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+    $logDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }

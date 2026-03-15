@@ -79,7 +79,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     }
     $scenarioIndex++
 
-    $scenarioFile = Join-Path $repoRoot (Split-Path $config.ScaleTest.ScenarioRegistryPath -Parent) $scenario.file
+    $scenarioFile = Join-Path -Path $repoRoot -ChildPath (Split-Path $config.ScaleTest.ScenarioRegistryPath -Parent) $scenario.file
 
     # For the primary optimization scenario use no ScenarioName so the
     # existing k6-summary.json naming is preserved.

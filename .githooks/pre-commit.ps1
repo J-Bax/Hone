@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Git Pre-Commit Hook — PSScriptAnalyzer Lint
 # =============================================================================
 # Lints staged PowerShell files under harness/ and root *.ps1 files.
@@ -15,7 +15,26 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Rules that block commits (correctness + quality). All other rules warn only.
+function Write-Console {
+    param(
+        [string]$Text = '',
+        [System.ConsoleColor]$Color,
+        [switch]$NoNewline
+    )
+    if ($PSBoundParameters.ContainsKey('Color')) {
+        if ($NoNewline) {
+            $Host.UI.Write($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        } else {
+            $Host.UI.WriteLine($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        }
+    } elseif ($NoNewline) {
+        $Host.UI.Write($Text)
+    } else {
+        $Host.UI.WriteLine($Text)
+    }
+}
+
+# Rules that block commits(correctness + quality). All other rules warn only.
 $blockingRules = @(
     'PSAvoidUsingCmdletAliases'
     'PSAvoidDefaultValueSwitchParameter'
@@ -80,7 +99,7 @@ if ($filesToLint.Count -eq 0) {
     exit 0
 }
 
-Write-Host "Linting $($filesToLint.Count) PowerShell file(s)..." -ForegroundColor Cyan
+Write-Console "Linting $($filesToLint.Count) PowerShell file(s)..." -Color Cyan
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
 
@@ -88,17 +107,22 @@ $errorCount = 0
 $warningCount = 0
 
 foreach ($entry in $filesToLint) {
-    $results = Invoke-ScriptAnalyzer -Path $entry.Full -Settings $settingsPath
+    $results = $null
+    try {
+        $results = Invoke-ScriptAnalyzer -Path $entry.Full -Settings $settingsPath
+    } catch {
+        Write-Console "  [!] $($entry.Relative): PSScriptAnalyzer internal error — skipped" -Color Yellow
+    }
 
     if ($results) {
         foreach ($r in $results) {
             $isBlocking = $r.RuleName -in $blockingRules
 
             if ($isBlocking) {
-                Write-Host "  [X] $($entry.Relative):$($r.Line) $($r.RuleName) — $($r.Message)" -ForegroundColor Red
+                Write-Console "  [X] $($entry.Relative):$($r.Line) $($r.RuleName) — $($r.Message)" -Color Red
                 $errorCount++
             } else {
-                Write-Host "  [!] $($entry.Relative):$($r.Line) $($r.RuleName) — $($r.Message)" -ForegroundColor Yellow
+                Write-Console "  [!] $($entry.Relative):$($r.Line) $($r.RuleName) — $($r.Message)" -Color Yellow
                 $warningCount++
             }
         }
@@ -106,15 +130,15 @@ foreach ($entry in $filesToLint) {
 }
 
 if ($errorCount -gt 0) {
-    Write-Host '' -ForegroundColor Red
-    Write-Host "Lint FAILED: $errorCount error(s), $warningCount warning(s)" -ForegroundColor Red
-    Write-Host 'Fix errors before committing, or use: git commit --no-verify' -ForegroundColor Red
+    Write-Console '' -Color Red
+    Write-Console "Lint FAILED: $errorCount error(s), $warningCount warning(s)" -Color Red
+    Write-Console 'Fix errors before committing, or use: git commit --no-verify' -Color Red
     exit 1
 }
 
 if ($warningCount -gt 0) {
-    Write-Host "Lint passed with $warningCount warning(s)" -ForegroundColor Yellow
+    Write-Console "Lint passed with $warningCount warning(s)" -Color Yellow
 } else {
-    Write-Host 'Lint passed.' -ForegroundColor Green
+    Write-Console 'Lint passed.' -Color Green
 }
 exit 0

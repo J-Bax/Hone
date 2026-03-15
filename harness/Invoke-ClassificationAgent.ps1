@@ -58,7 +58,7 @@ Respond with JSON only. No markdown, no code blocks around the JSON.
 "@
 
 # ── Call the hone-classifier agent ───────────────────────────────────────────
-$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+$iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }

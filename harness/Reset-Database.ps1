@@ -30,7 +30,7 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
     -Experiment $Experiment
 
 # ── Parse connection string from appsettings.json ───────────────────────────
-$appSettingsPath = Join-Path $repoRoot $config.Api.ProjectPath 'appsettings.json'
+$appSettingsPath = Join-Path -Path $repoRoot -ChildPath $config.Api.ProjectPath 'appsettings.json'
 $appSettings = Get-Content $appSettingsPath -Raw | ConvertFrom-Json
 $connectionString = $appSettings.ConnectionStrings.DefaultConnection
 

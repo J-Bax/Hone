@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Validates harness configuration and environment prerequisites.
 

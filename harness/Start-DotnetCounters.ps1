@@ -42,7 +42,7 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
 
 # Resolve output path
 if (-not $OutputPath) {
-    $outputDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+    $outputDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
     $OutputPath = Join-Path $outputDir 'dotnet-counters.csv'
 }
 

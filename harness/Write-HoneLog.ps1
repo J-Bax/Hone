@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Structured logging helper for the Hone harness.
 
@@ -52,7 +52,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 if (-not $LogPath) {
     if (-not $script:_cachedLogPath) {
         $config = Get-HoneConfig
-        $script:_cachedLogPath = Join-Path $repoRoot $config.Api.ResultsPath 'hone.jsonl'
+        $script:_cachedLogPath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'hone.jsonl'
     }
     $LogPath = $script:_cachedLogPath
 }

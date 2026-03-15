@@ -174,7 +174,7 @@ $(if ($codeBlock) {
 "@
 
 # ── Write the RCA file ──────────────────────────────────────────────────────
-$iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+$iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }

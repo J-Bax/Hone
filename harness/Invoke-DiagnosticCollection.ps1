@@ -75,7 +75,7 @@ if (-not (Test-Path $collectorsPath)) {
 }
 
 # ── Discover enabled collectors ─────────────────────────────────────────────
-function Get-EnabledCollectors {
+function Get-EnabledCollector {
     param([string]$Path, [hashtable]$Diag)
 
     $result = [System.Collections.Generic.List[hashtable]]::new()
@@ -130,7 +130,7 @@ function Get-EnabledCollectors {
     every non-default group (they're lightweight/non-interfering).
     If no non-default groups exist, returns a single 'default' group.
 #>
-function Get-CollectorGroups {
+function Get-CollectorGroup {
     param([System.Collections.Generic.List[hashtable]]$Collectors)
 
     $defaultCollectors = @($Collectors | Where-Object { $_.Group -eq 'default' })
@@ -150,11 +150,11 @@ function Get-CollectorGroups {
     return $groups
 }
 
-$collectors = Get-EnabledCollectors -Path $collectorsPath -Diag $diagnostics
+$collectors = Get-EnabledCollector -Path $collectorsPath -Diag $diagnostics
 
 # ── Action: GetGroups ───────────────────────────────────────────────────────
 if ($Action -eq 'GetGroups') {
-    $groups = Get-CollectorGroups -Collectors $collectors
+    $groups = Get-CollectorGroup -Collectors $collectors
     return @{ Groups = $groups }
 }
 

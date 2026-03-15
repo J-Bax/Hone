@@ -10,7 +10,7 @@
     - Limit-String              — Word-boundary-aware string truncation
     - Invoke-CopilotWithTimeout — Runs copilot CLI with a timeout guard
     - Undo-ExperimentBranch     — Legacy-mode branch rollback
-    - Add-ExperimentMetadata    — Records experiment entries in run-metadata.json
+    - Add-ExperimentMetadatum    — Records experiment entries in run-metadata.json
     - New-ExperimentPR          — Creates GitHub PRs for experiments
     - Build-StackNote           — Builds PR stack context note for stacked-diffs mode
 #>
@@ -191,7 +191,7 @@ function Undo-ExperimentBranch {
     }
 }
 
-function Add-ExperimentMetadata {
+function Add-ExperimentMetadatum {
     <#
     .SYNOPSIS
         Records an experiment entry in run-metadata.json.
@@ -248,6 +248,7 @@ function New-ExperimentPR {
     .SYNOPSIS
         Creates a GitHub pull request for an experiment (accepted or rejected).
     #>
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [int]$Experiment,
         [string]$BranchName,
@@ -262,11 +263,19 @@ function New-ExperimentPR {
     $dryRunPrefix = if ($IsDryRun) { '[DRY RUN] ' } else { '' }
     $prTitle = "${dryRunPrefix}hone(experiment-${Experiment})[${outcomeTag}]: $(Limit-String $Description 120)"
 
-    $result = gh pr create `
-        --base $BaseBranch `
-        --head $BranchName `
-        --title $prTitle `
-        --body $Body 2>&1
+    if ($PSCmdlet.ShouldProcess('GitHub PR', 'Create')) {
+        $result = gh pr create `
+            --base $BaseBranch `
+            --head $BranchName `
+            --title $prTitle `
+            --body $Body 2>&1
+    } else {
+        return [PSCustomObject]@{
+            Success = $true
+            PrUrl = $null
+            PrNumber = $null
+        }
+    }
 
     if ($LASTEXITCODE -eq 0) {
         $extractedNumber = ($result -split '/')[-1]
@@ -344,4 +353,4 @@ function Build-StackNote {
 "@
 }
 
-Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadata, New-ExperimentPR, Build-StackNote
+Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote

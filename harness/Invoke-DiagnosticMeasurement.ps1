@@ -64,7 +64,7 @@ if (-not $config.Diagnostics -or -not $config.Diagnostics.Enabled) {
 }
 
 $diagnostics = $config.Diagnostics
-$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
+$resultsDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
 
 if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null

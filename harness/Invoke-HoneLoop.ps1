@@ -179,7 +179,7 @@ Write-Status ''
 }
 
 # ── Run metadata tracking ───────────────────────────────────────────────────
-$runMetadataPath = Join-Path $repoRoot $config.Api.ResultsPath 'run-metadata.json'
+$runMetadataPath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'run-metadata.json'
 $loopStartedAt = Get-Date -Format 'o'
 
 if (Test-Path $runMetadataPath) {
@@ -198,7 +198,7 @@ if (Test-Path $runMetadataPath) {
 }
 
 # ── Load baseline ───────────────────────────────────────────────────────────
-$baselinePath = Join-Path $repoRoot $config.Api.ResultsPath 'baseline.json'
+$baselinePath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'baseline.json'
 
 if (-not (Test-Path $baselinePath)) {
     Write-Status 'No baseline found. Running Get-PerformanceBaseline.ps1 first...'
@@ -377,7 +377,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Write-Warning '  Analysis agent failed — skipping experiment'
             $staleCount++
             if ($stackedDiffs) { $consecutiveFailures++ }
-            Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'analysis_failed' `
                 -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
@@ -406,7 +406,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Write-Warning '  Failed to initialize optimization queue — skipping experiment'
             $staleCount++
             if ($stackedDiffs) { $consecutiveFailures++ }
-            Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'queue_init_failed' `
                 -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
@@ -477,7 +477,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning '  No actionable items in queue — skipping experiment'
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'no_queue_items' `
             -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
@@ -506,7 +506,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
     # Otherwise, fall back to the harness-generated RCA template.
     if ($currentItem -and $currentItem.rootCausePath -and (Test-Path $currentItem.rootCausePath)) {
-        $iterDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$experiment"
+        $iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$experiment"
         if (-not (Test-Path $iterDir)) {
             New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
         }
@@ -569,7 +569,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning '  Fix agent failed to generate code — skipping experiment'
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'fix_failed' -BranchName $branchName `
             -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
@@ -588,7 +588,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'invalid_target' -BranchName $branchName `
             -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
@@ -613,7 +613,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Warning "  Fix application failed: $($applyResult.Description)"
         $staleCount++
         if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'apply_failed' -BranchName $branchName `
             -BaseBranch $baseBranch `
@@ -667,7 +667,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             }
             Pop-Location
 
-            Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'build_failure' -BranchName $branchName `
                 -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
@@ -733,7 +733,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             }
             Pop-Location
 
-            Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'test_failure' -BranchName $branchName `
                 -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
@@ -837,7 +837,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 }
                 Pop-Location
 
-                Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+                Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                     -Experiment $experiment -StartedAt $experimentStartedAt `
                     -Outcome 'api_start_failure' -BranchName $branchName `
                     -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
@@ -917,7 +917,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             }
             Pop-Location
 
-            Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'scale_test_failure' -BranchName $branchName `
                 -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
@@ -1157,7 +1157,7 @@ $rcaDocument
                     $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
                     $scenarioRefLabel = $referenceLabel
                 } else {
-                    $scenarioBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
+                    $scenarioBaselinePath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
                     if (-not (Test-Path $scenarioBaselinePath)) { continue }
                     $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
                 }
@@ -1428,7 +1428,7 @@ $rcaDocument
     $experimentPrNumber = if ($prNumber) { $prNumber } else { $null }
     $experimentPrUrl = if ($prUrl) { "$prUrl" } else { $null }
 
-    Add-ExperimentMetadata -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+    Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
         -Experiment $experiment -StartedAt $experimentStartedAt `
         -Outcome $experimentOutcome -BranchName $branchName `
         -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `

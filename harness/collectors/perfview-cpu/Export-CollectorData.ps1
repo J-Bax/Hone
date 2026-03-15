@@ -130,7 +130,7 @@ function Invoke-SaveCPUStacksAsCsv {
 }
 
 # ── Helper: parse CSV into folded-stack lines ───────────────────────────────
-function ConvertTo-FoldedStacks {
+function ConvertTo-FoldedStack {
     param(
         [string]$CsvPath,
         [string]$FilterProcessName  # non-empty = filter rows to this process's module
@@ -192,7 +192,7 @@ try {
 
     if ($csvPath) {
         Write-Verbose "Parsing process-filtered CSV: $csvPath"
-        $foldedLines = @(ConvertTo-FoldedStacks -CsvPath $csvPath -FilterProcessName '')
+        $foldedLines = @(ConvertTo-FoldedStack -CsvPath $csvPath -FilterProcessName '')
     }
 
     # ── Attempt 2: Retry without process filter ────────────────────────────
@@ -207,7 +207,7 @@ try {
 
         if ($csvPath) {
             Write-Verbose "Parsing unfiltered CSV with module-level filter: $csvPath"
-            $foldedLines = @(ConvertTo-FoldedStacks -CsvPath $csvPath -FilterProcessName $ProcessName)
+            $foldedLines = @(ConvertTo-FoldedStack -CsvPath $csvPath -FilterProcessName $ProcessName)
             $usedFallback = $true
         }
     }
@@ -290,7 +290,7 @@ try {
 
     if ($allocCsvPath) {
         Write-Verbose "Parsing allocation CSV: $allocCsvPath"
-        $allocLines = @(ConvertTo-FoldedStacks -CsvPath $allocCsvPath -FilterProcessName '')
+        $allocLines = @(ConvertTo-FoldedStack -CsvPath $allocCsvPath -FilterProcessName '')
         $sortedAllocLines = @($allocLines |
                 Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
                 Select-Object -First $maxStacks)

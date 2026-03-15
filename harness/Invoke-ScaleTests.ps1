@@ -44,7 +44,7 @@ if (-not $ScenarioPath) {
     $ScenarioPath = Join-Path $repoRoot $config.ScaleTest.ScenarioPath
 }
 
-$outputDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+$outputDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if ($ScenarioName) {
     $jsonSummaryPath = Join-Path $outputDir "k6-summary-$ScenarioName.json"
 } else {

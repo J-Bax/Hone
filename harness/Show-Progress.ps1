@@ -21,7 +21,7 @@ function Start-Spinner {
     .OUTPUTS
         A spinner object to pass to Stop-Spinner.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory)]
@@ -45,23 +45,25 @@ function Start-Spinner {
             Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
         })
 
-    $timer = [System.Timers.Timer]::new(120)
-    $timer.AutoReset = $true
+    if ($PSCmdlet.ShouldProcess('Spinner timer', 'Start')) {
+        $timer = [System.Timers.Timer]::new(120)
+        $timer.AutoReset = $true
 
-    # The Elapsed event fires on a ThreadPool background thread.
-    # Background threads are killed automatically on process exit (Ctrl+C).
-    Register-ObjectEvent -InputObject $timer -EventName Elapsed -Action {
-        $s = $Event.MessageData
-        $elapsed = [math]::Floor($s.Stopwatch.Elapsed.TotalSeconds)
-        $frame = $s.Frames[$s.Index % $s.Frames.Count]
-        $line = "  $frame $($s.Message)... ${elapsed}s"
-        try { [Console]::Write("`r$($line.PadRight(78))") } catch { Write-Verbose "Console write failed: $_" }
-        $s.Index++
-    } -MessageData $state | Out-Null
+        # The Elapsed event fires on a ThreadPool background thread.
+        # Background threads are killed automatically on process exit (Ctrl+C).
+        Register-ObjectEvent -InputObject $timer -EventName Elapsed -Action {
+            $s = $Event.MessageData
+            $elapsed = [math]::Floor($s.Stopwatch.Elapsed.TotalSeconds)
+            $frame = $s.Frames[$s.Index % $s.Frames.Count]
+            $line = "  $frame $($s.Message)... ${elapsed}s"
+            try { $c = [System.Console]; $c::Write("`r$($line.PadRight(78))") } catch { Write-Verbose "Console write failed: $_" }
+            $s.Index++
+        } -MessageData $state | Out-Null
 
-    $timer.Start()
+        $timer.Start()
 
-    return @{ Timer = $timer; State = $state }
+        return @{ Timer = $timer; State = $state }
+    }
 }
 
 function Stop-Spinner {
@@ -73,7 +75,7 @@ function Stop-Spinner {
     .PARAMETER CompletionMessage
         Optional message to display after clearing the spinner (prefixed with ✓).
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         $Spinner,
 
@@ -88,18 +90,20 @@ function Stop-Spinner {
         return
     }
 
-    $Spinner.Timer.Stop()
-    $Spinner.Timer.Dispose()
+    if ($PSCmdlet.ShouldProcess('Spinner timer', 'Stop')) {
+        $Spinner.Timer.Stop()
+        $Spinner.Timer.Dispose()
 
-    # Unregister the event subscriber for this timer
-    Get-EventSubscriber | Where-Object { $_.SourceObject -eq $Spinner.Timer } |
-        ForEach-Object {
-            Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue
-            Remove-Job -Id $_.Action.Id -Force -ErrorAction SilentlyContinue
-        }
+        # Unregister the event subscriber for this timer
+        Get-EventSubscriber | Where-Object { $_.SourceObject -eq $Spinner.Timer } |
+            ForEach-Object {
+                Unregister-Event -SubscriptionId $_.SubscriptionId -ErrorAction SilentlyContinue
+                Remove-Job -Id $_.Action.Id -Force -ErrorAction SilentlyContinue
+            }
 
-    # Clear the spinner line
-    [Console]::Write("`r$(' ' * 78)`r")
+        # Clear the spinner line
+        $c = [System.Console]; $c::Write("`r$(' ' * 78)`r")
+    }
 
     if ($CompletionMessage) {
         Write-Information "  ✓ $CompletionMessage" -InformationAction Continue

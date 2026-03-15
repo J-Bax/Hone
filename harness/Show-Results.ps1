@@ -28,6 +28,27 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
+# ── Console output helper (avoids PSAvoidUsingWriteHost) ────────────────────
+
+function Write-Console {
+    param(
+        [string]$Text = '',
+        [System.ConsoleColor]$Color,
+        [switch]$NoNewline
+    )
+    if ($PSBoundParameters.ContainsKey('Color')) {
+        if ($NoNewline) {
+            $Host.UI.Write($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        } else {
+            $Host.UI.WriteLine($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        }
+    } elseif ($NoNewline) {
+        $Host.UI.Write($Text)
+    } else {
+        $Host.UI.WriteLine($Text)
+    }
+}
+
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
 if (-not $ResultsPath) {
@@ -38,7 +59,7 @@ if (-not $ResultsPath) {
 
 $baselinePath = Join-Path $ResultsPath 'baseline.json'
 if (-not (Test-Path $baselinePath)) {
-    Write-Host "`n  No baseline found. Run .\harness\Get-PerformanceBaseline.ps1 first.`n" -ForegroundColor Yellow
+    Write-Console "`n  No baseline found. Run .\harness\Get-PerformanceBaseline.ps1 first.`n" -Color Yellow
     return
 }
 
@@ -129,11 +150,11 @@ function Format-Delta {
 
 # ── Display ─────────────────────────────────────────────────────────────────
 
-Write-Host ""
-Write-Host "  ══════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host "                      HONE PERFORMANCE RESULTS" -ForegroundColor DarkCyan
-Write-Host "  ══════════════════════════════════════════════════════════════════════" -ForegroundColor DarkCyan
-Write-Host ""
+Write-Console ""
+Write-Console "  ══════════════════════════════════════════════════════════════════════" -Color DarkCyan
+Write-Console "                      HONE PERFORMANCE RESULTS" -Color DarkCyan
+Write-Console "  ══════════════════════════════════════════════════════════════════════" -Color DarkCyan
+Write-Console ""
 
 # Machine info and run metadata
 $runMetadataPath = Join-Path $ResultsPath 'run-metadata.json'
@@ -141,34 +162,34 @@ if (Test-Path $runMetadataPath) {
     $runMeta = Get-Content $runMetadataPath -Raw | ConvertFrom-Json
     if ($runMeta.Machine) {
         $m = $runMeta.Machine
-        Write-Host "  CPU:     " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$($m.Cpu.Name) ($($m.Cpu.LogicalProcessors) cores)" -NoNewline -ForegroundColor White
-        Write-Host " · " -NoNewline -ForegroundColor DarkGray
-        Write-Host "RAM: $($m.Memory.TotalGB)GB" -ForegroundColor White
-        Write-Host "  OS:      " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$($m.OS.Description)" -ForegroundColor White
-        Write-Host "  Runtime: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "PS $($m.Runtime.PowerShellVersion) · .NET SDK $($m.Runtime.DotnetSdkVersion) · $($m.Runtime.ClrVersion)" -ForegroundColor White
+        Write-Console "  CPU:     " -NoNewline -Color DarkGray
+        Write-Console "$($m.Cpu.Name) ($($m.Cpu.LogicalProcessors) cores)" -NoNewline -Color White
+        Write-Console " · " -NoNewline -Color DarkGray
+        Write-Console "RAM: $($m.Memory.TotalGB)GB" -Color White
+        Write-Console "  OS:      " -NoNewline -Color DarkGray
+        Write-Console "$($m.OS.Description)" -Color White
+        Write-Console "  Runtime: " -NoNewline -Color DarkGray
+        Write-Console "PS $($m.Runtime.PowerShellVersion) · .NET SDK $($m.Runtime.DotnetSdkVersion) · $($m.Runtime.ClrVersion)" -Color White
     }
     if ($runMeta.BaselineRun) {
-        Write-Host "  Baseline run: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$($runMeta.BaselineRun.CompletedAt)" -ForegroundColor White
+        Write-Console "  Baseline run: " -NoNewline -Color DarkGray
+        Write-Console "$($runMeta.BaselineRun.CompletedAt)" -Color White
     }
     if ($runMeta.LoopCompletedAt) {
-        Write-Host "  Loop completed: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "$($runMeta.LoopCompletedAt)" -ForegroundColor White
+        Write-Console "  Loop completed: " -NoNewline -Color DarkGray
+        Write-Console "$($runMeta.LoopCompletedAt)" -Color White
     }
-    Write-Host ""
+    Write-Console ""
 }
 
 # Mode info row
-Write-Host "  Mode: " -NoNewline -ForegroundColor DarkGray
-Write-Host "Relative improvement" -NoNewline -ForegroundColor White
-Write-Host " · " -NoNewline -ForegroundColor DarkGray
-Write-Host "Min improvement: $([math]::Round($tolerances.MinImprovementPct * 100, 1))%" -NoNewline -ForegroundColor White
-Write-Host " · " -NoNewline -ForegroundColor DarkGray
-Write-Host "Max regression: $([math]::Round($tolerances.MaxRegressionPct * 100, 1))%" -ForegroundColor White
-Write-Host ""
+Write-Console "  Mode: " -NoNewline -Color DarkGray
+Write-Console "Relative improvement" -NoNewline -Color White
+Write-Console " · " -NoNewline -Color DarkGray
+Write-Console "Min improvement: $([math]::Round($tolerances.MinImprovementPct * 100, 1))%" -NoNewline -Color White
+Write-Console " · " -NoNewline -Color DarkGray
+Write-Console "Max regression: $([math]::Round($tolerances.MaxRegressionPct * 100, 1))%" -Color White
+Write-Console ""
 
 # ── Table header ────────────────────────────────────────────────────────────
 
@@ -176,16 +197,16 @@ $colWidths = @{ Label = 14; P95 = 12; Avg = 12; RPS = 12; Err = 12; Delta = 12; 
 $totalWidth = 14 + 12 + 12 + 12 + 12 + 12 + 12 + 12 + 2
 $separator = "  " + ("─" * $totalWidth)
 
-Write-Host "  " -NoNewline
-Write-Host ("{0,-$($colWidths.Label)}" -f "Experiment") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.P95)}" -f "p95 (ms)") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.Avg)}" -f "Avg (ms)") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.RPS)}" -f "RPS") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.Err)}" -f "Error %") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.Delta)}" -f "p95 Δ") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.CPU)}" -f "CPU avg%") -NoNewline -ForegroundColor Cyan
-Write-Host ("{0,$($colWidths.Mem)}" -f "Mem MB") -ForegroundColor Cyan
-Write-Host $separator -ForegroundColor DarkGray
+Write-Console "  " -NoNewline
+Write-Console ("{0,-$($colWidths.Label)}" -f "Experiment") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.P95)}" -f "p95 (ms)") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.Avg)}" -f "Avg (ms)") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.RPS)}" -f "RPS") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.Err)}" -f "Error %") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.Delta)}" -f "p95 Δ") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.CPU)}" -f "CPU avg%") -NoNewline -Color Cyan
+Write-Console ("{0,$($colWidths.Mem)}" -f "Mem MB") -Color Cyan
+Write-Console $separator -Color DarkGray
 
 # ── Baseline row ────────────────────────────────────────────────────────────
 
@@ -194,18 +215,18 @@ $bAvg = [math]::Round($baseline.HttpReqDuration.Avg, 2)
 $bRPS = [math]::Round($baseline.HttpReqs.Rate, 1)
 $bErr = Format-Pct ($baseline.HttpReqFailed.Rate)
 
-Write-Host "  " -NoNewline
-Write-Host ("{0,-$($colWidths.Label)}" -f "Baseline") -NoNewline -ForegroundColor Yellow
-Write-Host ("{0,$($colWidths.P95)}" -f $bP95) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.Avg)}" -f $bAvg) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.RPS)}" -f $bRPS) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.Err)}" -f $bErr) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.Delta)}" -f "—") -NoNewline -ForegroundColor DarkGray
+Write-Console "  " -NoNewline
+Write-Console ("{0,-$($colWidths.Label)}" -f "Baseline") -NoNewline -Color Yellow
+Write-Console ("{0,$($colWidths.P95)}" -f $bP95) -NoNewline -Color White
+Write-Console ("{0,$($colWidths.Avg)}" -f $bAvg) -NoNewline -Color White
+Write-Console ("{0,$($colWidths.RPS)}" -f $bRPS) -NoNewline -Color White
+Write-Console ("{0,$($colWidths.Err)}" -f $bErr) -NoNewline -Color White
+Write-Console ("{0,$($colWidths.Delta)}" -f "—") -NoNewline -Color DarkGray
 $bCpuAvg = if ($baselineCounters -and $baselineCounters.Runtime.CpuUsage) { [math]::Round($baselineCounters.Runtime.CpuUsage.Avg, 1) } else { '—' }
 $bMemMB = if ($baselineCounters -and $baselineCounters.Runtime.WorkingSetMB) { [math]::Round($baselineCounters.Runtime.WorkingSetMB.Max, 1) } else { '—' }
-Write-Host ("{0,$($colWidths.CPU)}" -f $bCpuAvg) -NoNewline -ForegroundColor White
-Write-Host ("{0,$($colWidths.Mem)}" -f $bMemMB) -ForegroundColor White
-Write-Host $separator -ForegroundColor DarkGray
+Write-Console ("{0,$($colWidths.CPU)}" -f $bCpuAvg) -NoNewline -Color White
+Write-Console ("{0,$($colWidths.Mem)}" -f $bMemMB) -Color White
+Write-Console $separator -Color DarkGray
 
 # ── Experiment rows ──────────────────────────────────────────────────────────
 
@@ -239,20 +260,20 @@ foreach ($exp in $experiments) {
         $memColor = if ($iMemMB -lt $bMemMB) { 'Green' } elseif ($iMemMB -gt $bMemMB) { 'Red' } else { 'White' }
     }
 
-    Write-Host "  " -NoNewline
-    Write-Host ("{0,-$($colWidths.Label)}" -f "Experiment $expNum") -NoNewline -ForegroundColor White
-    Write-Host ("{0,$($colWidths.P95)}" -f $iP95) -NoNewline -ForegroundColor $p95Color
-    Write-Host ("{0,$($colWidths.Avg)}" -f $iAvg) -NoNewline -ForegroundColor White
-    Write-Host ("{0,$($colWidths.RPS)}" -f $iRPS) -NoNewline -ForegroundColor $rpsColor
-    Write-Host ("{0,$($colWidths.Err)}" -f $iErr) -NoNewline -ForegroundColor $errColor
-    Write-Host ("{0,$($colWidths.Delta)}" -f $deltaP95.Text) -NoNewline -ForegroundColor $deltaP95.Color
-    Write-Host ("{0,$($colWidths.CPU)}" -f $iCpuAvg) -NoNewline -ForegroundColor $cpuColor
-    Write-Host ("{0,$($colWidths.Mem)}" -f $iMemMB) -ForegroundColor $memColor
+    Write-Console "  " -NoNewline
+    Write-Console ("{0,-$($colWidths.Label)}" -f "Experiment $expNum") -NoNewline -Color White
+    Write-Console ("{0,$($colWidths.P95)}" -f $iP95) -NoNewline -Color $p95Color
+    Write-Console ("{0,$($colWidths.Avg)}" -f $iAvg) -NoNewline -Color White
+    Write-Console ("{0,$($colWidths.RPS)}" -f $iRPS) -NoNewline -Color $rpsColor
+    Write-Console ("{0,$($colWidths.Err)}" -f $iErr) -NoNewline -Color $errColor
+    Write-Console ("{0,$($colWidths.Delta)}" -f $deltaP95.Text) -NoNewline -Color $deltaP95.Color
+    Write-Console ("{0,$($colWidths.CPU)}" -f $iCpuAvg) -NoNewline -Color $cpuColor
+    Write-Console ("{0,$($colWidths.Mem)}" -f $iMemMB) -Color $memColor
 }
 
 if ($experiments.Count -eq 0 -or ($experiments.Count -eq 1 -and $experiments[0].Experiment -eq 0)) {
-    Write-Host "  " -NoNewline
-    Write-Host "  No optimization experiments yet. Run .\harness\Invoke-HoneLoop.ps1" -ForegroundColor DarkGray
+    Write-Console "  " -NoNewline
+    Write-Console "  No optimization experiments yet. Run .\harness\Invoke-HoneLoop.ps1" -Color DarkGray
 }
 
 # ── Per-scenario results ────────────────────────────────────────────────────
@@ -262,9 +283,9 @@ $scenarioBaselineFiles = Get-ChildItem -Path $ResultsPath -Filter 'baseline-*.js
     Where-Object { $_.Name -ne 'baseline.json' -and $_.Name -ne 'baseline-counters.json' }
 
 if ($scenarioBaselineFiles.Count -gt 0) {
-    Write-Host ''
-    Write-Host '  ── Scenario Breakdown ──────────────────────────────────────────────────' -ForegroundColor DarkCyan
-    Write-Host ''
+    Write-Console ''
+    Write-Console '  ── Scenario Breakdown ──────────────────────────────────────────────────' -Color DarkCyan
+    Write-Console ''
 
     # Header
     $sColWidths = @{ Name = 22; P95 = 12; RPS = 12; Err = 12; Delta = 12 }
@@ -273,28 +294,28 @@ if ($scenarioBaselineFiles.Count -gt 0) {
         $scenarioName = $sbFile.BaseName -replace '^baseline-', ''
         $scenarioBaseline = Get-Content $sbFile.FullName -Raw | ConvertFrom-Json
 
-        Write-Host "  " -NoNewline
-        Write-Host $scenarioName -ForegroundColor Yellow
+        Write-Console "  " -NoNewline
+        Write-Console $scenarioName -Color Yellow
 
         # Print sub-header
-        Write-Host "  " -NoNewline
-        Write-Host ("{0,-$($sColWidths.Name)}" -f '') -NoNewline
-        Write-Host ("{0,$($sColWidths.P95)}" -f 'p95 (ms)') -NoNewline -ForegroundColor DarkGray
-        Write-Host ("{0,$($sColWidths.RPS)}" -f 'RPS') -NoNewline -ForegroundColor DarkGray
-        Write-Host ("{0,$($sColWidths.Err)}" -f 'Error %') -NoNewline -ForegroundColor DarkGray
-        Write-Host ("{0,$($sColWidths.Delta)}" -f 'p95 Δ') -ForegroundColor DarkGray
+        Write-Console "  " -NoNewline
+        Write-Console ("{0,-$($sColWidths.Name)}" -f '') -NoNewline
+        Write-Console ("{0,$($sColWidths.P95)}" -f 'p95 (ms)') -NoNewline -Color DarkGray
+        Write-Console ("{0,$($sColWidths.RPS)}" -f 'RPS') -NoNewline -Color DarkGray
+        Write-Console ("{0,$($sColWidths.Err)}" -f 'Error %') -NoNewline -Color DarkGray
+        Write-Console ("{0,$($sColWidths.Delta)}" -f 'p95 Δ') -Color DarkGray
 
         # Baseline row
         $sbP95 = [math]::Round($scenarioBaseline.HttpReqDuration.P95, 2)
         $sbRPS = [math]::Round($scenarioBaseline.HttpReqs.Rate, 1)
         $sbErr = Format-Pct ($scenarioBaseline.HttpReqFailed.Rate)
 
-        Write-Host "  " -NoNewline
-        Write-Host ("{0,-$($sColWidths.Name)}" -f '  Baseline') -NoNewline -ForegroundColor DarkGray
-        Write-Host ("{0,$($sColWidths.P95)}" -f $sbP95) -NoNewline -ForegroundColor White
-        Write-Host ("{0,$($sColWidths.RPS)}" -f $sbRPS) -NoNewline -ForegroundColor White
-        Write-Host ("{0,$($sColWidths.Err)}" -f $sbErr) -NoNewline -ForegroundColor White
-        Write-Host ("{0,$($sColWidths.Delta)}" -f '—') -ForegroundColor DarkGray
+        Write-Console "  " -NoNewline
+        Write-Console ("{0,-$($sColWidths.Name)}" -f '  Baseline') -NoNewline -Color DarkGray
+        Write-Console ("{0,$($sColWidths.P95)}" -f $sbP95) -NoNewline -Color White
+        Write-Console ("{0,$($sColWidths.RPS)}" -f $sbRPS) -NoNewline -Color White
+        Write-Console ("{0,$($sColWidths.Err)}" -f $sbErr) -NoNewline -Color White
+        Write-Console ("{0,$($sColWidths.Delta)}" -f '—') -Color DarkGray
 
         # Find experiment results for this scenario from experiment subdirectories
         $scenarioIterCount = 0
@@ -314,28 +335,28 @@ if ($scenarioBaselineFiles.Count -gt 0) {
 
             $sP95Color = if ($sP95 -lt $sbP95) { 'Green' } elseif ($sP95 -gt $sbP95) { 'Red' } else { 'White' }
 
-            Write-Host "  " -NoNewline
-            Write-Host ("{0,-$($sColWidths.Name)}" -f "  Experiment $sExpNum") -NoNewline -ForegroundColor White
-            Write-Host ("{0,$($sColWidths.P95)}" -f $sP95) -NoNewline -ForegroundColor $sP95Color
-            Write-Host ("{0,$($sColWidths.RPS)}" -f $sRPS) -NoNewline -ForegroundColor White
-            Write-Host ("{0,$($sColWidths.Err)}" -f $sErr) -NoNewline -ForegroundColor White
-            Write-Host ("{0,$($sColWidths.Delta)}" -f $sDelta.Text) -ForegroundColor $sDelta.Color
+            Write-Console "  " -NoNewline
+            Write-Console ("{0,-$($sColWidths.Name)}" -f "  Experiment $sExpNum") -NoNewline -Color White
+            Write-Console ("{0,$($sColWidths.P95)}" -f $sP95) -NoNewline -Color $sP95Color
+            Write-Console ("{0,$($sColWidths.RPS)}" -f $sRPS) -NoNewline -Color White
+            Write-Console ("{0,$($sColWidths.Err)}" -f $sErr) -NoNewline -Color White
+            Write-Console ("{0,$($sColWidths.Delta)}" -f $sDelta.Text) -Color $sDelta.Color
         }
 
         if ($scenarioIterCount -eq 0) {
-            Write-Host "  " -NoNewline
-            Write-Host '    No experiment data yet' -ForegroundColor DarkGray
+            Write-Console "  " -NoNewline
+            Write-Console '    No experiment data yet' -Color DarkGray
         }
 
-        Write-Host ''
+        Write-Console ''
     }
 }
 
 # ── Latency distribution (baseline) ────────────────────────────────────────
 
-Write-Host ""
-Write-Host "  Latency Distribution (Baseline):" -ForegroundColor Cyan
-Write-Host ""
+Write-Console ""
+Write-Console "  Latency Distribution (Baseline):" -Color Cyan
+Write-Console ""
 
 $barMax = 50
 $maxVal = @($baseline.HttpReqDuration.P50, $baseline.HttpReqDuration.P90,
@@ -356,18 +377,18 @@ foreach ($p in $percentiles) {
     $bar = '█' * $barLen
     $color = 'Cyan'
 
-    Write-Host ("  {0,4}  " -f $p.Label) -NoNewline -ForegroundColor DarkGray
-    Write-Host $bar -NoNewline -ForegroundColor $color
-    Write-Host " $([math]::Round($val, 1))ms" -ForegroundColor White
+    Write-Console ("  {0,4}  " -f $p.Label) -NoNewline -Color DarkGray
+    Write-Console $bar -NoNewline -Color $color
+    Write-Console " $([math]::Round($val, 1))ms" -Color White
 }
 
 # ── Latest experiment latency (if available) ─────────────────────────────────
 
 $latestIter = $experiments | Where-Object { $_.Experiment -gt 0 } | Select-Object -Last 1
 if ($latestIter) {
-    Write-Host ""
-    Write-Host "  Latency Distribution (Experiment $($latestIter.Experiment)):" -ForegroundColor Cyan
-    Write-Host ""
+    Write-Console ""
+    Write-Console "  Latency Distribution (Experiment $($latestIter.Experiment)):" -Color Cyan
+    Write-Console ""
 
     $latestMaxVal = @($latestIter.HttpReqDuration.P50, $latestIter.HttpReqDuration.P90,
         $latestIter.HttpReqDuration.P95, $latestIter.HttpReqDuration.Max) |
@@ -391,34 +412,34 @@ if ($latestIter) {
         $bar = '█' * $barLen
         $color = if ($val -lt $bVal) { 'Green' } elseif ($val -gt $bVal) { 'Red' } else { 'Cyan' }
 
-        Write-Host ("  {0,4}  " -f $p.Label) -NoNewline -ForegroundColor DarkGray
-        Write-Host $bar -NoNewline -ForegroundColor $color
-        Write-Host " $([math]::Round($val, 1))ms" -ForegroundColor White
+        Write-Console ("  {0,4}  " -f $p.Label) -NoNewline -Color DarkGray
+        Write-Console $bar -NoNewline -Color $color
+        Write-Console " $([math]::Round($val, 1))ms" -Color White
     }
 }
 
 # ── Overall status ──────────────────────────────────────────────────────────
 
-Write-Host ""
+Write-Console ""
 
 $latestResult = if ($latestIter) { $latestIter } else { $baseline }
 $p95Delta = Format-Delta -Current $latestResult.HttpReqDuration.P95 -Baseline $baseline.HttpReqDuration.P95 -LowerIsBetter $true
 $rpsDelta = Format-Delta -Current $latestResult.HttpReqs.Rate -Baseline $baseline.HttpReqs.Rate -LowerIsBetter $false
 
-Write-Host "  Status: " -NoNewline -ForegroundColor DarkGray
+Write-Console "  Status: " -NoNewline -Color DarkGray
 if ($latestIter) {
     $improved = ($latestResult.HttpReqDuration.P95 -lt $baseline.HttpReqDuration.P95) -or
     ($latestResult.HttpReqs.Rate -gt $baseline.HttpReqs.Rate) -or
     ($latestResult.HttpReqFailed.Rate -lt $baseline.HttpReqFailed.Rate)
     if ($improved) {
-        Write-Host "IMPROVED vs BASELINE" -NoNewline -ForegroundColor Green
-        Write-Host " | p95 $($p95Delta.Text)" -NoNewline -ForegroundColor $p95Delta.Color
-        Write-Host " | RPS $($rpsDelta.Text)" -ForegroundColor $rpsDelta.Color
+        Write-Console "IMPROVED vs BASELINE" -NoNewline -Color Green
+        Write-Console " | p95 $($p95Delta.Text)" -NoNewline -Color $p95Delta.Color
+        Write-Console " | RPS $($rpsDelta.Text)" -Color $rpsDelta.Color
     } else {
-        Write-Host "NO NET IMPROVEMENT vs BASELINE" -ForegroundColor Yellow
+        Write-Console "NO NET IMPROVEMENT vs BASELINE" -Color Yellow
     }
 } else {
-    Write-Host "Baseline only — run Invoke-HoneLoop.ps1 to optimize" -ForegroundColor DarkGray
+    Write-Console "Baseline only — run Invoke-HoneLoop.ps1 to optimize" -Color DarkGray
 }
 
 # Efficiency summary
@@ -427,11 +448,11 @@ if ($latestIter -and $counterDataMap.ContainsKey($latestIter.Experiment) -and $b
     if ($latestCounters.Runtime.CpuUsage -and $baselineCounters.Runtime.CpuUsage) {
         $cpuDelta = Format-Delta -Current $latestCounters.Runtime.CpuUsage.Avg -Baseline $baselineCounters.Runtime.CpuUsage.Avg -LowerIsBetter $true
         $memDelta = Format-Delta -Current $latestCounters.Runtime.WorkingSetMB.Max -Baseline $baselineCounters.Runtime.WorkingSetMB.Max -LowerIsBetter $true
-        Write-Host "  Efficiency: " -NoNewline -ForegroundColor DarkGray
-        Write-Host "CPU $($cpuDelta.Text)" -NoNewline -ForegroundColor $cpuDelta.Color
-        Write-Host " | " -NoNewline -ForegroundColor DarkGray
-        Write-Host "Memory $($memDelta.Text)" -ForegroundColor $memDelta.Color
+        Write-Console "  Efficiency: " -NoNewline -Color DarkGray
+        Write-Console "CPU $($cpuDelta.Text)" -NoNewline -Color $cpuDelta.Color
+        Write-Console " | " -NoNewline -Color DarkGray
+        Write-Console "Memory $($memDelta.Text)" -Color $memDelta.Color
     }
 }
 
-Write-Host ""
+Write-Console ""

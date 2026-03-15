@@ -126,7 +126,7 @@ if ($PreviousRcaExplanation) {
 }
 
 # ── Structured experiment history from run-metadata.json ─────────────────────
-$runMetadataPath = Join-Path $RepoRoot $Config.Api.ResultsPath 'run-metadata.json'
+$runMetadataPath = Join-Path -Path $RepoRoot -ChildPath $Config.Api.ResultsPath 'run-metadata.json'
 if (Test-Path $runMetadataPath) {
     try {
         $runMeta = Get-Content $runMetadataPath -Raw | ConvertFrom-Json

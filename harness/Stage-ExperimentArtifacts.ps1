@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Stages experiment artifacts for git commit.
 
@@ -24,7 +24,7 @@ param(
 
 Push-Location $SubmoduleDir
 try {
-    $experimentDir = Join-Path $SubmoduleDir 'results' "experiment-$Experiment"
+    $experimentDir = Join-Path -Path $SubmoduleDir -ChildPath 'results' "experiment-$Experiment"
     if (Test-Path $experimentDir) {
         # Analysis artifacts
         foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
@@ -64,13 +64,13 @@ try {
     }
 
     # Stage metadata files
-    $metadataDir = Join-Path $SubmoduleDir 'results' 'metadata'
+    $metadataDir = Join-Path -Path $SubmoduleDir -ChildPath 'results' 'metadata'
     if (Test-Path $metadataDir) {
         git add results/metadata/ 2>&1 | Out-Null
     }
 
     # Stage run-metadata.json
-    $runMetadataFile = Join-Path $SubmoduleDir 'results' 'run-metadata.json'
+    $runMetadataFile = Join-Path -Path $SubmoduleDir -ChildPath 'results' 'run-metadata.json'
     if (Test-Path $runMetadataFile) {
         git add results/run-metadata.json 2>&1 | Out-Null
     }

@@ -30,38 +30,62 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+function Write-Console {
+    param(
+        [string]$Text = '',
+        [System.ConsoleColor]$Color,
+        [switch]$NoNewline
+    )
+    if ($PSBoundParameters.ContainsKey('Color')) {
+        if ($NoNewline) {
+            $Host.UI.Write($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        } else {
+            $Host.UI.WriteLine($Color, $Host.UI.RawUI.BackgroundColor, $Text)
+        }
+    } elseif ($NoNewline) {
+        $Host.UI.Write($Text)
+    } else {
+        $Host.UI.WriteLine($Text)
+    }
+}
+
+# ── Helpers─────────────────────────────────────────────────────────────────
 
 function Write-Step {
     param([string]$Message)
-    Write-Host "`n▸ $Message" -ForegroundColor Cyan
+    Write-Console "`n▸ $Message" -Color Cyan
 }
 
 function Write-Ok {
     param([string]$Message)
-    Write-Host "  ✓ $Message" -ForegroundColor Green
+    Write-Console "  ✓ $Message" -Color Green
 }
 
 function Write-Skip {
     param([string]$Message)
-    Write-Host "  – $Message (skipped)" -ForegroundColor Yellow
+    Write-Console "  – $Message (skipped)" -Color Yellow
 }
 
 function Write-Fail {
     param([string]$Message)
-    Write-Host "  ✗ $Message" -ForegroundColor Red
+    Write-Console "  ✗ $Message" -Color Red
 }
 
-function Test-CommandExists {
+function Test-CommandExist {
     param([string]$Command)
     $null -ne (Get-Command $Command -ErrorAction SilentlyContinue)
 }
 
 function Update-SessionPath {
     # Refresh PATH from the registry so newly-installed tools are visible
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    $env:Path = "$machinePath;$userPath"
+    if ($PSCmdlet.ShouldProcess('Session PATH', 'Update')) {
+        $env:Path = "$machinePath;$userPath"
+    }
 }
 
 function Install-WingetPackage {
@@ -69,7 +93,7 @@ function Install-WingetPackage {
         [string]$PackageId,
         [string]$Name
     )
-    if (-not (Test-CommandExists 'winget')) {
+    if (-not (Test-CommandExist 'winget')) {
         Write-Fail "winget is not available. Install App Installer from the Microsoft Store."
         return $false
     }
@@ -95,17 +119,17 @@ $psVersion = $PSVersionTable.PSVersion
 if ($psVersion.Major -ge 7 -and $psVersion.Minor -ge 2) {
     Write-Ok "PowerShell $psVersion"
 } elseif ($psVersion.Major -ge 7) {
-    Write-Host "  ⚠ PowerShell $psVersion detected — 7.2+ recommended" -ForegroundColor Yellow
+    Write-Console "  ⚠ PowerShell $psVersion detected — 7.2+ recommended" -Color Yellow
 } else {
     Write-Fail "PowerShell $psVersion detected — 7.2+ required"
-    Write-Host "    Install: winget install Microsoft.PowerShell" -ForegroundColor Gray
+    Write-Console "    Install: winget install Microsoft.PowerShell" -Color Gray
     $allSucceeded = $false
 }
 
 # ── 2. .NET SDK 6.0 ────────────────────────────────────────────────────────
 
 Write-Step "Checking .NET SDK"
-if ((Test-CommandExists 'dotnet') -and -not $Force) {
+if ((Test-CommandExist 'dotnet') -and -not $Force) {
     $dotnetVersion = & dotnet --version 2>$null
     Write-Ok ".NET SDK $dotnetVersion"
 } else {
@@ -119,7 +143,7 @@ if ((Test-CommandExists 'dotnet') -and -not $Force) {
 # ── 3. SQL Server LocalDB ──────────────────────────────────────────────────
 
 Write-Step "Checking SQL Server LocalDB"
-if ((Test-CommandExists 'sqllocaldb') -and -not $Force) {
+if ((Test-CommandExist 'sqllocaldb') -and -not $Force) {
     try {
         $localdbInfo = & sqllocaldb info 2>$null
         Write-Ok "SQL Server LocalDB available (instances: $($localdbInfo -join ', '))"
@@ -130,7 +154,7 @@ if ((Test-CommandExists 'sqllocaldb') -and -not $Force) {
     if ($SkipWinget) { Write-Skip "SQL Server LocalDB" }
     else {
         # No dedicated LocalDB winget package; install SQL Server Express which includes LocalDB
-        Write-Host "  ⚠ LocalDB not found. Installing SQL Server 2019 Express (includes LocalDB)..." -ForegroundColor Yellow
+        Write-Console "  ⚠ LocalDB not found. Installing SQL Server 2019 Express (includes LocalDB)..." -Color Yellow
         $result = Install-WingetPackage -PackageId 'Microsoft.SQLServer.2019.Express' -Name 'SQL Server 2019 Express (includes LocalDB)'
         if (-not $result) {
             Write-Fail "Alternatively, download the LocalDB installer from: https://aka.ms/sqllocaldb-msi"
@@ -142,7 +166,7 @@ if ((Test-CommandExists 'sqllocaldb') -and -not $Force) {
 # ── 4. k6 ──────────────────────────────────────────────────────────────────
 
 Write-Step "Checking k6"
-if ((Test-CommandExists 'k6') -and -not $Force) {
+if ((Test-CommandExist 'k6') -and -not $Force) {
     $k6Version = & k6 version 2>$null
     Write-Ok "k6: $k6Version"
 } else {
@@ -157,13 +181,13 @@ if ((Test-CommandExists 'k6') -and -not $Force) {
 
 Write-Step "Checking GitHub CLI"
 $ghMinVersion = [version]'2.17.0'   # Minimum for 'gh auth token' and modern PR features
-if ((Test-CommandExists 'gh') -and -not $Force) {
+if ((Test-CommandExist 'gh') -and -not $Force) {
     $ghVersionLine = & gh --version 2>$null | Select-Object -First 1
     if ($ghVersionLine -match '(\d+\.\d+\.\d+)') {
         $ghParsed = [version]$Matches[1]
         if ($ghParsed -lt $ghMinVersion) {
             Write-Fail "$ghVersionLine — version $ghMinVersion+ required"
-            Write-Host "    Upgrade: winget upgrade --id GitHub.cli" -ForegroundColor Gray
+            Write-Console "    Upgrade: winget upgrade --id GitHub.cli" -Color Gray
             $allSucceeded = $false
         } else {
             Write-Ok "$ghVersionLine"
@@ -187,7 +211,7 @@ if ($packagesInstalled) {
 }
 
 Write-Step "Checking GitHub Copilot CLI"
-if (Test-CommandExists 'copilot') {
+if (Test-CommandExist 'copilot') {
     $copilotVer = & copilot --version 2>$null | Select-Object -First 1
     Write-Ok "copilot CLI installed ($copilotVer)"
 } else {
@@ -203,7 +227,7 @@ Write-Step "Checking dotnet-counters"
 # the tool can run without requiring a newer runtime (e.g. .NET 8/9).
 $dotnetCountersVersionSpec = '6.0.*'
 
-if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
+if ((Test-CommandExist 'dotnet-counters') -and -not $Force) {
     # The tool may be on PATH but unable to run if the required runtime is missing.
     # Invoke it and check for a real version string to confirm it works.
     $dcVersionOutput = & dotnet-counters --version 2>&1
@@ -211,12 +235,12 @@ if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
         Write-Ok "dotnet-counters $dcVersionOutput"
     } else {
         Write-Fail "dotnet-counters is installed but cannot run (likely targets a .NET runtime not present on this machine)."
-        Write-Host "    Fix: dotnet tool uninstall --global dotnet-counters" -ForegroundColor Gray
-        Write-Host "    Then: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec" -ForegroundColor Gray
+        Write-Console "    Fix: dotnet tool uninstall --global dotnet-counters" -Color Gray
+        Write-Console "    Then: dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec" -Color Gray
         $allSucceeded = $false
     }
 } else {
-    if (Test-CommandExists 'dotnet') {
+    if (Test-CommandExist 'dotnet') {
         try {
             & dotnet tool install --global dotnet-counters --version $dotnetCountersVersionSpec 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
@@ -235,13 +259,13 @@ if ((Test-CommandExists 'dotnet-counters') -and -not $Force) {
 # ── 8. PerfView (diagnostic profiling) ─────────────────────────────────────
 
 Write-Step "Checking PerfView"
-$perfViewDir = Join-Path $PSScriptRoot 'tools' 'PerfView'
+$perfViewDir = Join-Path -Path $PSScriptRoot -ChildPath 'tools' -AdditionalChildPath 'PerfView'
 $perfViewExe = Join-Path $perfViewDir 'PerfView.exe'
 
 if ((Test-Path $perfViewExe) -and -not $Force) {
     Write-Ok "PerfView found at $perfViewExe"
 } else {
-    Write-Host "  Downloading PerfView from GitHub releases..." -ForegroundColor Gray
+    Write-Console "  Downloading PerfView from GitHub releases..." -Color Gray
     try {
         if (-not (Test-Path $perfViewDir)) {
             New-Item -ItemType Directory -Path $perfViewDir -Force | Out-Null
@@ -262,7 +286,7 @@ if ((Test-Path $perfViewExe) -and -not $Force) {
         Write-Ok "PerfView downloaded to $perfViewExe"
     } catch {
         Write-Fail "Failed to download PerfView: $_"
-        Write-Host "    Manual download: https://github.com/microsoft/perfview/releases" -ForegroundColor Gray
+        Write-Console "    Manual download: https://github.com/microsoft/perfview/releases" -Color Gray
         $allSucceeded = $false
     }
 }
@@ -270,13 +294,13 @@ if ((Test-Path $perfViewExe) -and -not $Force) {
 # ── 9. Initialize LocalDB instance ──────────────────────────────────────────
 
 Write-Step "Ensuring LocalDB instance 'MSSQLLocalDB' is running"
-if (Test-CommandExists 'sqllocaldb') {
+if (Test-CommandExist 'sqllocaldb') {
     try {
         & sqllocaldb create MSSQLLocalDB 2>$null
         & sqllocaldb start MSSQLLocalDB 2>$null
         Write-Ok "MSSQLLocalDB instance is running"
     } catch {
-        Write-Host "  ⚠ Could not start MSSQLLocalDB — check sqllocaldb manually" -ForegroundColor Yellow
+        Write-Console "  ⚠ Could not start MSSQLLocalDB — check sqllocaldb manually" -Color Yellow
     }
 } else {
     Write-Skip "LocalDB instance (sqllocaldb not available)"
@@ -285,7 +309,7 @@ if (Test-CommandExists 'sqllocaldb') {
 # ── 10. Initialize Git Submodules ────────────────────────────────────────────
 
 Write-Step "Initializing git submodules"
-if (Test-CommandExists 'git') {
+if (Test-CommandExist 'git') {
     $repoRoot = $PSScriptRoot
     Push-Location $repoRoot
     try {
@@ -310,9 +334,9 @@ if (Test-CommandExists 'git') {
 # ── 11. Restore NuGet packages ─────────────────────────────────────────────
 
 Write-Step "Restoring NuGet packages"
-if (Test-CommandExists 'dotnet') {
+if (Test-CommandExist 'dotnet') {
     $repoRoot = $PSScriptRoot
-    $slnPath = Join-Path $repoRoot 'sample-api' 'SampleApi.sln'
+    $slnPath = Join-Path -Path $repoRoot -ChildPath 'sample-api' -AdditionalChildPath 'SampleApi.sln'
     if (Test-Path $slnPath) {
         & dotnet restore $slnPath
         Write-Ok "NuGet packages restored"
@@ -337,7 +361,7 @@ if ($psaModule -and -not $Force) {
         Write-Ok "PSScriptAnalyzer $($psaInstalled.Version) installed"
     } catch {
         Write-Fail "Failed to install PSScriptAnalyzer: $_"
-        Write-Host "    Run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser" -ForegroundColor Gray
+        Write-Console "    Run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser" -Color Gray
         $allSucceeded = $false
     }
 }
@@ -345,7 +369,7 @@ if ($psaModule -and -not $Force) {
 # ── 13. Git hooks ────────────────────────────────────────────────────────────
 
 Write-Step "Configuring git hooks"
-if (Test-CommandExists 'git') {
+if (Test-CommandExist 'git') {
     $repoRoot = $PSScriptRoot
     $hooksDir = Join-Path $repoRoot '.githooks'
     if (Test-Path $hooksDir) {
@@ -368,22 +392,22 @@ if (Test-CommandExists 'git') {
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 
-Write-Host "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
+Write-Console "`n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -Color DarkGray
 if ($allSucceeded) {
-    Write-Host "  Setup complete — all dependencies are ready!" -ForegroundColor Green
-    Write-Host "  Next step: .\harness\Get-PerformanceBaseline.ps1" -ForegroundColor Gray
+    Write-Console "  Setup complete — all dependencies are ready!" -Color Green
+    Write-Console "  Next step: .\harness\Get-PerformanceBaseline.ps1" -Color Gray
 } else {
-    Write-Host "  Setup finished with errors — review the output above." -ForegroundColor Yellow
-    Write-Host "  Fix the failures and re-run: .\Setup-DevEnvironment.ps1" -ForegroundColor Gray
+    Write-Console "  Setup finished with errors — review the output above." -Color Yellow
+    Write-Console "  Fix the failures and re-run: .\Setup-DevEnvironment.ps1" -Color Gray
 }
-Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -ForegroundColor DarkGray
+Write-Console "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`n" -Color DarkGray
 
 # Remind about admin requirement for PerfView
-if (Test-Path (Join-Path $PSScriptRoot 'tools' 'PerfView' 'PerfView.exe')) {
-    Write-Host "  🔒 PerfView diagnostic profiling requires an elevated (Admin) terminal at runtime.`n" -ForegroundColor DarkYellow
+if (Test-Path (Join-Path -Path $PSScriptRoot -ChildPath 'tools' -AdditionalChildPath 'PerfView', 'PerfView.exe')) {
+    Write-Console "  🔒 PerfView diagnostic profiling requires an elevated (Admin) terminal at runtime.`n" -Color DarkYellow
 }
 
 # Remind user to refresh PATH if anything was installed
 if (-not $SkipWinget -or $Force) {
-    Write-Host "  💡 If any tools were just installed, restart your terminal to refresh PATH.`n" -ForegroundColor DarkYellow
+    Write-Console "  💡 If any tools were just installed, restart your terminal to refresh PATH.`n" -Color DarkYellow
 }

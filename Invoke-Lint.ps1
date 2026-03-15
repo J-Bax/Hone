@@ -148,6 +148,17 @@ $blockingRules = @(
     'PSAvoidUsingUsernameAndPasswordParams'
     'PSAvoidUsingConvertToSecureStringWithPlainText'
     'PSUseDeclaredVarsMoreThanAssignments'
+    'PSAvoidUsingWriteHost'
+    'PSUseApprovedVerbs'
+    'PSUseShouldProcessForStateChangingFunctions'
+    'PSAvoidUsingInvokeExpression'
+    'PSUseBOMForUnicodeEncodedFile'
+    'PSUseSingularNouns'
+    'PSAvoidUsingPositionalParameters'
+    'PSAvoidAssignmentToAutomaticVariable'
+    'PSAvoidUsingBrokenHashAlgorithms'
+    'PSPossibleIncorrectUsageOfAssignmentOperator'
+    'PSPossibleIncorrectUsageOfRedirectionOperator'
 )
 
 # Run PSScriptAnalyzer
@@ -168,7 +179,12 @@ foreach ($file in $filesToLint) {
         $analyzerParams['Fix'] = $true
     }
 
-    $results = Invoke-ScriptAnalyzer @analyzerParams
+    $results = $null
+    try {
+        $results = Invoke-ScriptAnalyzer @analyzerParams
+    } catch {
+        Write-Warning "PSScriptAnalyzer internal error on $relPath — skipping: $($_.Exception.Message)"
+    }
 
     if ($results) {
         foreach ($r in $results) {

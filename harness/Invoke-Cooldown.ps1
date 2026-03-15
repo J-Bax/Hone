@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Triggers server-side GC and sleeps for a cooldown period.
 

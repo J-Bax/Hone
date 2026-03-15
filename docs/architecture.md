@@ -29,7 +29,7 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 | `Wait-ApiHealthy` | HTTP health check with configurable timeout and retry |
 | `Limit-String` | Word-boundary string truncation |
 | `Invoke-CopilotWithTimeout` | Copilot CLI subprocess with timeout |
-| `Add-ExperimentMetadata` | Experiment entry recording |
+| `Add-ExperimentMetadatum` | Experiment entry recording |
 | `New-ExperimentPR` | GitHub PR creation |
 | `Build-StackNote` | Stacked-diffs PR chain visualization |
 

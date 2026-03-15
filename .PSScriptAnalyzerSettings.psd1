@@ -3,6 +3,8 @@
 # https://github.com/PowerShell/PSScriptAnalyzer
 # =============================================================================
 #
+# Policy: ALL rules enforced — no exclusions. Fix violations, don't suppress.
+#
 # Severity levels:
 #   Error   — blocks commits via pre-commit hook
 #   Warning — reported but does not block
@@ -13,7 +15,7 @@
 
 @{
     # -------------------------------------------------------------------------
-    # Severity: treat these as errors (block commits)
+    # Configurable formatting and style rules
     # -------------------------------------------------------------------------
     Rules = @{
         # Avoid aliases like % (ForEach-Object), ? (Where-Object), etc.
@@ -21,10 +23,9 @@
             Enable = $true
         }
 
-        # Avoid positional parameters — use named parameters for clarity
+        # Require named parameters for clarity — no exceptions
         PSAvoidUsingPositionalParameters = @{
-            Enable           = $true
-            CommandAllowList = @('Join-Path')
+            Enable = $true
         }
 
         # Ensure consistent brace/bracket placement
@@ -42,7 +43,7 @@
             NoEmptyLineBefore  = $false
         }
 
-        # Align with .editorconfig: 4-space indentation for PowerShell
+        # 4-space indentation for PowerShell
         PSUseConsistentIndentation = @{
             Enable              = $true
             IndentationSize     = 4
@@ -50,7 +51,7 @@
             Kind                = 'space'
         }
 
-        # Align with .editorconfig: consistent whitespace
+        # Consistent whitespace — all checks enabled
         PSUseConsistentWhitespace = @{
             Enable                          = $true
             CheckInnerBrace                 = $true
@@ -58,44 +59,34 @@
             CheckOpenParen                  = $true
             CheckOperator                   = $true
             CheckPipe                       = $true
-            CheckPipeForRedundantWhitespace = $false
+            CheckPipeForRedundantWhitespace = $true
             CheckSeparator                  = $true
-            CheckParameter                  = $false
+            CheckParameter                  = $true
         }
 
-        # Align assignments for readability
+        # Alignment conflicts with PSUseConsistentWhitespace CheckOperator;
+        # consistent operator spacing is the stricter, more important rule.
         PSAlignAssignmentStatement = @{
             Enable         = $false
             CheckHashtable = $false
         }
+
+        # Enforce correct casing of cmdlet/parameter names
+        PSUseCorrectCasing = @{
+            Enable = $true
+        }
     }
 
     # -------------------------------------------------------------------------
-    # Excluded rules
+    # Excluded rules — DSC-only rules (not applicable to this project)
     # -------------------------------------------------------------------------
     ExcludeRules = @(
-        # 5 existing scripts use unapproved verbs (Apply-, Stage-, Undo-,
-        # Sync-, Limit-). Renaming would break the harness orchestration.
-        # TODO: Address in a follow-up task.
-        'PSUseApprovedVerbs'
-
-        # Show-Results.ps1 and Show-Progress.ps1 intentionally use Write-Host
-        # for rich console UI output. This is acceptable for display scripts.
-        'PSAvoidUsingWriteHost'
-
-        # Many harness scripts modify system state (start processes, write files)
-        # without ShouldProcess. Adding -WhatIf support is too invasive for now.
-        'PSUseShouldProcessForStateChangingFunctions'
-
-        # Allow using Invoke-Expression in controlled harness contexts
-        'PSAvoidUsingInvokeExpression'
-
-        # .editorconfig specifies utf-8 (no BOM). PSScriptAnalyzer wants BOM
-        # for Unicode files, which conflicts with our convention.
-        'PSUseBOMForUnicodeEncodedFile'
-
-        # Many harness functions use plural nouns by convention (e.g.,
-        # Get-EnabledCollectors, Invoke-AllScaleTests)
-        'PSUseSingularNouns'
+        'PSDSCDscExamplesPresent'
+        'PSDSCDscTestsPresent'
+        'PSDSCReturnCorrectTypesForDSCFunctions'
+        'PSDSCStandardDSCFunctionsInResource'
+        'PSDSCUseIdenticalMandatoryParametersForDSC'
+        'PSDSCUseIdenticalParametersForDSC'
+        'PSDSCUseVerboseMessageInDSCResource'
     )
 }

@@ -8,7 +8,7 @@
     beyond the configured tolerance.  There are no absolute targets — the loop
     keeps running as long as it can make things better.
 
-    The core comparison logic is in the Compare-Metrics pure function, which
+    The core comparison logic is in the Compare-Metric pure function, which
     can be called independently for testing without any I/O side effects.
 
 .PARAMETER CurrentMetrics
@@ -59,7 +59,7 @@ param(
 
 # ── Pure comparison function (no I/O, no logging) ───────────────────────────
 
-function Compare-Metrics {
+function Compare-Metric {
     <#
     .SYNOPSIS
         Pure function that compares current vs previous performance metrics.
@@ -313,7 +313,7 @@ function Compare-Metrics {
     return [PSCustomObject]$result
 }
 
-# ── Script wrapper: load config, call Compare-Metrics, log results ──────────
+# ── Script wrapper: load config, call Compare-Metric, log results ──────────
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
@@ -327,7 +327,7 @@ $tolerances = $config.Tolerances
 $reference = if ($PreviousMetrics) { $PreviousMetrics } else { $BaselineMetrics }
 $counterReference = if ($PreviousCounterMetrics) { $PreviousCounterMetrics } else { $null }
 
-$result = Compare-Metrics `
+$result = Compare-Metric `
     -Current $CurrentMetrics `
     -Previous $reference `
     -Tolerances $tolerances `

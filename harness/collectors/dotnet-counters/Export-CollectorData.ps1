@@ -72,7 +72,7 @@ if ($jsonSource) {
 
     if ($rows.Count -gt 0) {
         # Helper mirrors the one in Stop-DotnetCounters.ps1
-        function Get-CounterStats {
+        function Get-CounterStat {
             param([string]$Provider, [string]$CounterName, [object[]]$Rows)
 
             $matching = $Rows | Where-Object {
@@ -99,18 +99,18 @@ if ($jsonSource) {
         $metrics = [ordered]@{
             TotalSamples = $rows.Count
             Runtime = [ordered]@{
-                CpuUsage = Get-CounterStats -Provider 'System.Runtime' -CounterName 'CPU Usage' -Rows $rows
-                WorkingSetMB = Get-CounterStats -Provider 'System.Runtime' -CounterName 'Working Set' -Rows $rows
-                GcHeapSizeMB = Get-CounterStats -Provider 'System.Runtime' -CounterName 'GC Heap Size' -Rows $rows
-                Gen2Collections = Get-CounterStats -Provider 'System.Runtime' -CounterName 'Gen 2' -Rows $rows
-                GcPauseRatio = Get-CounterStats -Provider 'System.Runtime' -CounterName 'time in GC' -Rows $rows
-                AllocRateMB = Get-CounterStats -Provider 'System.Runtime' -CounterName 'Allocation Rate' -Rows $rows
-                ExceptionCount = Get-CounterStats -Provider 'System.Runtime' -CounterName 'Exception' -Rows $rows
-                ThreadPoolThreads = Get-CounterStats -Provider 'System.Runtime' -CounterName 'ThreadPool Thread' -Rows $rows
+                CpuUsage = Get-CounterStat -Provider 'System.Runtime' -CounterName 'CPU Usage' -Rows $rows
+                WorkingSetMB = Get-CounterStat -Provider 'System.Runtime' -CounterName 'Working Set' -Rows $rows
+                GcHeapSizeMB = Get-CounterStat -Provider 'System.Runtime' -CounterName 'GC Heap Size' -Rows $rows
+                Gen2Collections = Get-CounterStat -Provider 'System.Runtime' -CounterName 'Gen 2' -Rows $rows
+                GcPauseRatio = Get-CounterStat -Provider 'System.Runtime' -CounterName 'time in GC' -Rows $rows
+                AllocRateMB = Get-CounterStat -Provider 'System.Runtime' -CounterName 'Allocation Rate' -Rows $rows
+                ExceptionCount = Get-CounterStat -Provider 'System.Runtime' -CounterName 'Exception' -Rows $rows
+                ThreadPoolThreads = Get-CounterStat -Provider 'System.Runtime' -CounterName 'ThreadPool Thread' -Rows $rows
             }
             AspNetCore = [ordered]@{
-                RequestRate = Get-CounterStats -Provider 'Microsoft.AspNetCore.Hosting' -CounterName 'Request Rate' -Rows $rows
-                FailedRequests = Get-CounterStats -Provider 'Microsoft.AspNetCore.Hosting' -CounterName 'Failed Requests' -Rows $rows
+                RequestRate = Get-CounterStat -Provider 'Microsoft.AspNetCore.Hosting' -CounterName 'Request Rate' -Rows $rows
+                FailedRequests = Get-CounterStat -Provider 'Microsoft.AspNetCore.Hosting' -CounterName 'Failed Requests' -Rows $rows
             }
         }
 

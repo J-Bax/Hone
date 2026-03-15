@@ -89,7 +89,7 @@ try {
     }
 
     # Helper to extract a counter's stats
-    function Get-CounterStats {
+    function Get-CounterStat {
         param([string]$Provider, [string]$CounterName)
 
         $matching = $rows | Where-Object {
@@ -124,47 +124,47 @@ try {
 
         # System.Runtime counters
         Runtime = [ordered]@{
-            CpuUsage = Get-CounterStats 'System.Runtime' 'CPU Usage'
-            WorkingSetMB = Get-CounterStats 'System.Runtime' 'Working Set'
-            GcHeapSizeMB = Get-CounterStats 'System.Runtime' 'GC Heap Size'
-            Gen0Collections = Get-CounterStats 'System.Runtime' 'Gen 0'
-            Gen1Collections = Get-CounterStats 'System.Runtime' 'Gen 1'
-            Gen2Collections = Get-CounterStats 'System.Runtime' 'Gen 2'
-            Gen0SizeMB = Get-CounterStats 'System.Runtime' 'Gen 0 Size'
-            Gen1SizeMB = Get-CounterStats 'System.Runtime' 'Gen 1 Size'
-            Gen2SizeMB = Get-CounterStats 'System.Runtime' 'Gen 2 Size'
-            LOHSizeMB = Get-CounterStats 'System.Runtime' 'LOH Size'
-            POHSizeMB = Get-CounterStats 'System.Runtime' 'POH'
-            GcPauseRatio = Get-CounterStats 'System.Runtime' 'time in GC'
-            AllocRateMB = Get-CounterStats 'System.Runtime' 'Allocation Rate'
-            ExceptionCount = Get-CounterStats 'System.Runtime' 'Exception'
-            ThreadPoolThreads = Get-CounterStats 'System.Runtime' 'ThreadPool Thread'
-            ThreadPoolQueue = Get-CounterStats 'System.Runtime' 'ThreadPool Queue'
-            ThreadPoolCompleted = Get-CounterStats 'System.Runtime' 'ThreadPool Completed'
-            MonitorContentions = Get-CounterStats 'System.Runtime' 'Monitor Lock'
-            ActiveTimers = Get-CounterStats 'System.Runtime' 'Active Timer'
-            Assemblies = Get-CounterStats 'System.Runtime' 'Assemblies'
+            CpuUsage = Get-CounterStat 'System.Runtime' 'CPU Usage'
+            WorkingSetMB = Get-CounterStat 'System.Runtime' 'Working Set'
+            GcHeapSizeMB = Get-CounterStat 'System.Runtime' 'GC Heap Size'
+            Gen0Collections = Get-CounterStat 'System.Runtime' 'Gen 0'
+            Gen1Collections = Get-CounterStat 'System.Runtime' 'Gen 1'
+            Gen2Collections = Get-CounterStat 'System.Runtime' 'Gen 2'
+            Gen0SizeMB = Get-CounterStat 'System.Runtime' 'Gen 0 Size'
+            Gen1SizeMB = Get-CounterStat 'System.Runtime' 'Gen 1 Size'
+            Gen2SizeMB = Get-CounterStat 'System.Runtime' 'Gen 2 Size'
+            LOHSizeMB = Get-CounterStat 'System.Runtime' 'LOH Size'
+            POHSizeMB = Get-CounterStat 'System.Runtime' 'POH'
+            GcPauseRatio = Get-CounterStat 'System.Runtime' 'time in GC'
+            AllocRateMB = Get-CounterStat 'System.Runtime' 'Allocation Rate'
+            ExceptionCount = Get-CounterStat 'System.Runtime' 'Exception'
+            ThreadPoolThreads = Get-CounterStat 'System.Runtime' 'ThreadPool Thread'
+            ThreadPoolQueue = Get-CounterStat 'System.Runtime' 'ThreadPool Queue'
+            ThreadPoolCompleted = Get-CounterStat 'System.Runtime' 'ThreadPool Completed'
+            MonitorContentions = Get-CounterStat 'System.Runtime' 'Monitor Lock'
+            ActiveTimers = Get-CounterStat 'System.Runtime' 'Active Timer'
+            Assemblies = Get-CounterStat 'System.Runtime' 'Assemblies'
         }
 
         # ASP.NET Core Hosting counters
         AspNetCore = [ordered]@{
-            RequestRate = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Request Rate'
-            TotalRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Total Requests'
-            CurrentRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Current Requests'
-            FailedRequests = Get-CounterStats 'Microsoft.AspNetCore.Hosting' 'Failed Requests'
+            RequestRate = Get-CounterStat 'Microsoft.AspNetCore.Hosting' 'Request Rate'
+            TotalRequests = Get-CounterStat 'Microsoft.AspNetCore.Hosting' 'Total Requests'
+            CurrentRequests = Get-CounterStat 'Microsoft.AspNetCore.Hosting' 'Current Requests'
+            FailedRequests = Get-CounterStat 'Microsoft.AspNetCore.Hosting' 'Failed Requests'
         }
 
         # HTTP Connection counters
         HttpConnections = [ordered]@{
-            CurrentConnections = Get-CounterStats 'Microsoft.AspNetCore.Http.Connections' 'Current Connections'
-            TotalConnections = Get-CounterStats 'Microsoft.AspNetCore.Http.Connections' 'Total Connections'
+            CurrentConnections = Get-CounterStat 'Microsoft.AspNetCore.Http.Connections' 'Current Connections'
+            TotalConnections = Get-CounterStat 'Microsoft.AspNetCore.Http.Connections' 'Total Connections'
         }
 
         # Outbound HTTP counters
         HttpClient = [ordered]@{
-            CurrentRequests = Get-CounterStats 'System.Net.Http' 'Current Requests'
-            RequestsStarted = Get-CounterStats 'System.Net.Http' 'Requests Started'
-            RequestsFailed = Get-CounterStats 'System.Net.Http' 'Requests Failed'
+            CurrentRequests = Get-CounterStat 'System.Net.Http' 'Current Requests'
+            RequestsStarted = Get-CounterStat 'System.Net.Http' 'Requests Started'
+            RequestsFailed = Get-CounterStat 'System.Net.Http' 'Requests Failed'
         }
     }
 

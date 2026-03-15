@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Runs E2E tests as the regression gate.
 
@@ -23,7 +23,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 $testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
-$resultsDir = Join-Path $repoRoot $config.Api.ResultsPath "experiment-$Experiment"
+$resultsDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 $trxPath = Join-Path $resultsDir "e2e-results.trx"
 
 . (Join-Path $PSScriptRoot 'Show-Progress.ps1')
