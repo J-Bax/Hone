@@ -75,7 +75,7 @@ $entry = [ordered]@{
 $json = $entry | ConvertTo-Json -Compress -Depth 5
 
 # Script-scoped cache for log rotation config
-if (-not $script:_cachedMaxLogSizeMB) {
+if (-not (Get-Variable '_cachedMaxLogSizeMB' -Scope Script -ValueOnly -ErrorAction SilentlyContinue)) {
     $rotConfig = Get-HoneConfig
     $script:_cachedMaxLogSizeMB = if ($rotConfig.Logging -and $rotConfig.Logging.MaxFileSizeMB) {
         $rotConfig.Logging.MaxFileSizeMB
