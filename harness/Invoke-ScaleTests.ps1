@@ -286,7 +286,7 @@ try {
     if ($allRunMetrics.Count -gt 0) {
         if ($allRunMetrics.Count -eq 1) {
             $selectedRun = $allRunMetrics[0]
-        } elseelse {
+        } else {
             # Sort by p95 and pick the median (middle) run
             $sorted = $allRunMetrics | Sort-Object { $_.HttpReqDuration.P95 }
             $medianIndex = [math]::Floor($sorted.Count / 2)
