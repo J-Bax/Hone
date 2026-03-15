@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Runs k6 scale tests and parses the results.
 
@@ -103,8 +103,7 @@ if ($warmupEnabled) {
         $warmupSpinner = Start-Spinner -Message 'Warming up API'
         try {
             & k6 @warmupArgs 2>&1 | Out-Null
-        }
-        finally {
+        } finally {
             Stop-Spinner -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
         }
 
@@ -116,8 +115,7 @@ if ($warmupEnabled) {
             -CooldownSeconds $cooldown `
             -Experiment $Experiment `
             -Reason 'after warmup'
-    }
-    else {
+    } else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Warmup scenario not found at $warmupPath — skipping" `
@@ -149,8 +147,7 @@ if ($countersEnabled) {
                 -Experiment $Experiment
             $counterHandle = $null
         }
-    }
-    else {
+    } else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'warning' `
             -Message "Could not find API process listening on port $apiPort — skipping counter collection" `
@@ -160,186 +157,181 @@ if ($countersEnabled) {
 
 try {
 
-# Build k6 arguments
-$k6Args = @(
-    'run'
-    '--env', "BASE_URL=$baseUrl"
-    '--summary-export', $jsonSummaryPath
-)
+    # Build k6 arguments
+    $k6Args = @(
+        'run'
+        '--env', "BASE_URL=$baseUrl"
+        '--summary-export', $jsonSummaryPath
+    )
 
-# Add any extra args from config
-if ($config.ScaleTest.ExtraArgs) {
-    $k6Args += $config.ScaleTest.ExtraArgs
-}
-
-$k6Args += $ScenarioPath
-
-# ── Determine number of measured runs ───────────────────────────────────────
-$measuredRuns = 1
-if ($isPrimary -and $config.ScaleTest.MeasuredRuns -and $config.ScaleTest.MeasuredRuns -gt 1) {
-    $measuredRuns = [int]$config.ScaleTest.MeasuredRuns
-}
-
-$allRunMetrics = @()
-$k6ExitCode = 0
-$k6Output = ''
-
-for ($run = 1; $run -le $measuredRuns; $run++) {
-    # Cooldown between runs (skip before the first run)
-    if ($run -gt 1 -and $measuredRuns -gt 1) {
-        $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
-        & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
-            -BaseUrl $baseUrl `
-            -GcEndpoint $config.Api.GcEndpoint `
-            -CooldownSeconds $cooldown `
-            -Experiment $Experiment `
-            -Reason 'between runs'
+    # Add any extra args from config
+    if ($config.ScaleTest.ExtraArgs) {
+        $k6Args += $config.ScaleTest.ExtraArgs
     }
 
-    if ($measuredRuns -gt 1) {
-        # Use per-run summary file, copy the winning run to the canonical path later
-        $runSummaryPath = Join-Path $outputDir "k6-summary-run$run.json"
-        $runArgs = $k6Args.Clone()
-        # Replace the summary-export path for this run
-        for ($i = 0; $i -lt $runArgs.Count; $i++) {
-            if ($runArgs[$i] -eq '--summary-export' -and ($i + 1) -lt $runArgs.Count) {
-                $runArgs[$i + 1] = $runSummaryPath
-                break
-            }
+    $k6Args += $ScenarioPath
+
+    # ── Determine number of measured runs ───────────────────────────────────────
+    $measuredRuns = 1
+    if ($isPrimary -and $config.ScaleTest.MeasuredRuns -and $config.ScaleTest.MeasuredRuns -gt 1) {
+        $measuredRuns = [int]$config.ScaleTest.MeasuredRuns
+    }
+
+    $allRunMetrics = @()
+    $k6ExitCode = 0
+    $k6Output = ''
+
+    for ($run = 1; $run -le $measuredRuns; $run++) {
+        # Cooldown between runs (skip before the first run)
+        if ($run -gt 1 -and $measuredRuns -gt 1) {
+            $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
+            & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
+                -BaseUrl $baseUrl `
+                -GcEndpoint $config.Api.GcEndpoint `
+                -CooldownSeconds $cooldown `
+                -Experiment $Experiment `
+                -Reason 'between runs'
         }
 
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'info' `
-            -Message "Measured run $run / $measuredRuns" `
-            -Experiment $Experiment
-    }
-    else {
-        $runArgs = $k6Args
-        $runSummaryPath = $jsonSummaryPath
-    }
-
-    # Run k6
-    $runLabel = if ($measuredRuns -gt 1) { "k6 run $run/$measuredRuns" } else { 'k6 scale test' }
-    $runSpinner = Start-Spinner -Message $runLabel
-    try {
-        $k6Output = & k6 @runArgs 2>&1
-        $k6ExitCode = $LASTEXITCODE
-    }
-    catch {
-        Stop-Spinner -Spinner $runSpinner -CompletionMessage $null
-        throw
-    }
-
-    # Save k6 console output to experiment directory
-    $k6LogName = if ($measuredRuns -gt 1) { "k6-run$run.log" } elseif ($ScenarioName) { "k6-$ScenarioName.log" } else { 'k6.log' }
-    ($k6Output | Out-String) | Out-File -FilePath (Join-Path $outputDir $k6LogName) -Encoding utf8
-
-    # Parse the JSON summary for this run
-    if (Test-Path $runSummaryPath) {
-        $summary = Get-Content $runSummaryPath -Raw | ConvertFrom-Json
-
-        $runMetrics = [ordered]@{
-            Timestamp       = (Get-Date -Format 'o')
-            Experiment       = $Experiment
-            Run             = $run
-            HttpReqDuration = [ordered]@{
-                Avg = $summary.metrics.http_req_duration.avg
-                P50 = $summary.metrics.http_req_duration.med
-                P90 = $summary.metrics.http_req_duration.'p(90)'
-                P95 = $summary.metrics.http_req_duration.'p(95)'
-                P99 = $summary.metrics.http_req_duration.'p(99)'
-                Max = $summary.metrics.http_req_duration.max
+        if ($measuredRuns -gt 1) {
+            # Use per-run summary file, copy the winning run to the canonical path later
+            $runSummaryPath = Join-Path $outputDir "k6-summary-run$run.json"
+            $runArgs = $k6Args.Clone()
+            # Replace the summary-export path for this run
+            for ($i = 0; $i -lt $runArgs.Count; $i++) {
+                if ($runArgs[$i] -eq '--summary-export' -and ($i + 1) -lt $runArgs.Count) {
+                    $runArgs[$i + 1] = $runSummaryPath
+                    break
+                }
             }
-            HttpReqs        = [ordered]@{
-                Count = $summary.metrics.http_reqs.count
-                Rate  = $summary.metrics.http_reqs.rate
-            }
-            HttpReqFailed   = [ordered]@{
-                Count = [int]($summary.metrics.http_req_failed.passes ?? 0)
-                Rate  = $summary.metrics.http_req_failed.value ?? 0
-            }
-            SummaryPath     = $runSummaryPath
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'measure' -Level 'info' `
+                -Message "Measured run $run / $measuredRuns" `
+                -Experiment $Experiment
+        } else {
+            $runArgs = $k6Args
+            $runSummaryPath = $jsonSummaryPath
         }
 
-        $allRunMetrics += $runMetrics
+        # Run k6
+        $runLabel = if ($measuredRuns -gt 1) { "k6 run $run/$measuredRuns" } else { 'k6 scale test' }
+        $runSpinner = Start-Spinner -Message $runLabel
+        try {
+            $k6Output = & k6 @runArgs 2>&1
+            $k6ExitCode = $LASTEXITCODE
+        } catch {
+            Stop-Spinner -Spinner $runSpinner -CompletionMessage $null
+            throw
+        }
 
-        $runP95 = [math]::Round($runMetrics.HttpReqDuration.P95, 1)
-        $runRps = [math]::Round($runMetrics.HttpReqs.Rate, 1)
-        Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
+        # Save k6 console output to experiment directory
+        $k6LogName = if ($measuredRuns -gt 1) { "k6-run$run.log" } elseif ($ScenarioName) { "k6-$ScenarioName.log" } else { 'k6.log' }
+        ($k6Output | Out-String) | Out-File -FilePath (Join-Path $outputDir $k6LogName) -Encoding utf8
 
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'info' `
-            -Message "Run $run — p95: $($runMetrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($runMetrics.HttpReqs.Rate, 1))" `
-            -Experiment $Experiment `
-            -Data @{
-                run       = $run
-                p95       = $runMetrics.HttpReqDuration.P95
-                rps       = $runMetrics.HttpReqs.Rate
+        # Parse the JSON summary for this run
+        if (Test-Path $runSummaryPath) {
+            $summary = Get-Content $runSummaryPath -Raw | ConvertFrom-Json
+
+            $runMetrics = [ordered]@{
+                Timestamp = (Get-Date -Format 'o')
+                Experiment = $Experiment
+                Run = $run
+                HttpReqDuration = [ordered]@{
+                    Avg = $summary.metrics.http_req_duration.avg
+                    P50 = $summary.metrics.http_req_duration.med
+                    P90 = $summary.metrics.http_req_duration.'p(90)'
+                    P95 = $summary.metrics.http_req_duration.'p(95)'
+                    P99 = $summary.metrics.http_req_duration.'p(99)'
+                    Max = $summary.metrics.http_req_duration.max
+                }
+                HttpReqs = [ordered]@{
+                    Count = $summary.metrics.http_reqs.count
+                    Rate = $summary.metrics.http_reqs.rate
+                }
+                HttpReqFailed = [ordered]@{
+                    Count = [int]($summary.metrics.http_req_failed.passes ?? 0)
+                    Rate = $summary.metrics.http_req_failed.value ?? 0
+                }
+                SummaryPath = $runSummaryPath
+            }
+
+            $allRunMetrics += $runMetrics
+
+            $runP95 = [math]::Round($runMetrics.HttpReqDuration.P95, 1)
+            $runRps = [math]::Round($runMetrics.HttpReqs.Rate, 1)
+            Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'measure' -Level 'info' `
+                -Message "Run $run — p95: $($runMetrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($runMetrics.HttpReqs.Rate, 1))" `
+                -Experiment $Experiment `
+                -Data @{
+                run = $run
+                p95 = $runMetrics.HttpReqDuration.P95
+                rps = $runMetrics.HttpReqs.Rate
                 errorRate = $runMetrics.HttpReqFailed.Rate
             }
+        } else {
+            Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — no summary file"
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'measure' -Level 'error' `
+                -Message "k6 summary file not found at: $runSummaryPath (run $run)" `
+                -Experiment $Experiment
+        }
     }
-    else {
-        Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — no summary file"
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'measure' -Level 'error' `
-            -Message "k6 summary file not found at: $runSummaryPath (run $run)" `
-            -Experiment $Experiment
-    }
-}
 
-# ── Select median result ────────────────────────────────────────────────────
-$metrics = $null
-if ($allRunMetrics.Count -gt 0) {
-    if ($allRunMetrics.Count -eq 1) {
-        $selectedRun = $allRunMetrics[0]
-    }
-    else {
-        # Sort by p95 and pick the median (middle) run
-        $sorted = $allRunMetrics | Sort-Object { $_.HttpReqDuration.P95 }
-        $medianIndex = [math]::Floor($sorted.Count / 2)
-        $selectedRun = $sorted[$medianIndex]
+    # ── Select median result ────────────────────────────────────────────────────
+    $metrics = $null
+    if ($allRunMetrics.Count -gt 0) {
+        if ($allRunMetrics.Count -eq 1) {
+            $selectedRun = $allRunMetrics[0]
+        } elseelse {
+            # Sort by p95 and pick the median (middle) run
+            $sorted = $allRunMetrics | Sort-Object { $_.HttpReqDuration.P95 }
+            $medianIndex = [math]::Floor($sorted.Count / 2)
+            $selectedRun = $sorted[$medianIndex]
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'measure' -Level 'info' `
+                -Message ("Median selected: run {0} — p95: {1}ms (from {2} runs: {3})" -f `
+                    $selectedRun.Run, `
+                    $selectedRun.HttpReqDuration.P95, `
+                    $allRunMetrics.Count, `
+                (($sorted | ForEach-Object { '{0}ms' -f $_.HttpReqDuration.P95 }) -join ', ')) `
+                -Experiment $Experiment
+        }
+
+        # Copy the winning run's summary to the canonical path
+        if ($measuredRuns -gt 1 -and $selectedRun.SummaryPath -ne $jsonSummaryPath) {
+            Copy-Item -Path $selectedRun.SummaryPath -Destination $jsonSummaryPath -Force
+        }
+
+        # Build final metrics (without the per-run helper fields)
+        $metrics = [ordered]@{
+            Timestamp = $selectedRun.Timestamp
+            Experiment = $selectedRun.Experiment
+            HttpReqDuration = $selectedRun.HttpReqDuration
+            HttpReqs = $selectedRun.HttpReqs
+            HttpReqFailed = $selectedRun.HttpReqFailed
+        }
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
-            -Message ("Median selected: run {0} — p95: {1}ms (from {2} runs: {3})" -f `
-                $selectedRun.Run, `
-                $selectedRun.HttpReqDuration.P95, `
-                $allRunMetrics.Count, `
-                (($sorted | ForEach-Object { '{0}ms' -f $_.HttpReqDuration.P95 }) -join ', ')) `
+            -Message "k6 completed — p95: $($metrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($metrics.HttpReqs.Rate, 1))" `
+            -Experiment $Experiment `
+            -Data @{
+            p95 = $metrics.HttpReqDuration.P95
+            rps = $metrics.HttpReqs.Rate
+            errorRate = $metrics.HttpReqFailed.Rate
+            runs = $allRunMetrics.Count
+        }
+    } else {
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'measure' -Level 'error' `
+            -Message 'No successful k6 runs produced metrics' `
             -Experiment $Experiment
     }
-
-    # Copy the winning run's summary to the canonical path
-    if ($measuredRuns -gt 1 -and $selectedRun.SummaryPath -ne $jsonSummaryPath) {
-        Copy-Item -Path $selectedRun.SummaryPath -Destination $jsonSummaryPath -Force
-    }
-
-    # Build final metrics (without the per-run helper fields)
-    $metrics = [ordered]@{
-        Timestamp       = $selectedRun.Timestamp
-        Experiment       = $selectedRun.Experiment
-        HttpReqDuration = $selectedRun.HttpReqDuration
-        HttpReqs        = $selectedRun.HttpReqs
-        HttpReqFailed   = $selectedRun.HttpReqFailed
-    }
-
-    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'measure' -Level 'info' `
-        -Message "k6 completed — p95: $($metrics.HttpReqDuration.P95)ms, RPS: $([math]::Round($metrics.HttpReqs.Rate, 1))" `
-        -Experiment $Experiment `
-        -Data @{
-            p95       = $metrics.HttpReqDuration.P95
-            rps       = $metrics.HttpReqs.Rate
-            errorRate = $metrics.HttpReqFailed.Rate
-            runs      = $allRunMetrics.Count
-        }
-}
-else {
-    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'measure' -Level 'error' `
-        -Message 'No successful k6 runs produced metrics' `
-        -Experiment $Experiment
-}
 
 } finally {
     # ── Stop .NET counter collection ────────────────────────────────────────────
@@ -351,14 +343,14 @@ else {
 }
 
 $result = [ordered]@{
-    Success        = ($null -ne $metrics)
-    ExitCode       = $k6ExitCode
-    Metrics        = if ($metrics) { [PSCustomObject]$metrics } else { $null }
+    Success = ($null -ne $metrics)
+    ExitCode = $k6ExitCode
+    Metrics = if ($metrics) { [PSCustomObject]$metrics } else { $null }
     CounterMetrics = $counterMetrics
-    SummaryPath    = $jsonSummaryPath
-    Output         = ($k6Output | Out-String)
-    RunCount       = $allRunMetrics.Count
-    RunMetrics     = $allRunMetrics   # per-run p95/RPS for variance analysis
+    SummaryPath = $jsonSummaryPath
+    Output = ($k6Output | Out-String)
+    RunCount = $allRunMetrics.Count
+    RunMetrics = $allRunMetrics   # per-run p95/RPS for variance analysis
 }
 
 return [PSCustomObject]$result

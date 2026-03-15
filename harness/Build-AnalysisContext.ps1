@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Builds the file paths, counter metrics, and history context for analysis prompts.
 
@@ -91,9 +91,9 @@ $scenarioContent
 # ── Optimization history context ─────────────────────────────────────────────
 $historyContext = ''
 $metadataDir = Join-Path $RepoRoot $Config.Api.MetadataPath
-$logPath      = Join-Path $metadataDir 'experiment-log.md'
+$logPath = Join-Path $metadataDir 'experiment-log.md'
 $queueJsonPath = Join-Path $metadataDir 'experiment-queue.json'
-$queueMdPath  = Join-Path $metadataDir 'experiment-queue.md'
+$queueMdPath = Join-Path $metadataDir 'experiment-queue.md'
 
 if (Test-Path $logPath) {
     $logContent = Get-Content $logPath -Raw
@@ -104,7 +104,7 @@ if (Test-Path $logPath) {
 if (Test-Path $queueJsonPath) {
     $queueJson = Get-Content $queueJsonPath -Raw | ConvertFrom-Json
     $pendingItems = @($queueJson.items | Where-Object { $_.status -eq 'pending' })
-    $doneItems    = @($queueJson.items | Where-Object { $_.status -eq 'done' })
+    $doneItems = @($queueJson.items | Where-Object { $_.status -eq 'done' })
     if ($pendingItems.Count -gt 0 -or $doneItems.Count -gt 0) {
         $queueLines = @()
         foreach ($item in $doneItems) {
@@ -116,8 +116,7 @@ if (Test-Path $queueJsonPath) {
         }
         $historyContext += "`n## Known Optimization Queue`n$($queueLines -join "`n")`n"
     }
-}
-elseif (Test-Path $queueMdPath) {
+} elseif (Test-Path $queueMdPath) {
     $queueContent = Get-Content $queueMdPath -Raw
     $historyContext += "`n## Known Optimization Queue`n$queueContent`n"
 }
@@ -145,8 +144,7 @@ if (Test-Path $runMetadataPath) {
             }
             $historyContext += "`n## Experiment History (with metrics)`nDo NOT re-attempt optimizations that were already tried and resulted in stale or regressed outcomes. Propose different targets or approaches instead.`n$($historyLines -join "`n")`n"
         }
-    }
-    catch {
+    } catch {
         # Non-fatal: run-metadata is supplementary context
         Write-Verbose "Could not read run-metadata.json for history context: $_"
     }
@@ -171,9 +169,9 @@ if ($DiagnosticReports -and $DiagnosticReports.Count -gt 0) {
 
 # ── Return structured result ─────────────────────────────────────────────────
 [PSCustomObject]@{
-    SourceFilePaths  = @($sourceFilePaths)
-    CounterContext   = $counterContext
-    TrafficContext   = $trafficContext
-    HistoryContext   = $historyContext
+    SourceFilePaths = @($sourceFilePaths)
+    CounterContext = $counterContext
+    TrafficContext = $trafficContext
+    HistoryContext = $historyContext
     ProfilingContext = $profilingContext
 }

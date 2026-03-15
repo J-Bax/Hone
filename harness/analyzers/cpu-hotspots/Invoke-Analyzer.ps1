@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Analyzes CPU sampling stacks using the hone-cpu-profiler agent.
 
@@ -47,10 +47,10 @@ $perfviewData = $CollectorData['perfview-cpu']
 if (-not $perfviewData) {
     Write-Warning "No perfview-cpu collector data available — skipping cpu-hotspots analysis."
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = 'No CPU collector data available'
-        PromptPath   = $null
+        Success = $false
+        Report = $null
+        Summary = 'No CPU collector data available'
+        PromptPath = $null
         ResponsePath = $null
     }
 }
@@ -65,10 +65,10 @@ Write-Verbose "Reading folded stacks from: $stacksPath"
 if (-not (Test-Path -LiteralPath $stacksPath)) {
     Write-Warning "Folded stacks file not found: $stacksPath"
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = "Folded stacks file not found: $stacksPath"
-        PromptPath   = $null
+        Success = $false
+        Report = $null
+        Summary = "Folded stacks file not found: $stacksPath"
+        PromptPath = $null
         ResponsePath = $null
     }
 }
@@ -160,20 +160,19 @@ try {
     Write-Information "CPU hotspots analysis complete: $summary"
 
     return [PSCustomObject][ordered]@{
-        Success      = ($copilotExitCode -eq 0 -and $null -ne $parsed)
-        Report       = $parsed
-        Summary      = $summary
-        PromptPath   = $promptPath
+        Success = ($copilotExitCode -eq 0 -and $null -ne $parsed)
+        Report = $parsed
+        Summary = $summary
+        PromptPath = $promptPath
         ResponsePath = $responsePath
     }
-}
-catch {
+} catch {
     Write-Warning "CPU hotspots analysis agent failed: $_"
     return [PSCustomObject][ordered]@{
-        Success      = $false
-        Report       = $null
-        Summary      = "Analysis agent error: $_"
-        PromptPath   = $promptPath
+        Success = $false
+        Report = $null
+        Summary = "Analysis agent error: $_"
+        PromptPath = $promptPath
         ResponsePath = $null
     }
 }

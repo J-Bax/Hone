@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Starts collecting .NET performance counters for a running API process.
 
@@ -61,15 +61,13 @@ $defaultProviders = @(
 
 $providers = if ($config.DotnetCounters -and $config.DotnetCounters.Providers) {
     $config.DotnetCounters.Providers
-}
-else {
+} else {
     $defaultProviders
 }
 
 $refreshInterval = if ($config.DotnetCounters -and $config.DotnetCounters.RefreshIntervalSeconds) {
     $config.DotnetCounters.RefreshIntervalSeconds
-}
-else {
+} else {
     1
 }
 
@@ -108,8 +106,8 @@ try {
             -Experiment $Experiment
 
         return [PSCustomObject][ordered]@{
-            Success    = $false
-            Process    = $null
+            Success = $false
+            Process = $null
             OutputPath = $OutputPath
         }
     }
@@ -132,20 +130,19 @@ try {
         -Experiment $Experiment
 
     return [PSCustomObject][ordered]@{
-        Success    = $true
-        Process    = $counterProcess
+        Success = $true
+        Process = $counterProcess
         OutputPath = $OutputPath
     }
-}
-catch {
+} catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' `
         -Message "Failed to start dotnet-counters: $_. Counter collection will be skipped." `
         -Experiment $Experiment
 
     return [PSCustomObject][ordered]@{
-        Success    = $false
-        Process    = $null
+        Success = $false
+        Process = $null
         OutputPath = $OutputPath
     }
 }

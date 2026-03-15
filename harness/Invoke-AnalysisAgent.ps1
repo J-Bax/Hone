@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Calls the hone-analyst CLI agent to identify the next optimization opportunity.
 
@@ -68,10 +68,10 @@ $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
     -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation `
     -DiagnosticReports $DiagnosticReports
 
-$sourceFilePaths  = $analysisContext.SourceFilePaths
-$counterContext   = $analysisContext.CounterContext
-$trafficContext   = $analysisContext.TrafficContext
-$historyContext   = $analysisContext.HistoryContext
+$sourceFilePaths = $analysisContext.SourceFilePaths
+$counterContext = $analysisContext.CounterContext
+$trafficContext = $analysisContext.TrafficContext
+$historyContext = $analysisContext.HistoryContext
 $profilingContext = $analysisContext.ProfilingContext
 
 # ── Build the prompt ────────────────────────────────────────────────────────
@@ -135,26 +135,26 @@ $parsed = $agentResult.ParsedJson
 if ($parsed -and $parsed.opportunities) {
     # Normalize each opportunity to have all expected fields
     $opportunities = @($parsed.opportunities | ForEach-Object {
-        [PSCustomObject]@{
-            filePath       = $_.filePath
-            title          = if ($_.title) { $_.title } else { $_.explanation }
-            explanation    = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
-            scope          = if ($_.scope) { $_.scope } else { 'narrow' }
-            rootCause      = if ($_.rootCause) { $_.rootCause } else { $null }
-            impactEstimate = if ($_.impactEstimate) { $_.impactEstimate } else { $null }
-        }
-    })
+            [PSCustomObject]@{
+                filePath = $_.filePath
+                title = if ($_.title) { $_.title } else { $_.explanation }
+                explanation = if ($_.explanation) { $_.explanation } elseif ($_.title) { $_.title } else { '' }
+                scope = if ($_.scope) { $_.scope } else { 'narrow' }
+                rootCause = if ($_.rootCause) { $_.rootCause } else { $null }
+                impactEstimate = if ($_.impactEstimate) { $_.impactEstimate } else { $null }
+            }
+        })
     $primaryOpp = $opportunities[0]
     $result = [ordered]@{
-        Success       = ($agentResult.ExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
-        ExitCode      = $agentResult.ExitCode
-        FilePath      = $primaryOpp.filePath
-        Explanation   = if ($primaryOpp.explanation) { $primaryOpp.explanation } else { $primaryOpp.title }
+        Success = ($agentResult.ExitCode -eq 0 -and $null -ne $primaryOpp.filePath)
+        ExitCode = $agentResult.ExitCode
+        FilePath = $primaryOpp.filePath
+        Explanation = if ($primaryOpp.explanation) { $primaryOpp.explanation } else { $primaryOpp.title }
         Opportunities = $opportunities
-        Prompt        = $prompt
-        Response      = $agentResult.ResponseText
-        PromptPath    = $promptPath
-        ResponsePath  = $responsePath
+        Prompt = $prompt
+        Response = $agentResult.ResponseText
+        PromptPath = $promptPath
+        ResponsePath = $responsePath
     }
 
     $oppCount = @($result.Opportunities).Count
@@ -177,18 +177,17 @@ if ($parsed -and $parsed.opportunities) {
         -Phase 'analyze' -Level 'info' `
         -Message "Analysis agent returned $oppCount opportunities (primary: $($result.FilePath))" `
         -Experiment $Experiment
-}
-else {
+} else {
     $result = [ordered]@{
-        Success       = $false
-        ExitCode      = $agentResult.ExitCode
-        FilePath      = $null
-        Explanation   = $null
+        Success = $false
+        ExitCode = $agentResult.ExitCode
+        FilePath = $null
+        Explanation = $null
         Opportunities = @()
-        Prompt        = $prompt
-        Response      = $agentResult.ResponseText
-        PromptPath    = $promptPath
-        ResponsePath  = $responsePath
+        Prompt = $prompt
+        Response = $agentResult.ResponseText
+        PromptPath = $promptPath
+        ResponsePath = $responsePath
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Generates an interactive HTML dashboard for Hone performance results.
 
@@ -67,15 +67,15 @@ $allData = @()
 # Add baseline as experiment 0
 $allData += @{
     experiment = 0
-    label     = 'Baseline'
-    p50       = [math]::Round($baseline.HttpReqDuration.P50, 2)
-    p90       = [math]::Round($baseline.HttpReqDuration.P90, 2)
-    p95       = [math]::Round($baseline.HttpReqDuration.P95, 2)
-    avg       = [math]::Round($baseline.HttpReqDuration.Avg, 2)
-    max       = [math]::Round($baseline.HttpReqDuration.Max, 2)
-    rps       = [math]::Round($baseline.HttpReqs.Rate, 1)
-    reqCount  = $baseline.HttpReqs.Count
-    errRate   = [math]::Round(($baseline.HttpReqFailed.Rate) * 100, 2)
+    label = 'Baseline'
+    p50 = [math]::Round($baseline.HttpReqDuration.P50, 2)
+    p90 = [math]::Round($baseline.HttpReqDuration.P90, 2)
+    p95 = [math]::Round($baseline.HttpReqDuration.P95, 2)
+    avg = [math]::Round($baseline.HttpReqDuration.Avg, 2)
+    max = [math]::Round($baseline.HttpReqDuration.Max, 2)
+    rps = [math]::Round($baseline.HttpReqs.Rate, 1)
+    reqCount = $baseline.HttpReqs.Count
+    errRate = [math]::Round(($baseline.HttpReqFailed.Rate) * 100, 2)
 }
 
 foreach ($dir in $experimentDirs) {
@@ -88,15 +88,15 @@ foreach ($dir in $experimentDirs) {
 
     $allData += @{
         experiment = $expNum
-        label     = "Experiment $expNum"
-        p50       = [math]::Round($raw.metrics.http_req_duration.med, 2)
-        p90       = [math]::Round($raw.metrics.http_req_duration.'p(90)', 2)
-        p95       = [math]::Round($raw.metrics.http_req_duration.'p(95)', 2)
-        avg       = [math]::Round($raw.metrics.http_req_duration.avg, 2)
-        max       = [math]::Round($raw.metrics.http_req_duration.max, 2)
-        rps       = [math]::Round($raw.metrics.http_reqs.rate, 1)
-        reqCount  = $raw.metrics.http_reqs.count
-        errRate   = [math]::Round(($raw.metrics.http_req_failed.value ?? 0) * 100, 2)
+        label = "Experiment $expNum"
+        p50 = [math]::Round($raw.metrics.http_req_duration.med, 2)
+        p90 = [math]::Round($raw.metrics.http_req_duration.'p(90)', 2)
+        p95 = [math]::Round($raw.metrics.http_req_duration.'p(95)', 2)
+        avg = [math]::Round($raw.metrics.http_req_duration.avg, 2)
+        max = [math]::Round($raw.metrics.http_req_duration.max, 2)
+        rps = [math]::Round($raw.metrics.http_reqs.rate, 1)
+        reqCount = $raw.metrics.http_reqs.count
+        errRate = [math]::Round(($raw.metrics.http_req_failed.value ?? 0) * 100, 2)
     }
 }
 
@@ -111,28 +111,28 @@ foreach ($dir in $experimentDirs) {
     $raw = Get-Content $cf -Raw | ConvertFrom-Json
 
     $counterData += @{
-        experiment        = $expNum
-        cpuAvg           = $raw.Runtime.CpuUsage.Avg
-        cpuMax           = $raw.Runtime.CpuUsage.Max
-        heapMBAvg        = $raw.Runtime.GcHeapSizeMB.Avg
-        heapMBMax        = $raw.Runtime.GcHeapSizeMB.Max
-        gen0             = $raw.Runtime.Gen0Collections.Last
-        gen1             = $raw.Runtime.Gen1Collections.Last
-        gen2             = $raw.Runtime.Gen2Collections.Last
-        workingSetMB     = $raw.Runtime.WorkingSetMB.Max
-        threadPoolMax    = $raw.Runtime.ThreadPoolThreads.Max
-        exceptions       = $raw.Runtime.ExceptionCount.Last
+        experiment = $expNum
+        cpuAvg = $raw.Runtime.CpuUsage.Avg
+        cpuMax = $raw.Runtime.CpuUsage.Max
+        heapMBAvg = $raw.Runtime.GcHeapSizeMB.Avg
+        heapMBMax = $raw.Runtime.GcHeapSizeMB.Max
+        gen0 = $raw.Runtime.Gen0Collections.Last
+        gen1 = $raw.Runtime.Gen1Collections.Last
+        gen2 = $raw.Runtime.Gen2Collections.Last
+        workingSetMB = $raw.Runtime.WorkingSetMB.Max
+        threadPoolMax = $raw.Runtime.ThreadPoolThreads.Max
+        exceptions = $raw.Runtime.ExceptionCount.Last
     }
 }
 
 $counterChartData = $counterData | ForEach-Object {
     @{
-        experiment    = $_.experiment
-        label        = "Experiment $($_.experiment)"
-        cpuAvg       = [math]::Round($_.cpuAvg, 1)
-        cpuMax       = [math]::Round($_.cpuMax, 1)
+        experiment = $_.experiment
+        label = "Experiment $($_.experiment)"
+        cpuAvg = [math]::Round($_.cpuAvg, 1)
+        cpuMax = [math]::Round($_.cpuMax, 1)
         workingSetMB = [math]::Round($_.workingSetMB, 1)
-        heapMBMax    = [math]::Round($_.heapMBMax, 1)
+        heapMBMax = [math]::Round($_.heapMBMax, 1)
     }
 }
 
@@ -165,29 +165,29 @@ foreach ($dir in $experimentDirs) {
 
     # Helper: extract a counter's time-series values aligned to timestamps
     $counterMap = @{
-        cpu            = 'CPU Usage (%)'
-        gcHeapMB       = 'GC Heap Size (MB)'
-        gen0Rate       = 'Gen 0 GC Count (Count / 1 sec)'
-        gen1Rate       = 'Gen 1 GC Count (Count / 1 sec)'
-        gen2Rate       = 'Gen 2 GC Count (Count / 1 sec)'
-        gen0SizeB      = 'Gen 0 Size (B)'
-        gen1SizeB      = 'Gen 1 Size (B)'
-        gen2SizeB      = 'Gen 2 Size (B)'
-        lohSizeB       = 'LOH Size (B)'
-        pohSizeB       = 'POH (Pinned Object Heap) Size (B)'
-        allocRateB     = 'Allocation Rate (B / 1 sec)'
-        gcPausePct     = '% Time in GC since last GC (%)'
-        gcFragPct      = 'GC Fragmentation (%)'
-        gcCommittedMB  = 'GC Committed Bytes (MB)'
+        cpu = 'CPU Usage (%)'
+        gcHeapMB = 'GC Heap Size (MB)'
+        gen0Rate = 'Gen 0 GC Count (Count / 1 sec)'
+        gen1Rate = 'Gen 1 GC Count (Count / 1 sec)'
+        gen2Rate = 'Gen 2 GC Count (Count / 1 sec)'
+        gen0SizeB = 'Gen 0 Size (B)'
+        gen1SizeB = 'Gen 1 Size (B)'
+        gen2SizeB = 'Gen 2 Size (B)'
+        lohSizeB = 'LOH Size (B)'
+        pohSizeB = 'POH (Pinned Object Heap) Size (B)'
+        allocRateB = 'Allocation Rate (B / 1 sec)'
+        gcPausePct = '% Time in GC since last GC (%)'
+        gcFragPct = 'GC Fragmentation (%)'
+        gcCommittedMB = 'GC Committed Bytes (MB)'
         lockContention = 'Monitor Lock Contention Count (Count / 1 sec)'
-        threadCount    = 'ThreadPool Thread Count'
-        threadQueue    = 'ThreadPool Queue Length'
+        threadCount = 'ThreadPool Thread Count'
+        threadQueue = 'ThreadPool Queue Length'
         threadCompleted = 'ThreadPool Completed Work Item Count (Count / 1 sec)'
-        exceptions     = 'Exception Count (Count / 1 sec)'
-        workingSetMB   = 'Working Set (MB)'
-        activeTimers   = 'Number of Active Timers'
-        requestRate    = 'Request Rate (Count / 1 sec)'
-        totalRequests  = 'Total Requests'
+        exceptions = 'Exception Count (Count / 1 sec)'
+        workingSetMB = 'Working Set (MB)'
+        activeTimers = 'Number of Active Timers'
+        requestRate = 'Request Rate (Count / 1 sec)'
+        totalRequests = 'Total Requests'
         currentRequests = 'Current Requests'
     }
 
@@ -216,8 +216,8 @@ foreach ($dir in $experimentDirs) {
 
     $counterTimeSeries["experiment$expNum"] = @{
         experiment = $expNum
-        labels    = $elapsedLabels
-        series    = $series
+        labels = $elapsedLabels
+        series = $series
     }
 }
 
@@ -235,15 +235,15 @@ foreach ($sbFile in $scenarioBaselineFiles) {
     $scenarioEntries = @()
     $scenarioEntries += @{
         experiment = 0
-        label     = 'Baseline'
-        p50       = [math]::Round($sbRaw.HttpReqDuration.P50, 2)
-        p90       = [math]::Round($sbRaw.HttpReqDuration.P90, 2)
-        p95       = [math]::Round($sbRaw.HttpReqDuration.P95, 2)
-        avg       = [math]::Round($sbRaw.HttpReqDuration.Avg, 2)
-        max       = [math]::Round($sbRaw.HttpReqDuration.Max, 2)
-        rps       = [math]::Round($sbRaw.HttpReqs.Rate, 1)
-        reqCount  = $sbRaw.HttpReqs.Count
-        errRate   = [math]::Round(($sbRaw.HttpReqFailed.Rate) * 100, 2)
+        label = 'Baseline'
+        p50 = [math]::Round($sbRaw.HttpReqDuration.P50, 2)
+        p90 = [math]::Round($sbRaw.HttpReqDuration.P90, 2)
+        p95 = [math]::Round($sbRaw.HttpReqDuration.P95, 2)
+        avg = [math]::Round($sbRaw.HttpReqDuration.Avg, 2)
+        max = [math]::Round($sbRaw.HttpReqDuration.Max, 2)
+        rps = [math]::Round($sbRaw.HttpReqs.Rate, 1)
+        reqCount = $sbRaw.HttpReqs.Count
+        errRate = [math]::Round(($sbRaw.HttpReqFailed.Rate) * 100, 2)
     }
 
     # Find experiment results for this scenario from experiment subdirectories
@@ -257,15 +257,15 @@ foreach ($sbFile in $scenarioBaselineFiles) {
         $sRaw = Get-Content $sf -Raw | ConvertFrom-Json
         $scenarioEntries += @{
             experiment = $sExpNum
-            label     = "Experiment $sExpNum"
-            p50       = [math]::Round($sRaw.metrics.http_req_duration.med, 2)
-            p90       = [math]::Round($sRaw.metrics.http_req_duration.'p(90)', 2)
-            p95       = [math]::Round($sRaw.metrics.http_req_duration.'p(95)', 2)
-            avg       = [math]::Round($sRaw.metrics.http_req_duration.avg, 2)
-            max       = [math]::Round($sRaw.metrics.http_req_duration.max, 2)
-            rps       = [math]::Round($sRaw.metrics.http_reqs.rate, 1)
-            reqCount  = $sRaw.metrics.http_reqs.count
-            errRate   = [math]::Round(($sRaw.metrics.http_req_failed.value ?? 0) * 100, 2)
+            label = "Experiment $sExpNum"
+            p50 = [math]::Round($sRaw.metrics.http_req_duration.med, 2)
+            p90 = [math]::Round($sRaw.metrics.http_req_duration.'p(90)', 2)
+            p95 = [math]::Round($sRaw.metrics.http_req_duration.'p(95)', 2)
+            avg = [math]::Round($sRaw.metrics.http_req_duration.avg, 2)
+            max = [math]::Round($sRaw.metrics.http_req_duration.max, 2)
+            rps = [math]::Round($sRaw.metrics.http_reqs.rate, 1)
+            reqCount = $sRaw.metrics.http_reqs.count
+            errRate = [math]::Round(($sRaw.metrics.http_req_failed.value ?? 0) * 100, 2)
         }
     }
 

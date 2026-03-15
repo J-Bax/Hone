@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Main entry point for the Hone agentic optimization loop.
 
@@ -171,12 +171,12 @@ Write-Status ''
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message 'Machine info collected' `
     -Data @{
-        cpuName          = $machineInfo.Cpu.Name
-        logicalCores     = $machineInfo.Cpu.LogicalProcessors
-        physicalCores    = $machineInfo.Cpu.PhysicalCores
-        totalMemoryGB    = $machineInfo.Memory.TotalGB
-        os               = $machineInfo.OS.Description
-    }
+    cpuName = $machineInfo.Cpu.Name
+    logicalCores = $machineInfo.Cpu.LogicalProcessors
+    physicalCores = $machineInfo.Cpu.PhysicalCores
+    totalMemoryGB = $machineInfo.Memory.TotalGB
+    os = $machineInfo.OS.Description
+}
 
 # ── Run metadata tracking ───────────────────────────────────────────────────
 $runMetadataPath = Join-Path $repoRoot $config.Api.ResultsPath 'run-metadata.json'
@@ -187,14 +187,13 @@ if (Test-Path $runMetadataPath) {
     # Overwrite machine info with current (machine may differ between baseline & loop)
     $runMetadata | Add-Member -NotePropertyName Machine -NotePropertyValue $machineInfo -Force
     $runMetadata | Add-Member -NotePropertyName LoopStartedAt -NotePropertyValue $loopStartedAt -Force
-}
-else {
+} else {
     $runMetadata = [PSCustomObject][ordered]@{
-        Machine        = $machineInfo
-        BaselineRun    = $null
-        LoopStartedAt  = $loopStartedAt
+        Machine = $machineInfo
+        BaselineRun = $null
+        LoopStartedAt = $loopStartedAt
         LoopCompletedAt = $null
-        Experiments     = @()
+        Experiments = @()
     }
 }
 
@@ -227,7 +226,6 @@ $consecutiveFailures = 0
 
 # Stacked-diffs state: track the branch chain and PR stack
 $currentBranch = 'master'
-$lastSuccessfulBranch = 'master'
 $prChain = @()
 $branchChain = @('master')
 $failedExperiments = @()
@@ -260,15 +258,13 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
         # Walk backward to find the last experiment that had a branch.
         $lastWithBranch = $priorExperiments | Where-Object { $_.BranchName } | Select-Object -Last 1
         $currentBranch = if ($lastWithBranch) { $lastWithBranch.BranchName } else { 'master' }
-        $lastImproved = $priorExperiments | Where-Object { $_.Outcome -eq 'improved' } | Select-Object -Last 1
-        $lastSuccessfulBranch = if ($lastImproved) { $lastImproved.BranchName } else { 'master' }
         $branchChain = @('master') + @($priorExperiments | Where-Object { $_.BranchName } | ForEach-Object { $_.BranchName })
         $prChain = @($priorExperiments | Where-Object { $_.PrNumber } | ForEach-Object {
-            [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)"; Outcome = $_.Outcome }
-        })
+                [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)"; Outcome = $_.Outcome }
+            })
         $failedExperiments = @($priorExperiments | Where-Object { $_.Outcome -ne 'improved' } | ForEach-Object {
-            [PSCustomObject]@{ Experiment = $_.Experiment; Reason = $_.Outcome }
-        })
+                [PSCustomObject]@{ Experiment = $_.Experiment; Reason = $_.Outcome }
+            })
     }
 
     Write-Status "  Resuming from:      experiment $startExperiment ($($priorExperiments.Count) previous)"
@@ -282,13 +278,13 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
         -Phase 'loop' -Level 'info' `
         -Message "Resuming from experiment $startExperiment (restored state from $($priorExperiments.Count) prior experiments)" `
         -Data @{
-            startExperiment     = $startExperiment
-            priorCount          = $priorExperiments.Count
-            successCount        = $successCount
-            staleCount          = $staleCount
-            consecutiveFailures = $consecutiveFailures
-            currentBranch       = $currentBranch
-        }
+        startExperiment = $startExperiment
+        priorCount = $priorExperiments.Count
+        successCount = $successCount
+        staleCount = $staleCount
+        consecutiveFailures = $consecutiveFailures
+        currentBranch = $currentBranch
+    }
 }
 
 # MaxExperiments means "run N more" — compute absolute loop end
@@ -360,12 +356,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             if ($diagResult.Success) {
                 $diagnosticReports = $diagResult.AnalyzerReports
                 Write-Status "  Diagnostic profiling complete: $($diagnosticReports.Count) report(s)"
-            }
-            else {
+            } else {
                 throw 'Diagnostic measurement failed. Fix PerfView/profiling setup or set Diagnostics.Enabled = $false.'
             }
-        }
-        elseif ($DryRun) {
+        } elseif ($DryRun) {
             Write-Status '  Diagnostic profiling skipped (dry run)'
         }
 
@@ -421,8 +415,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         }
 
         Write-Status "  Queue initialized with $($initResult.Count) items"
-    }
-    else {
+    } else {
         Write-Status '[2/5] 🧠 Analyzing... (queue has items — skipping analysis)'
     }
 
@@ -433,7 +426,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     $classificationResult = $null
     $changeScope = $null
     $queueItemId = $null
-    $skipExperiment = $false
 
     while ($true) {
         $currentItem = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
@@ -500,16 +492,15 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     # Build analysisResult-compatible object from queue item so downstream code is unchanged
     $analysisResult = [PSCustomObject]@{
-        Success      = $true
-        FilePath     = $currentItem.filePath
-        Explanation  = $currentItem.explanation
+        Success = $true
+        FilePath = $currentItem.filePath
+        Explanation = $currentItem.explanation
         ResponsePath = $null
     }
 
     $rcaResult = $null
     $applyResult = $null
     $branchName = "$($config.Loop.BranchPrefix)-$experiment"
-    $applySuccess = $false
 
     # Save root-cause analysis to experiment directory.
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
@@ -540,8 +531,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         ($metricsHeader + $agentRca) | Out-File -FilePath $rcaPath -Encoding utf8
         $rcaResult = [PSCustomObject]@{ Success = $true; Path = $rcaPath }
         Write-Status "  Root cause analysis saved to: $rcaPath"
-    }
-    else {
+    } else {
         $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
             -FilePath $analysisResult.FilePath `
             -Explanation $analysisResult.Explanation `
@@ -690,8 +680,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 break
             }
             continue
-        }
-        else {
+        } else {
             $exitReason = 'build_failure'
             Write-Error "Build failed at experiment $experiment — rolling back"
             Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
@@ -757,8 +746,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 break
             }
             continue
-        }
-        else {
+        } else {
             $exitReason = 'test_failure'
             Write-Warning "E2E tests failed at experiment $experiment — rolling back"
             Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
@@ -772,8 +760,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
         # Generate synthetic metrics showing 5% improvement over reference
         $syntheticMetrics = [PSCustomObject]@{
-            Timestamp       = Get-Date -Format 'o'
-            Experiment      = $experiment
+            Timestamp = Get-Date -Format 'o'
+            Experiment = $experiment
             HttpReqDuration = [PSCustomObject]@{
                 Avg = [math]::Round($metricsForAnalysis.HttpReqDuration.Avg * 0.95, 2)
                 P50 = [math]::Round($metricsForAnalysis.HttpReqDuration.P50 * 0.95, 2)
@@ -784,25 +772,24 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             }
             HttpReqs = [PSCustomObject]@{
                 Count = $metricsForAnalysis.HttpReqs.Count
-                Rate  = [math]::Round($metricsForAnalysis.HttpReqs.Rate * 1.05, 1)
+                Rate = [math]::Round($metricsForAnalysis.HttpReqs.Rate * 1.05, 1)
             }
             HttpReqFailed = [PSCustomObject]@{
                 Count = 0
-                Rate  = 0
+                Rate = 0
             }
         }
 
         $scaleResult = [PSCustomObject]@{
-            Success        = $true
-            Metrics        = $syntheticMetrics
+            Success = $true
+            Metrics = $syntheticMetrics
             CounterMetrics = $null
-            RunMetrics     = $null
+            RunMetrics = $null
         }
         $scenarioResults = @()
 
         Write-Status "  Synthetic p95: $($syntheticMetrics.HttpReqDuration.P95)ms (5% improvement over reference)"
-    }
-    else {
+    } else {
         Write-Status '  Measuring (k6 scale tests)...'
 
         # Reset database so every experiment starts with identical seed data
@@ -863,8 +850,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     break
                 }
                 continue
-            }
-            else {
+            } else {
                 $exitReason = 'api_start_failure'
                 Write-Error "API failed to start at experiment $experiment. Aborting."
                 break
@@ -883,15 +869,13 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 }
                 # Stacked mode: flag for revert after API is stopped (below finally)
                 Write-Warning "Scale tests failed at experiment $experiment — will revert after cleanup"
-            }
-            else {
+            } else {
                 # Run additional (diagnostic) scenarios only on success
                 Write-Status '      Running additional scenarios...'
                 $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
                     -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -SkipHealthCheck -BaseUrl $apiResult.BaseUrl
             }
-        }
-        finally {
+        } finally {
             & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
         }
 
@@ -987,25 +971,25 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     # Display per-metric deltas
     $d = $comparison.Deltas
     Write-Information ("  p95: {0}ms ({1}%) | RPS: {2} ({3}%) | Errors: {4}% ({5}%) | vs baseline: {6}%" -f `
-        $d.P95Latency.Current, $d.P95Latency.ChangePct, `
-        $d.RPS.Current, $d.RPS.ChangePct, `
-        [math]::Round($d.ErrorRate.Current * 100, 2), $d.ErrorRate.ChangePct, `
-        $comparison.ImprovementPct) -InformationAction Continue
+            $d.P95Latency.Current, $d.P95Latency.ChangePct, `
+            $d.RPS.Current, $d.RPS.ChangePct, `
+            [math]::Round($d.ErrorRate.Current * 100, 2), $d.ErrorRate.ChangePct, `
+            $comparison.ImprovementPct) -InformationAction Continue
 
     # Display variance info if available
     if ($comparison.Variance) {
         $v = $comparison.Variance
         $cvLabel = if ($v.CV -gt 10) { '⚠' } else { '✓' }
         Write-Information ("  $cvLabel Variance: CV={0}% | range: {1}ms—{2}ms | stddev: {3}ms ({4} runs)" -f `
-            $v.CV, $v.Min, $v.Max, $v.StdDev, $v.Runs) -InformationAction Continue
+                $v.CV, $v.Min, $v.Max, $v.StdDev, $v.Runs) -InformationAction Continue
     }
 
     # Display efficiency deltas when counter data is available
     if ($comparison.EfficiencyDeltas) {
         $ed = $comparison.EfficiencyDeltas
         Write-Information ("  CPU: {0}% ({1}%) | WorkingSet: {2}MB ({3}%)" -f `
-            $ed.CpuUsage.Current, $ed.CpuUsage.ChangePct, `
-            $ed.WorkingSet.Current, $ed.WorkingSet.ChangePct) -InformationAction Continue
+                $ed.CpuUsage.Current, $ed.CpuUsage.ChangePct, `
+                $ed.WorkingSet.Current, $ed.WorkingSet.ChangePct) -InformationAction Continue
     }
 
     # ── Phase 5: Publish ──────────────────────────────────────────────────
@@ -1100,15 +1084,13 @@ $rcaDocument
                 Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
-        }
-        else {
+        } else {
             $exitReason = 'regression'
             Write-Warning "  Rolling back to previous state"
             Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
             break
         }
-    }
-    elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
+    } elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
         $experimentOutcome = 'improved'
         $staleCount = 0
         $consecutiveFailures = 0
@@ -1116,8 +1098,7 @@ $rcaDocument
 
         if ($comparison.TiebreakerUsed) {
             Write-Status '  ↑ Efficiency improvement (tiebreaker) — publishing'
-        }
-        else {
+        } else {
             Write-Status '  ↑ Improvement detected — publishing'
         }
 
@@ -1175,8 +1156,7 @@ $rcaDocument
                 if ($previousScenarioResults -and $previousScenarioResults.ContainsKey($sr.ScenarioName)) {
                     $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
                     $scenarioRefLabel = $referenceLabel
-                }
-                else {
+                } else {
                     $scenarioBaselinePath = Join-Path $repoRoot $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
                     if (-not (Test-Path $scenarioBaselinePath)) { continue }
                     $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
@@ -1264,7 +1244,6 @@ $rcaDocument
         }
 
         # Update stacked-diffs state
-        $lastSuccessfulBranch = $branchName
         $currentBranch = $branchName
         $branchChain += $branchName
         if ($prNumber) {
@@ -1284,7 +1263,7 @@ $rcaDocument
 
             while ($true) {
                 Start-Sleep -Seconds $pollInterval
-                $prState = gh pr view $prNumber --json state,mergedAt 2>$null | ConvertFrom-Json
+                $prState = gh pr view $prNumber --json state, mergedAt 2>$null | ConvertFrom-Json
                 if ($prState.state -eq 'MERGED') {
                     Write-Status "  ✓ PR #$prNumber merged — continuing loop"
 
@@ -1301,8 +1280,7 @@ $rcaDocument
                         $currentBranch = 'master'
                     }
                     break
-                }
-                elseif ($prState.state -eq 'CLOSED') {
+                } elseif ($prState.state -eq 'CLOSED') {
                     Write-Warning "  PR #$prNumber was closed without merging — stopping loop"
 
                     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -1316,8 +1294,7 @@ $rcaDocument
                     }
                     $exitReason = 'pr_rejected'
                     break
-                }
-                else {
+                } else {
                     if (([datetime]::Now - $lastLog) -ge $logEvery) {
                         Write-Status "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))"
                         $lastLog = [datetime]::Now
@@ -1333,8 +1310,7 @@ $rcaDocument
         }
 
         Pop-Location
-    }
-    else {
+    } else {
         # No improvement and no regression — stale
         $staleCount++
         $consecutiveFailures++
@@ -1420,8 +1396,7 @@ $rcaDocument
                 Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
-        }
-        else {
+        } else {
             Write-Status "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))"
 
             Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
@@ -1485,21 +1460,21 @@ if ($stackedDiffs) {
 
     # Branch chain display
     $chainDisplay = ($branchChain | ForEach-Object {
-        $branch = $_
-        $failed = $failedExperiments | Where-Object {
-            "$($config.Loop.BranchPrefix)-$($_.Experiment)" -eq $branch
-        }
-        if ($failed) { "$branch ✗" } else { "$branch ✓" }
-    }) -join ' → '
+            $branch = $_
+            $failed = $failedExperiments | Where-Object {
+                "$($config.Loop.BranchPrefix)-$($_.Experiment)" -eq $branch
+            }
+            if ($failed) { "$branch ✗" } else { "$branch ✓" }
+        }) -join ' → '
     Write-Status "  Branch chain:"
     Write-Status "    $chainDisplay"
 
     # PR stack display
     if ($prChain.Count -gt 0) {
         $prDisplay = ($prChain | ForEach-Object {
-            $tag = if ($_.Outcome -eq 'improved') { '✓' } else { '✗' }
-            "PR #$($_.Number) (experiment-$($_.Experiment)) $tag"
-        }) -join ' → '
+                $tag = if ($_.Outcome -eq 'improved') { '✓' } else { '✗' }
+                "PR #$($_.Number) (experiment-$($_.Experiment)) $tag"
+            }) -join ' → '
         Write-Status ''
         Write-Status "  PR stack (reviewable):"
         Write-Status "    $prDisplay"
@@ -1519,13 +1494,13 @@ Write-Status ''
     -Phase 'loop' -Level 'info' `
     -Message "Hone loop complete: $exitReason after $experimentsRun experiments" `
     -Data @{
-        exitReason    = $exitReason
-        experiments    = $experimentsRun
-        bestP95       = $bestP95
-        bestExperiment = $bestExperiment
-        successCount  = $successCount
-        prChain       = @($prChain | ForEach-Object { $_.Number })
-    }
+    exitReason = $exitReason
+    experiments = $experimentsRun
+    bestP95 = $bestP95
+    bestExperiment = $bestExperiment
+    successCount = $successCount
+    prChain = @($prChain | ForEach-Object { $_.Number })
+}
 
 # ── Finalize run metadata ────────────────────────────────────────────────────
 $runMetadata | Add-Member -NotePropertyName LoopCompletedAt -NotePropertyValue (Get-Date -Format 'o') -Force
@@ -1537,13 +1512,13 @@ $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -E
 
 # Return summary object
 [PSCustomObject][ordered]@{
-    ExitReason        = $exitReason
-    Experiments        = $experimentsRun
-    SuccessCount      = $successCount
-    BestP95           = $bestP95
-    BestExperiment     = $bestExperiment
-    BaselineP95       = $baselineMetrics.HttpReqDuration.P95
-    PrChain           = @($prChain | ForEach-Object { $_.Number })
-    FullBranchChain   = $branchChain
-    FailedExperiments  = @($failedExperiments | ForEach-Object { $_.Experiment })
+    ExitReason = $exitReason
+    Experiments = $experimentsRun
+    SuccessCount = $successCount
+    BestP95 = $bestP95
+    BestExperiment = $bestExperiment
+    BaselineP95 = $baselineMetrics.HttpReqDuration.P95
+    PrChain = @($prChain | ForEach-Object { $_.Number })
+    FullBranchChain = $branchChain
+    FailedExperiments = @($failedExperiments | ForEach-Object { $_.Experiment })
 }

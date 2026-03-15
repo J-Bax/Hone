@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Collects machine hardware and environment information.
 
@@ -18,70 +18,64 @@ param()
 # ── CPU ─────────────────────────────────────────────────────────────────────
 
 $cpuInfo = [ordered]@{
-    Name             = $null
-    PhysicalCores    = $null
+    Name = $null
+    PhysicalCores = $null
     LogicalProcessors = [Environment]::ProcessorCount
     MaxClockSpeedMHz = $null
-    Architecture     = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
+    Architecture = [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString()
 }
 
 try {
     if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
         $wmiCpu = Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1
-        $cpuInfo.Name             = $wmiCpu.Name.Trim()
-        $cpuInfo.PhysicalCores    = $wmiCpu.NumberOfCores
+        $cpuInfo.Name = $wmiCpu.Name.Trim()
+        $cpuInfo.PhysicalCores = $wmiCpu.NumberOfCores
         $cpuInfo.MaxClockSpeedMHz = $wmiCpu.MaxClockSpeed
-    }
-    elseif ($IsLinux) {
+    } elseif ($IsLinux) {
         $lscpu = lscpu 2>$null
         if ($lscpu) {
-            $cpuInfo.Name          = ($lscpu | Select-String '^Model name:' | ForEach-Object { ($_ -split ':\s+', 2)[1] })
+            $cpuInfo.Name = ($lscpu | Select-String '^Model name:' | ForEach-Object { ($_ -split ':\s+', 2)[1] })
             $cpuInfo.PhysicalCores = [int]($lscpu | Select-String '^Core\(s\) per socket:' | ForEach-Object { ($_ -split ':\s+', 2)[1] })
         }
-    }
-    elseif ($IsMacOS) {
-        $cpuInfo.Name          = (sysctl -n machdep.cpu.brand_string 2>$null)
+    } elseif ($IsMacOS) {
+        $cpuInfo.Name = (sysctl -n machdep.cpu.brand_string 2>$null)
         $cpuInfo.PhysicalCores = [int](sysctl -n hw.physicalcpu 2>$null)
     }
-}
-catch {
+} catch {
     Write-Verbose "Could not retrieve detailed CPU info: $_"
 }
 
 # ── Memory ──────────────────────────────────────────────────────────────────
 
 $memoryInfo = [ordered]@{
-    TotalGB     = $null
+    TotalGB = $null
     AvailableGB = $null
 }
 
 try {
     if ($IsWindows -or (-not (Test-Path variable:IsWindows))) {
         $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-        $memoryInfo.TotalGB     = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+        $memoryInfo.TotalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
         $memoryInfo.AvailableGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-    }
-    elseif ($IsLinux) {
+    } elseif ($IsLinux) {
         $memKB = (Get-Content /proc/meminfo -ErrorAction Stop | Select-String '^MemTotal:' | ForEach-Object { ($_ -split '\s+')[1] })
         if ($memKB) { $memoryInfo.TotalGB = [math]::Round([long]$memKB / 1MB, 1) }
         $availKB = (Get-Content /proc/meminfo -ErrorAction Stop | Select-String '^MemAvailable:' | ForEach-Object { ($_ -split '\s+')[1] })
         if ($availKB) { $memoryInfo.AvailableGB = [math]::Round([long]$availKB / 1MB, 1) }
-    }
-    elseif ($IsMacOS) {
+    } elseif ($IsMacOS) {
         $totalBytes = [long](sysctl -n hw.memsize 2>$null)
         if ($totalBytes) { $memoryInfo.TotalGB = [math]::Round($totalBytes / 1GB, 1) }
     }
-}
-catch {
+} catch {
     Write-Verbose "Could not retrieve memory info: $_"
 }
 
 # ── Operating System ────────────────────────────────────────────────────────
 
 $osPlatform = if ($IsWindows -or (-not (Test-Path variable:IsWindows))) { 'Windows' }
-              elseif ($IsLinux) { 'Linux' }
-              elseif ($IsMacOS) { 'macOS' }
-              else { 'Unknown' }
+elseif ($IsLinux) { 'Linux' }
+elseif ($IsMacOS) { 'macOS' }
+else { 'Unknown' }
 
 # Build a major-version-only description to avoid leaking specific build numbers.
 $osMajorVersion = $osPlatform
@@ -92,11 +86,9 @@ try {
             # Windows 11 starts at build 22000; earlier 10.0.* builds are Windows 10.
             if ($osVer.Major -eq 10 -and $osVer.Build -ge 22000) {
                 $osMajorVersion = 'Windows 11'
-            }
-            elseif ($osVer.Major -eq 10) {
+            } elseif ($osVer.Major -eq 10) {
                 $osMajorVersion = 'Windows 10'
-            }
-            else {
+            } else {
                 $osMajorVersion = "Windows $($osVer.Major).$($osVer.Minor)"
             }
         }
@@ -107,14 +99,13 @@ try {
             $osMajorVersion = "macOS $($osVer.Major).$($osVer.Minor)"
         }
     }
-}
-catch {
+} catch {
     Write-Verbose "Could not determine OS major version: $_"
 }
 
 $osInfo = [ordered]@{
     Description = $osMajorVersion
-    Platform    = $osPlatform
+    Platform = $osPlatform
 }
 
 # ── Runtime ─────────────────────────────────────────────────────────────────
@@ -122,24 +113,23 @@ $osInfo = [ordered]@{
 $dotnetVersion = $null
 try {
     $dotnetVersion = (dotnet --version 2>$null)
-}
-catch {
+} catch {
     Write-Verbose "Could not retrieve .NET SDK version: $_"
 }
 
 $runtimeInfo = [ordered]@{
     PowerShellVersion = $PSVersionTable.PSVersion.ToString()
-    DotnetSdkVersion  = $dotnetVersion
-    ClrVersion         = [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
+    DotnetSdkVersion = $dotnetVersion
+    ClrVersion = [System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription
 }
 
 # ── Assemble ────────────────────────────────────────────────────────────────
 
 $machineInfo = [PSCustomObject][ordered]@{
-    Cpu         = [PSCustomObject]$cpuInfo
-    Memory      = [PSCustomObject]$memoryInfo
-    OS          = [PSCustomObject]$osInfo
-    Runtime     = [PSCustomObject]$runtimeInfo
+    Cpu = [PSCustomObject]$cpuInfo
+    Memory = [PSCustomObject]$memoryInfo
+    OS = [PSCustomObject]$osInfo
+    Runtime = [PSCustomObject]$runtimeInfo
     CollectedAt = (Get-Date).ToUniversalTime().ToString('o')
 }
 

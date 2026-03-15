@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Stops the sample API process.
 
@@ -24,13 +24,11 @@ try {
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' -Message 'API process stopped'
-    }
-    else {
+    } else {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' -Message 'API process had already exited'
     }
-}
-catch {
+} catch {
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'warning' -Message "Failed to stop API process: $_"
 }

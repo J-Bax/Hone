@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Shared helper module for the Hone harness.
 
@@ -78,8 +78,7 @@ function Wait-ApiHealthy {
             if ($response.status -eq 'healthy') {
                 return $true
             }
-        }
-        catch {
+        } catch {
             Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s — not ready"
         }
         $remainingSec = $TimeoutSec - $stopwatch.Elapsed.TotalSeconds
@@ -150,12 +149,12 @@ function Invoke-CopilotWithTimeout {
 
     $exited = $proc.WaitForExit($TimeoutSec * 1000)
     if (-not $exited) {
-        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+        try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch { Write-Verbose "Failed to stop process $($proc.Id): $_" }
         $partialOutput = ''
-        try { $partialOutput = $stdoutTask.GetAwaiter().GetResult() } catch {}
+        try { $partialOutput = $stdoutTask.GetAwaiter().GetResult() } catch { Write-Verbose "Failed to read stdout: $_" }
         return [PSCustomObject]@{
-            Success  = $false
-            Output   = $partialOutput
+            Success = $false
+            Output = $partialOutput
             TimedOut = $true
             ExitCode = -1
         }
@@ -163,8 +162,8 @@ function Invoke-CopilotWithTimeout {
 
     $output = $stdoutTask.GetAwaiter().GetResult()
     return [PSCustomObject]@{
-        Success  = ($proc.ExitCode -eq 0)
-        Output   = $output
+        Success = ($proc.ExitCode -eq 0)
+        Output = $output
         TimedOut = $false
         ExitCode = $proc.ExitCode
     }
@@ -186,8 +185,7 @@ function Undo-ExperimentBranch {
         git checkout $RestoreBranch 2>&1 | Out-Null
         git branch -D $BranchName 2>&1 | Out-Null
         Pop-Location
-    }
-    catch {
+    } catch {
         Pop-Location -ErrorAction SilentlyContinue
         Write-Warning "Rollback failed for branch '$BranchName': $_"
     }
@@ -220,26 +218,25 @@ function Add-ExperimentMetadata {
     $rps = if ($Metrics -and $Metrics.HttpReqs) { [math]::Round($Metrics.HttpReqs.Rate, 1) } else { $null }
 
     $experimentMeta = [ordered]@{
-        Experiment          = $Experiment
-        StartedAt           = $StartedAt
-        CompletedAt         = (Get-Date -Format 'o')
-        Improved            = $Improved
-        Regression          = $Regression
-        P95                 = $p95
-        RPS                 = $rps
-        Outcome             = $Outcome
-        BranchName          = $BranchName
-        BaseBranch          = $BaseBranch
-        PrNumber            = if ($PrNumber) { $PrNumber } else { $null }
-        PrUrl               = if ($PrUrl) { "$PrUrl" } else { $null }
-        StaleCount          = $StaleCount
+        Experiment = $Experiment
+        StartedAt = $StartedAt
+        CompletedAt = (Get-Date -Format 'o')
+        Improved = $Improved
+        Regression = $Regression
+        P95 = $p95
+        RPS = $rps
+        Outcome = $Outcome
+        BranchName = $BranchName
+        BaseBranch = $BaseBranch
+        PrNumber = if ($PrNumber) { $PrNumber } else { $null }
+        PrUrl = if ($PrUrl) { "$PrUrl" } else { $null }
+        StaleCount = $StaleCount
         ConsecutiveFailures = $ConsecutiveFailures
     }
 
     if ($RunMetadata.Experiments -is [System.Collections.IList]) {
         $RunMetadata.Experiments += [PSCustomObject]$experimentMeta
-    }
-    else {
+    } else {
         $RunMetadata | Add-Member -NotePropertyName Experiments -NotePropertyValue @([PSCustomObject]$experimentMeta) -Force
     }
 
@@ -283,12 +280,11 @@ function New-ExperimentPR {
         Write-Status "  ✓ Pull request created: $result (base: $BaseBranch) [$outcomeTag]"
 
         return [PSCustomObject]@{
-            Success  = $true
-            PrUrl    = "$result"
+            Success = $true
+            PrUrl = "$result"
             PrNumber = $extractedNumber
         }
-    }
-    else {
+    } else {
         Write-Warning "  Failed to create pull request: $result"
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -298,8 +294,8 @@ function New-ExperimentPR {
             -Data @{ baseBranch = $BaseBranch; outcome = $Outcome; error = "$result" }
 
         return [PSCustomObject]@{
-            Success  = $false
-            PrUrl    = $null
+            Success = $false
+            PrUrl = $null
             PrNumber = $null
         }
     }
@@ -330,9 +326,9 @@ function Build-StackNote {
 
     $prExperimentNums = @($PrChain | ForEach-Object { $_.Experiment })
     $failedBetween = @($FailedExperiments | Where-Object {
-        $_.Experiment -gt ($PrChain[-1].Experiment) -and $_.Experiment -lt $Experiment -and
-        $_.Experiment -notin $prExperimentNums
-    })
+            $_.Experiment -gt ($PrChain[-1].Experiment) -and $_.Experiment -lt $Experiment -and
+            $_.Experiment -notin $prExperimentNums
+        })
     $failedNote = ''
     if ($failedBetween.Count -gt 0) {
         $failedList = ($failedBetween | ForEach-Object { "$($_.Experiment) ($($_.Reason))" }) -join ', '

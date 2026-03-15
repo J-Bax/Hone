@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exports CPU sampling stacks from a PerfView ETL to folded-stack format.
 .DESCRIPTION
@@ -32,8 +32,8 @@ $harnessRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $etlPath = $ArtifactPaths | Select-Object -First 1
 if (-not $etlPath -or -not (Test-Path $etlPath)) {
     return @{
-        Success       = $false
-        Summary       = "ETL artifact not found: $etlPath"
+        Success = $false
+        Summary = "ETL artifact not found: $etlPath"
         ExportedPaths = @()
     }
 }
@@ -41,8 +41,8 @@ if (-not $etlPath -or -not (Test-Path $etlPath)) {
 $perfViewExe = $Settings.PerfViewExePath
 if (-not $perfViewExe) {
     return @{
-        Success       = $false
-        Summary       = 'PerfViewExePath not specified in settings'
+        Success = $false
+        Summary = 'PerfViewExePath not specified in settings'
         ExportedPaths = @()
     }
 }
@@ -52,8 +52,8 @@ if (-not [System.IO.Path]::IsPathRooted($perfViewExe)) {
 }
 if (-not (Test-Path $perfViewExe)) {
     return @{
-        Success       = $false
-        Summary       = "PerfView executable not found: $perfViewExe"
+        Success = $false
+        Summary = "PerfView executable not found: $perfViewExe"
         ExportedPaths = @()
     }
 }
@@ -113,8 +113,8 @@ function Invoke-SaveCPUStacksAsCsv {
     # Remove stale CSV so we can detect whether this invocation produces it
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($baseName)
-    $etlDir   = Split-Path $EtlPath -Parent
-    $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
+    $etlDir = Split-Path $EtlPath -Parent
+    $csvPath = Join-Path $etlDir "$baseName.perfView.csv"
     if (Test-Path $csvPath) { Remove-Item $csvPath -Force }
 
     $null = Invoke-PerfViewWithTimeout -PerfViewExe $PerfViewExe -Arguments $args_ -TimeoutSec $TimeoutSec
@@ -122,8 +122,8 @@ function Invoke-SaveCPUStacksAsCsv {
     # SaveCPUStacksAsCsv creates <basename>.perfView.csv alongside the ETL
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($EtlPath)
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($baseName)
-    $etlDir   = Split-Path $EtlPath -Parent
-    $csvPath  = Join-Path $etlDir "$baseName.perfView.csv"
+    $etlDir = Split-Path $EtlPath -Parent
+    $csvPath = Join-Path $etlDir "$baseName.perfView.csv"
 
     if (Test-Path $csvPath) { return $csvPath }
     return $null
@@ -142,11 +142,11 @@ function ConvertTo-FoldedStacks {
 
     # SaveCPUStacksAsCsv outputs: Name,Exc,Exc%,Inc,Inc%,Fold,First,Last
     $nameCol = ($rows[0].PSObject.Properties.Name |
-        Where-Object { $_ -eq 'Name' -or $_ -match 'stack|call' }) |
-        Select-Object -First 1
+            Where-Object { $_ -eq 'Name' -or $_ -match 'stack|call' }) |
+            Select-Object -First 1
     $countCol = ($rows[0].PSObject.Properties.Name |
-        Where-Object { $_ -eq 'Exc' -or $_ -match 'count|sample|weight' }) |
-        Select-Object -First 1
+            Where-Object { $_ -eq 'Exc' -or $_ -match 'count|sample|weight' }) |
+            Select-Object -First 1
 
     if (-not $nameCol) { $nameCol = $rows[0].PSObject.Properties.Name[0] }
     if (-not $countCol) { $countCol = 'Inc' }
@@ -217,21 +217,19 @@ try {
     }
 
     $sortedLines = @($foldedLines |
-        Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
-        Select-Object -First $maxStacks)
+            Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
+            Select-Object -First $maxStacks)
 
     if ($sortedLines.Count -gt 0) {
         $sortedLines | Set-Content -Path $cpuStacksPath -Encoding utf8
-    }
-    else {
+    } else {
         "[PerfView CPU export did not produce stacks — raw ETL available at $etlPath] 1" |
             Set-Content -Path $cpuStacksPath -Encoding utf8
     }
 
     $fallbackNote = if ($usedFallback) { ' (fallback: unfiltered export)' } else { '' }
     $summaryText = "CPU: $(@($sortedLines).Count) stacks exported${fallbackNote}"
-}
-catch {
+} catch {
     $summaryText = "CPU export failed: $_"
     Write-Warning $summaryText
     "[CPU export error: $_] 1" | Set-Content -Path $cpuStacksPath -Encoding utf8
@@ -294,8 +292,8 @@ try {
         Write-Verbose "Parsing allocation CSV: $allocCsvPath"
         $allocLines = @(ConvertTo-FoldedStacks -CsvPath $allocCsvPath -FilterProcessName '')
         $sortedAllocLines = @($allocLines |
-            Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
-            Select-Object -First $maxStacks)
+                Sort-Object { [int](($_ -split '\s+')[-1]) } -Descending |
+                Select-Object -First $maxStacks)
 
         if ($sortedAllocLines.Count -gt 0) {
             $sortedAllocLines | Set-Content -Path $allocTypesPath -Encoding utf8
@@ -307,8 +305,7 @@ try {
     if (-not $allocExportSuccess) {
         Write-Information "Allocation type export produced no data (DotNetAllocSampled events may be absent)"
     }
-}
-catch {
+} catch {
     Write-Warning "Allocation type export failed (non-fatal): $_"
 }
 
@@ -316,9 +313,9 @@ $exportedPaths = @($cpuStacksPath)
 if ($allocExportSuccess) { $exportedPaths += $allocTypesPath }
 
 return @{
-    Success        = $cpuExportSuccess
-    ExportedPaths  = $exportedPaths
-    Summary        = $summaryText
-    CpuStacksPath  = $cpuStacksPath
+    Success = $cpuExportSuccess
+    ExportedPaths = $exportedPaths
+    Summary = $summaryText
+    CpuStacksPath = $cpuStacksPath
     AllocTypesPath = if ($allocExportSuccess) { $allocTypesPath } else { $null }
 }

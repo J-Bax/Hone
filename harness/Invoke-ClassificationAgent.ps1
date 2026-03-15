@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Calls the hone-classifier CLI agent to determine change scope.
 
@@ -83,23 +83,22 @@ if ($parsed -and $parsed.scope) {
     Write-Status "    → Scope: $scope"
 
     $result = [ordered]@{
-        Success   = ($agentResult.ExitCode -eq 0)
-        Scope     = $scope
+        Success = ($agentResult.ExitCode -eq 0)
+        Scope = $scope
         Reasoning = $parsed.reasoning
-        Response  = $agentResult.ResponseText
+        Response = $agentResult.ResponseText
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'analyze' -Level 'info' -Message "Classification: $scope — $($parsed.reasoning)" `
         -Experiment $Experiment
-}
-else {
+} else {
     # Classification failed — default to architecture (safe)
     $result = [ordered]@{
-        Success   = $false
-        Scope     = 'architecture'
+        Success = $false
+        Scope = 'architecture'
         Reasoning = "Classification failed: $($agentResult.ResponseText)"
-        Response  = $agentResult.ResponseText
+        Response = $agentResult.ResponseText
     }
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `

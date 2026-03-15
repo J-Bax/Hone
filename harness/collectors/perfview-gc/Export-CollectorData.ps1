@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Exports GC statistics from a PerfView ETL to a structured JSON report.
 .DESCRIPTION
@@ -30,8 +30,8 @@ $harnessRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $etlPath = $ArtifactPaths | Select-Object -First 1
 if (-not $etlPath -or -not (Test-Path $etlPath)) {
     return @{
-        Success       = $false
-        Summary       = "ETL artifact not found: $etlPath"
+        Success = $false
+        Summary = "ETL artifact not found: $etlPath"
         ExportedPaths = @()
     }
 }
@@ -39,8 +39,8 @@ if (-not $etlPath -or -not (Test-Path $etlPath)) {
 $perfViewExe = $Settings.PerfViewExePath
 if (-not $perfViewExe) {
     return @{
-        Success       = $false
-        Summary       = 'PerfViewExePath not specified in settings'
+        Success = $false
+        Summary = 'PerfViewExePath not specified in settings'
         ExportedPaths = @()
     }
 }
@@ -50,8 +50,8 @@ if (-not [System.IO.Path]::IsPathRooted($perfViewExe)) {
 }
 if (-not (Test-Path $perfViewExe)) {
     return @{
-        Success       = $false
-        Summary       = "PerfView executable not found: $perfViewExe"
+        Success = $false
+        Summary = "PerfView executable not found: $perfViewExe"
         ExportedPaths = @()
     }
 }
@@ -92,7 +92,7 @@ try {
     }
 
     # Locate the GCStats HTML — PerfView writes to temp dir alongside unzipped ETL
-    $etlDir      = Split-Path -Parent $etlPath
+    $etlDir = Split-Path -Parent $etlPath
     $etlBaseName = [System.IO.Path]::GetFileNameWithoutExtension(
         [System.IO.Path]::GetFileNameWithoutExtension($etlPath)
     )
@@ -106,11 +106,11 @@ try {
         $gcStatsHtmlCandidates += @(
             Get-ChildItem -Path $pvTempDir -Filter "$etlBaseName*.gcStats.html" -ErrorAction SilentlyContinue |
                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        ) | Where-Object { $_ } | ForEach-Object { $_.FullName }
-    }
-    $gcStatsHtmlCandidates += @(
-        (Get-ChildItem -Path $etlDir -Filter '*GCStats*html' -Recurse -ErrorAction SilentlyContinue |
-            Select-Object -First 1)?.FullName
+            ) | Where-Object { $_ } | ForEach-Object { $_.FullName }
+        }
+        $gcStatsHtmlCandidates += @(
+            (Get-ChildItem -Path $etlDir -Filter '*GCStats*html' -Recurse -ErrorAction SilentlyContinue |
+                Select-Object -First 1)?.FullName
     )
     $gcStatsHtmlCandidates = $gcStatsHtmlCandidates | Where-Object { $_ -and (Test-Path $_) }
     $gcStatsHtml = $gcStatsHtmlCandidates | Select-Object -First 1
@@ -123,18 +123,18 @@ try {
             gen2 = [ordered]@{ count = 0; avgPauseMs = 0.0; maxPauseMs = 0.0 }
         }
         heapStats = [ordered]@{
-            peakSizeMB       = 0.0
-            totalAllocMB     = 0.0
+            peakSizeMB = 0.0
+            totalAllocMB = 0.0
             fragmentationPct = 0.0
         }
         pauseStats = [ordered]@{
             totalPauseMs = 0.0
-            maxPauseMs   = 0.0
+            maxPauseMs = 0.0
             gcPauseRatio = 0.0
         }
         allocationStats = [ordered]@{
             allocRateMBSec = 0.0
-            topTypes       = @()
+            topTypes = @()
         }
     }
 
@@ -180,7 +180,7 @@ try {
             $cells = [regex]::Matches($tr.Groups[1].Value, '(?si)<TD[^>]*>(.*?)</TD>')
             if ($cells.Count -ge 10) {
                 $genVal = ($cells[0].Groups[1].Value -replace '<[^>]+>', '').Trim()
-                $countRaw    = ($cells[1].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
+                $countRaw = ($cells[1].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
                 $maxPauseRaw = ($cells[2].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
                 $meanPauseRaw = ($cells[9].Groups[1].Value -replace '<[^>]+>|[,\s]', '').Trim()
 
@@ -195,8 +195,7 @@ try {
                     if ([double]::TryParse($meanPauseRaw, [ref]$null) -and $meanPauseRaw -ne 'NaN') {
                         $report.generationStats[$genKey].avgPauseMs = [math]::Round([double]$meanPauseRaw, 3)
                     }
-                }
-                elseif ($genVal -eq 'ALL') {
+                } elseif ($genVal -eq 'ALL') {
                     if ([double]::TryParse($maxPauseRaw, [ref]$null)) {
                         $report.pauseStats.maxPauseMs = [math]::Round([double]$maxPauseRaw, 3)
                     }
@@ -219,22 +218,20 @@ try {
 
         $allocRate = Find-HtmlMetric -Html $processSection -Pattern 'Alloc.*?Rate.*?([\d,.]+)\s*MB/sec'
         if ($null -ne $allocRate) { $report.allocationStats.allocRateMBSec = [math]::Round($allocRate, 2) }
-    }
-    else {
+    } else {
         Write-Warning "GCStats HTML not found. GC report will contain default values."
     }
 
     $report | ConvertTo-Json -Depth 5 | Out-File -FilePath $gcReportPath -Encoding utf8
 
-    $gen0Count    = $report.generationStats.gen0.count
-    $gen1Count    = $report.generationStats.gen1.count
-    $gen2Count    = $report.generationStats.gen2.count
+    $gen0Count = $report.generationStats.gen0.count
+    $gen1Count = $report.generationStats.gen1.count
+    $gen2Count = $report.generationStats.gen2.count
     $gcPauseRatio = $report.pauseStats.gcPauseRatio
-    $peakHeapMB   = $report.heapStats.peakSizeMB
+    $peakHeapMB = $report.heapStats.peakSizeMB
 
     $summaryText = "GC: Gen0=$gen0Count Gen1=$gen1Count Gen2=$gen2Count | Pause ratio=${gcPauseRatio}% | Heap peak: ${peakHeapMB}MB"
-}
-catch {
+} catch {
     $summaryText = "GC export failed: $_"
     Write-Warning $summaryText
     # Write default report so analyzer gets something
@@ -251,8 +248,8 @@ catch {
 }
 
 return @{
-    Success       = (Test-Path $gcReportPath)
+    Success = (Test-Path $gcReportPath)
     ExportedPaths = @($gcReportPath)
-    Summary       = $summaryText
-    GcReportPath  = $gcReportPath
+    Summary = $summaryText
+    GcReportPath = $gcReportPath
 }

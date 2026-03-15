@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Discovers and runs all enabled diagnostic analyzer plugins.
 
@@ -105,11 +105,11 @@ foreach ($dir in (Get-ChildItem -Path $analyzersPath -Directory)) {
     }
 
     $analyzers.Add(@{
-        Name     = $name
-        Dir      = $dir.FullName
-        Meta     = $meta
-        Settings = $merged
-    })
+            Name = $name
+            Dir = $dir.FullName
+            Meta = $meta
+            Settings = $merged
+        })
 }
 
 if ($analyzers.Count -eq 0) {
@@ -146,19 +146,17 @@ foreach ($a in $analyzers) {
 
         if ($result.Success) {
             $reports[$a.Name] = @{
-                Report      = $result.Report
-                Summary     = $result.Summary
-                PromptPath  = $result.PromptPath
+                Report = $result.Report
+                Summary = $result.Summary
+                PromptPath = $result.PromptPath
                 ResponsePath = $result.ResponsePath
             }
             Write-Status "    $($a.Name): $($result.Summary)"
-        }
-        else {
+        } else {
             Write-Warning "  Analyzer '$($a.Name)' failed: $($result.Error ?? 'unknown error')"
             $allSuccess = $false
         }
-    }
-    catch {
+    } catch {
         Write-Warning "  Analyzer '$($a.Name)' threw an exception: $_"
         $allSuccess = $false
     }

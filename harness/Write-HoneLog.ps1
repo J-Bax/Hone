@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Structured logging helper for the Hone harness.
 
@@ -66,10 +66,10 @@ if (-not (Test-Path $logDir)) {
 $entry = [ordered]@{
     timestamp = (Get-Date -Format 'o')
     experiment = $Experiment
-    phase     = $Phase
-    level     = $Level
-    message   = $Message
-    data      = $Data
+    phase = $Phase
+    level = $Level
+    message = $Message
+    data = $Data
 }
 
 $json = $entry | ConvertTo-Json -Compress -Depth 5
@@ -97,7 +97,7 @@ $json | Out-File -FilePath $LogPath -Append -Encoding utf8
 $ts = Get-Date -Format 'HH:mm:ss'
 switch ($Level) {
     'verbose' { Write-Verbose "[$ts] $Message" }
-    'info'    { Write-Information "[$ts] $Message" -InformationAction Continue }
+    'info' { Write-Information "[$ts] $Message" -InformationAction Continue }
     'warning' { Write-Warning "[$ts] $Message" }
-    'error'   { Write-Warning "[$ts] [ERROR] $Message" }
+    'error' { Write-Warning "[$ts] [ERROR] $Message" }
 }

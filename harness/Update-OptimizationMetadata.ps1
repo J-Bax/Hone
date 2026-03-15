@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Maintains an optimization log and opportunity queue across experiments.
 
@@ -65,7 +65,7 @@ if (-not (Test-Path $metadataDir)) {
     New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
 }
 
-$logPath   = Join-Path $metadataDir 'experiment-log.md'
+$logPath = Join-Path $metadataDir 'experiment-log.md'
 $queuePath = Join-Path $metadataDir 'experiment-queue.md'
 
 # ── Ensure files exist with headers ─────────────────────────────────────────
@@ -170,8 +170,7 @@ switch ($Action) {
                 -Phase 'metadata' -Level 'info' `
                 -Message "Marked queue item as tried: experiment $Experiment" `
                 -Experiment $Experiment
-        }
-        else {
+        } else {
             Write-Verbose "No matching queue item found for: $Summary"
         }
     }

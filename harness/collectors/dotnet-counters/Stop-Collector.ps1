@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Stops the dotnet-counters collector plugin.
 
@@ -35,7 +35,7 @@ $metrics = & $stopScript -CounterHandle $innerHandle
 $jsonPath = [System.IO.Path]::ChangeExtension($csvPath, '.json')
 
 $artifactPaths = @()
-if (Test-Path $csvPath)  { $artifactPaths += $csvPath }
+if (Test-Path $csvPath) { $artifactPaths += $csvPath }
 if (Test-Path $jsonPath) { $artifactPaths += $jsonPath }
 
 $success = $null -ne $metrics
@@ -44,6 +44,6 @@ if (-not $success) {
 }
 
 return @{
-    Success       = $success
+    Success = $success
     ArtifactPaths = $artifactPaths
 }
