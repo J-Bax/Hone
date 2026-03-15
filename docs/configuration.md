@@ -7,13 +7,34 @@ The config file is the single source of truth — every option includes comments
 ## Key Configuration Areas
 
 - **Api** — Solution path, project path, test project, base URL, health endpoint, results directory
-- **Tolerances** — Regression threshold, improvement threshold, stale experiment limits, efficiency tiebreaker
+- **Tolerances** — Regression threshold, improvement threshold, stale experiment limits, efficiency tiebreaker, absolute delta thresholds
 - **ScaleTest** — Primary k6 scenario, scenario registry, warmup, measured runs, cooldown
 - **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior
-- **Copilot** — AI model selection and per-agent model overrides
+- **Copilot** — AI model selection, per-agent model overrides, agent timeout
 - **DotnetCounters** — Runtime counter collection providers and sampling interval
 - **Diagnostics** — Diagnostic profiling plugin framework (PerfView, analyzers)
-- **Logging** — Log level
+- **Logging** — Log level, log rotation
+
+### Notable Settings
+
+**Copilot**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Copilot.AgentTimeoutSec` | `600` | Maximum seconds for any copilot CLI agent invocation. If exceeded, the process is killed and the experiment is rejected. |
+
+**Tolerances**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Tolerances.MinAbsoluteRPSDelta` | `5` | Minimum absolute RPS change required to register as improvement or regression. Prevents false positives on low-traffic scenarios. |
+| `Tolerances.MinAbsoluteErrorRateDelta` | `0.005` | Minimum absolute error rate change (0.005 = 0.5%). Prevents false positives on near-zero error baselines. |
+
+**Logging**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Logging.MaxFileSizeMB` | `50` | Maximum size of `hone.jsonl` before log rotation. When exceeded, the file is renamed to `hone.jsonl.1` and a new file is started. |
 
 ## Runtime Overrides
 
@@ -65,6 +86,7 @@ Diagnostics = @{
     PerfViewExePath    = 'tools/PerfView/PerfView.exe'  # Downloaded by Setup-DevEnvironment.ps1
     DiagnosticScenarioPath = $null                # k6 scenario ($null = use ScaleTest.ScenarioPath)
     DiagnosticRuns     = 1                        # Runs per pass (accuracy less important)
+    K6TimeoutSec       = 300                      # Max seconds for k6 diagnostic runs
 
     CollectorSettings = @{
         'perfview-cpu'    = @{ Enabled = $true; MaxCollectSec = 90; BufferSizeMB = 256; MaxStacks = 100 }
@@ -86,7 +108,31 @@ Diagnostics = @{
 
 **Important**: PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal. PerfView is downloaded automatically by `Setup-DevEnvironment.ps1`.
 
+**Notable settings:**
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `Diagnostics.K6TimeoutSec` | `300` | Maximum seconds for k6 diagnostic runs. If exceeded, the process is killed. |
+
 To disable diagnostic profiling entirely, set `Diagnostics.Enabled = $false`. Individual collectors and analyzers can be disabled independently via their `Enabled` flag.
+
+## Configuration Validation
+
+The `Test-HoneConfig.ps1` script validates configuration at startup. It checks:
+
+- Tolerance percentages are in `[0, 1]` range
+- File paths (solution, project, scenarios) exist
+- Port numbers are valid (0 for dynamic, or 1–65535)
+- Required tools are installed (`dotnet`, `k6`, `git`, `copilot`, `gh`)
+- Numeric settings are within reasonable ranges
+
+The main loop runs this automatically. To validate manually:
+
+```powershell
+.\harness\Test-HoneConfig.ps1 -ConfigPath .\harness\config.psd1
+```
+
+Validation errors halt the loop before any experiments run. Warnings (e.g., non-obvious setting interactions) are displayed but don't block execution.
 
 ## Configuration Interactions
 

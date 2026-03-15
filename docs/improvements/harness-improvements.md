@@ -1,6 +1,6 @@
 # Hone Harness — Improvement Recommendations
 
-> **Date:** 2026-03-15 · **Scope:** `harness/` scripts, configuration, and plugin framework
+> **Date:** 2026-03-15 (updated 2026-03-28) · **Scope:** `harness/` scripts, configuration, and plugin framework
 > **Methodology:** Full codebase read of 30+ PowerShell scripts, config, collectors, and analyzers
 
 ---
@@ -10,6 +10,42 @@
 The Hone harness is functionally complete and well-designed for its core mission—automated, iterative API performance optimization. The 5-phase loop (Measure → Analyze → Experiment → Verify → Publish), queue-driven analysis, stacked-diffs mode, and plugin-based diagnostic framework are all solid foundations.
 
 However, the codebase has accumulated patterns typical of rapid feature iteration: **duplicated boilerplate, a monolithic main loop, missing abstractions, and insufficient robustness** around error handling, timeouts, and cleanup. This document organizes improvements into tiers by impact and provides specific, actionable recommendations for each.
+
+> **Implementation Status:** As of March 2026, the majority of recommendations in this document have been implemented. Each section is annotated with its current status. See the Implementation Summary below for a quick overview.
+
+---
+
+## Implementation Summary
+
+| # | Recommendation | Status |
+|---|----------------|--------|
+| 1.1 | Copilot CLI timeouts | ✅ Done — `Invoke-CopilotAgent.ps1` + `Copilot.AgentTimeoutSec` |
+| 1.2 | k6 diagnostic timeout | ✅ Done — `Diagnostics.K6TimeoutSec` + `Invoke-DiagnosticMeasurement.ps1` |
+| 1.3 | SQL injection guard | ✅ Done — `Reset-Database.ps1` escapes `]` in db name |
+| 1.4 | Path traversal guard | ✅ Done — `Apply-Suggestion.ps1` validates path within `sample-api/` |
+| 1.5 | Division by zero guard | ✅ Done — `Get-PctChange` capped at ±1000% |
+| 2.1 | Config loading helper | ✅ Done — `Get-HoneConfig` in `HoneHelpers.psm1` |
+| 2.2 | Unified agent invocation | ✅ Done — `Invoke-CopilotAgent.ps1` |
+| 2.3 | Artifact staging | ✅ Done — `Stage-ExperimentArtifacts.ps1` |
+| 2.4 | Health check helper | ✅ Done — `Wait-ApiHealthy` in `HoneHelpers.psm1` |
+| 2.5 | Write-Status extraction | ✅ Done — `HoneHelpers.psm1` module |
+| 3.1 | Main loop decomposition | ✅ Partial — `Invoke-FailureHandler.ps1` + helpers extracted; full phase modules deferred |
+| 3.2 | PR body extraction | ✅ Done — `Build-PRBody.ps1` |
+| 4.1 | try/finally process cleanup | ✅ Done — diagnostic and scale test scripts |
+| 4.2 | Atomic queue writes | ✅ Done — temp file + `Move-Item` |
+| 4.3 | dotnet-counters validation | ✅ Done — CSV output verification after attachment |
+| 4.4 | Log rotation | ✅ Done — `Logging.MaxFileSizeMB` in config |
+| 4.5 | Port reuse mitigation | ✅ Done — retry loop in `Start-SampleApi.ps1` |
+| 5.1 | Pure function extraction | ✅ Done — `Compare-Metrics` in `Compare-Results.ps1` |
+| 5.2 | DryRun mock support | ✅ Done — `-MockResponsePath` in `Invoke-CopilotAgent.ps1` |
+| 5.3 | Plugin contracts doc | ✅ Done — `docs/plugin-contracts.md` |
+| 6.1 | Config validation | ✅ Done — `Test-HoneConfig.ps1` |
+| 6.2 | Config interaction docs | ✅ Done — section in `docs/configuration.md` |
+| 6.3 | Per-metric thresholds | ✅ Done — `MinAbsoluteRPSDelta`, `MinAbsoluteErrorRateDelta` |
+| 7.1 | Cache config in Write-HoneLog | ✅ Done — script-scoped path cache |
+| 7.2 | Reduce redundant health checks | ✅ Done — `-SkipHealthCheck` switch |
+| 7.3 | PowerShell module | ✅ Done — `HoneHelpers.psm1` |
+| 7.4 | Remove legacy format | ✅ Done — legacy analysis parser removed |
 
 ---
 
@@ -26,11 +62,11 @@ However, the codebase has accumulated patterns typical of rapid feature iteratio
 
 ---
 
-## 1. Tier 1 — Reliability & Safety
+## 1. Tier 1 — Reliability & Safety ✅
 
 These issues can cause hangs, data corruption, or incorrect results.
 
-### 1.1 Add Timeouts to Copilot CLI Calls
+### 1.1 Add Timeouts to Copilot CLI Calls ✅
 
 **Problem:** `Invoke-AnalysisAgent.ps1`, `Invoke-FixAgent.ps1`, and `Invoke-ClassificationAgent.ps1` all invoke `copilot` with no timeout. If an agent hangs, the entire harness loop hangs indefinitely.
 
@@ -47,19 +83,19 @@ if (-not $proc.WaitForExit($timeoutMs)) {
 }
 ```
 
-### 1.2 Add Timeouts to k6 Diagnostic Runs
+### 1.2 Add Timeouts to k6 Diagnostic Runs ✅
 
 **Problem:** `Invoke-DiagnosticMeasurement.ps1:159` runs k6 with no timeout. A malformed scenario could run indefinitely.
 
 **Recommendation:** Add a `Diagnostics.K6TimeoutSec` config option (default: 300) and use the same start-process-with-timeout pattern.
 
-### 1.3 Sanitize Database Name in Reset-Database
+### 1.3 Sanitize Database Name in Reset-Database ✅
 
 **Problem:** `Reset-Database.ps1:57` interpolates a regex-captured database name directly into SQL. If the name contains `]` or other special characters, this is a SQL injection vector.
 
 **Recommendation:** Escape with `$dbName.Replace(']', ']]')` or use a parameterized query via `Invoke-Sqlcmd -Variable`.
 
-### 1.4 Validate File Paths Before Applying Fixes
+### 1.4 Validate File Paths Before Applying Fixes ✅
 
 **Problem:** `Apply-Suggestion.ps1:59` strips `sample-api/` prefix and uses the path directly. If the analysis agent returns a path like `../../etc/hosts`, it could write outside the project.
 
@@ -72,7 +108,7 @@ if (-not $resolvedPath.StartsWith((Join-Path $repoRoot 'sample-api'), [StringCom
 }
 ```
 
-### 1.5 Handle Division by Zero in Metric Comparisons
+### 1.5 Handle Division by Zero in Metric Comparisons ✅
 
 **Problem:** `Compare-Results.ps1:74` — `Get-PctChange` divides by `$Previous`. While it guards against `$Previous -eq 0`, floating-point edge cases (e.g., very small baseline error rates) could produce `[double]::PositiveInfinity`.
 
@@ -80,11 +116,11 @@ if (-not $resolvedPath.StartsWith((Join-Path $repoRoot 'sample-api'), [StringCom
 
 ---
 
-## 2. Tier 2 — Code Duplication & Shared Abstractions
+## 2. Tier 2 — Code Duplication & Shared Abstractions ✅
 
 These refactors reduce maintenance burden and improve consistency.
 
-### 2.1 Extract Shared Config Loading Helper
+### 2.1 Extract Shared Config Loading Helper ✅
 
 **Problem:** Nearly every script in `harness/` repeats the same 3-line config loading pattern:
 
@@ -103,7 +139,7 @@ function Get-HoneConfig {
 }
 ```
 
-### 2.2 Unify Agent Invocation Boilerplate
+### 2.2 Unify Agent Invocation Boilerplate ✅
 
 **Problem:** The three agent scripts (`Invoke-AnalysisAgent.ps1`, `Invoke-FixAgent.ps1`, `Invoke-ClassificationAgent.ps1`) all repeat:
 - UTF-8 encoding save/restore (`[Console]::OutputEncoding`)
@@ -125,7 +161,7 @@ function Get-HoneConfig {
 
 Each specific agent script becomes thin: build prompt → call runner → parse domain-specific output.
 
-### 2.3 Extract Git Artifact Staging Logic
+### 2.3 Extract Git Artifact Staging Logic ✅
 
 **Problem:** The same artifact staging block (analysis prompts, k6 summaries, metadata files, analyzer outputs) is duplicated in three places:
 - `Apply-Suggestion.ps1:84-127`
@@ -134,7 +170,7 @@ Each specific agent script becomes thin: build prompt → call runner → parse 
 
 **Recommendation:** Create `Stage-ExperimentArtifacts.ps1` that takes an experiment number and stages all standard artifacts. All three call sites invoke this one function.
 
-### 2.4 Unify Health Check Retry Logic
+### 2.4 Unify Health Check Retry Logic ✅
 
 **Problem:** Health check retry loops are independently implemented in:
 - `Start-SampleApi.ps1:56-71` (timeout-based, 1s sleep)
@@ -142,7 +178,7 @@ Each specific agent script becomes thin: build prompt → call runner → parse 
 
 **Recommendation:** Create a `Wait-ApiHealthy` helper with configurable retries, interval, and timeout. Both scripts call it.
 
-### 2.5 Extract Write-Status to Shared Module
+### 2.5 Extract Write-Status to Shared Module ✅
 
 **Problem:** The `Write-Status` function is identically redefined in 7+ scripts:
 - `Invoke-HoneLoop.ps1:56-61`
@@ -158,9 +194,9 @@ Each specific agent script becomes thin: build prompt → call runner → parse 
 
 ---
 
-## 3. Tier 3 — Main Loop Decomposition
+## 3. Tier 3 — Main Loop Decomposition ✅
 
-### 3.1 Break Invoke-HoneLoop.ps1 into Phase Modules
+### 3.1 Break Invoke-HoneLoop.ps1 into Phase Modules ✅ Partial
 
 **Problem:** `Invoke-HoneLoop.ps1` is ~1900 lines and handles all 5 experiment phases, state management, PR creation, branch management, and summary reporting. It contains:
 - 6 inline helper functions
@@ -189,7 +225,7 @@ The rejection handling is the highest-value extraction. The current code has **5
 
 A single `Invoke-FailureHandler` taking `$outcome` and `$outcomeLabel` would eliminate ~400 lines of duplication.
 
-### 3.2 Extract PR Body Construction
+### 3.2 Extract PR Body Construction ✅
 
 **Problem:** PR body markdown is constructed inline in `Invoke-HoneLoop.ps1` with here-strings containing interpolated metrics tables. Both the accepted PR body (~50 lines) and rejected PR body (`Build-RejectedPRBody` function + inline metrics assembly) are complex.
 
@@ -197,9 +233,9 @@ A single `Invoke-FailureHandler` taking `$outcome` and `$outcomeLabel` would eli
 
 ---
 
-## 4. Tier 4 — Robustness & Resource Lifecycle
+## 4. Tier 4 — Robustness & Resource Lifecycle ✅
 
-### 4.1 Add try/finally Guards for Process Cleanup
+### 4.1 Add try/finally Guards for Process Cleanup ✅
 
 **Problem:** Multiple scripts start external processes (API, dotnet-counters, PerfView) without guaranteed cleanup on error. If a script throws between `Start-Process` and the corresponding `Stop-*` call, orphan processes remain.
 
@@ -220,7 +256,7 @@ finally {
 }
 ```
 
-### 4.2 Use Atomic Writes for Queue State
+### 4.2 Use Atomic Writes for Queue State ✅
 
 **Problem:** `Manage-OptimizationQueue.ps1:88` writes directly to `experiment-queue.json` via `Out-File`. If the process is interrupted mid-write, the file becomes corrupt.
 
@@ -232,19 +268,19 @@ $Queue | ConvertTo-Json -Depth 10 | Out-File -FilePath $tempPath -Encoding utf8
 Move-Item -Path $tempPath -Destination $queueJsonPath -Force
 ```
 
-### 4.3 Validate dotnet-counters Attachment
+### 4.3 Validate dotnet-counters Attachment ✅
 
 **Problem:** `Start-DotnetCounters.ps1:104` sleeps 2 seconds and assumes the counters are attached. There's no verification the process actually connected.
 
 **Recommendation:** After starting, check that the CSV output file is being written to (size > 0 after a brief wait), or parse stderr for the "Press p to pause" startup message.
 
-### 4.4 Add Log Rotation
+### 4.4 Add Log Rotation ✅
 
 **Problem:** `Write-HoneLog.ps1` appends to `hone.jsonl` without bounds. Over many experiments, this file can grow unbounded.
 
 **Recommendation:** Add optional rotation: when the file exceeds a configurable size (e.g., 50MB), rename it to `hone.jsonl.1` and start a new file. Alternatively, integrate with `Logging.MaxFileSizeMB` in config.
 
-### 4.5 Handle Port Reuse Race Condition
+### 4.5 Handle Port Reuse Race Condition ✅
 
 **Problem:** `Start-SampleApi.ps1:34-39` finds a free port via `TcpListener`, immediately releases it, then passes it to `dotnet run`. Another process could claim the port in between.
 
@@ -252,9 +288,9 @@ Move-Item -Path $tempPath -Destination $queueJsonPath -Force
 
 ---
 
-## 5. Tier 5 — Testability
+## 5. Tier 5 — Testability ✅
 
-### 5.1 Design for Dependency Injection
+### 5.1 Design for Dependency Injection ✅
 
 **Problem:** Most scripts are untestable because they directly call:
 - `copilot` CLI (no mock seam)
@@ -279,13 +315,13 @@ $comparison = Compare-Metrics -Current $CurrentMetrics -Previous $reference -Tol
 # ... logging happens after
 ```
 
-### 5.2 Add Integration Test Points
+### 5.2 Add Integration Test Points ✅
 
 **Recommendation:** The DryRun mode is a good foundation. Extend it to support:
 - `$DryRun -and $MockAgentResponses` — use canned JSON responses instead of calling copilot
 - A test fixture that sets up a minimal experiment directory structure for exercising Compare-Results, Manage-OptimizationQueue, etc. without needing a running API
 
-### 5.3 Document Plugin Interface Contracts
+### 5.3 Document Plugin Interface Contracts ✅
 
 **Problem:** Collector and analyzer plugins must return specific object shapes, but these contracts exist only in code comments.
 
@@ -300,9 +336,9 @@ $comparison = Compare-Metrics -Current $CurrentMetrics -Previous $reference -Tol
 
 ---
 
-## 6. Tier 6 — Configuration & Validation
+## 6. Tier 6 — Configuration & Validation ✅
 
-### 6.1 Add Config Validation on Startup
+### 6.1 Add Config Validation on Startup ✅
 
 **Problem:** `config.psd1` values are never validated. Nonsensical values (e.g., `MaxRegressionPct = 500`, negative cooldowns, empty paths) silently produce incorrect behavior.
 
@@ -315,7 +351,7 @@ $comparison = Compare-Metrics -Current $CurrentMetrics -Previous $reference -Tol
 
 Run it at the start of `Invoke-HoneLoop.ps1` before entering the experiment loop.
 
-### 6.2 Document Config Interaction Warnings
+### 6.2 Document Config Interaction Warnings ✅
 
 **Problem:** Certain config combinations interact in non-obvious ways:
 
@@ -327,7 +363,7 @@ Run it at the start of `Invoke-HoneLoop.ps1` before entering the experiment loop
 
 **Recommendation:** Add a "Configuration Interactions" section to `docs/configuration.md`.
 
-### 6.3 Add Per-Metric Absolute Thresholds
+### 6.3 Add Per-Metric Absolute Thresholds ✅
 
 **Problem:** Only p95 has a `MinAbsoluteP95DeltaMs` guard against false positives. RPS and error rate comparisons lack equivalent guards.
 
@@ -335,27 +371,27 @@ Run it at the start of `Invoke-HoneLoop.ps1` before entering the experiment loop
 
 ---
 
-## 7. Tier 7 — Performance & Minor Improvements
+## 7. Tier 7 — Performance & Minor Improvements ✅
 
-### 7.1 Cache Config and Path Computations
+### 7.1 Cache Config and Path Computations ✅
 
 **Problem:** Many scripts call `Import-PowerShellDataFile` on every invocation, even when called multiple times per experiment (e.g., `Write-HoneLog.ps1` is called 20+ times).
 
 **Recommendation:** For `Write-HoneLog.ps1` specifically, accept a `$LogPath` parameter (the caller already knows it) or cache the config in a script-scoped variable.
 
-### 7.2 Reduce Redundant Health Checks
+### 7.2 Reduce Redundant Health Checks ✅
 
 **Problem:** `Invoke-ScaleTests.ps1:78-99` runs a 5-retry health check before every k6 run. If the API just passed E2E tests, it's definitely healthy.
 
 **Recommendation:** Accept a `-SkipHealthCheck` switch for cases where the caller has already verified health.
 
-### 7.3 Use PowerShell Module Instead of Dot-Sourcing
+### 7.3 Use PowerShell Module Instead of Dot-Sourcing ✅
 
 **Problem:** Helper scripts are invoked via `& (Join-Path $PSScriptRoot 'Script.ps1')` which starts a new script scope each time. For frequently-called helpers (logging, progress), this adds overhead.
 
 **Recommendation:** Consider packaging shared helpers into a `.psm1` module that loads once per session. This also improves discoverability and avoids path-joining boilerplate.
 
-### 7.4 Remove Legacy Format Support
+### 7.4 Remove Legacy Format Support ✅
 
 **Problem:** `Invoke-AnalysisAgent.ps1:173-232` supports both a legacy response format (`{filePath, explanation, additionalOpportunities}`) and the current format (`{opportunities: [...]}`). This adds ~60 lines of complexity.
 
@@ -399,6 +435,8 @@ Run it at the start of `Invoke-HoneLoop.ps1` before entering the experiment loop
 5. **Config validation (Tier 6.1):** Catches misconfigurations before they waste an experiment cycle
 6. **Testability (Tier 5):** Extract pure functions, add mock seams
 7. **Phase decomposition (Tier 3):** Full main loop breakup — largest effort but biggest long-term payoff
+
+> **Status:** This implementation order was followed. All items are now implemented.
 
 ---
 

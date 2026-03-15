@@ -18,6 +18,23 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 
 6. **Structured data everywhere.** PowerShell objects, JSON metrics, typed results. No string parsing when avoidable.
 
+### Shared Infrastructure
+
+`HoneHelpers.psm1` is a PowerShell module imported by all harness scripts. It exports common functions:
+
+| Function | Purpose |
+|----------|---------|
+| `Write-Status` | Timestamped status output |
+| `Get-HoneConfig` | Centralized config loading |
+| `Wait-ApiHealthy` | HTTP health check with configurable timeout and retry |
+| `Limit-String` | Word-boundary string truncation |
+| `Invoke-CopilotWithTimeout` | Copilot CLI subprocess with timeout |
+| `Add-ExperimentMetadata` | Experiment entry recording |
+| `New-ExperimentPR` | GitHub PR creation |
+| `Build-StackNote` | Stacked-diffs PR chain visualization |
+
+Configuration is validated at startup by `Test-HoneConfig.ps1`, which checks paths, ranges, tool availability, and warns about non-obvious setting interactions.
+
 ## Single Experiment Flow
 
 Each experiment is a self-contained cycle of 5 phases:
@@ -86,6 +103,17 @@ This separation ensures profiling overhead never biases the metrics used to judg
 
 The analysis pipeline (Phase 2) only runs when the **optimization queue** is empty. Each analysis pass produces 1-3 ranked optimization opportunities stored in `optimization-queue.json`. Subsequent experiments pick from this queue one at a time. When the queue is exhausted, the analysis pipeline runs again with fresh metrics and profiling data.
 
+### Agent Invocation
+
+All AI agents in the main pipeline (analyst, classifier, fixer) are invoked via a unified runner (`Invoke-CopilotAgent.ps1`). The runner ensures:
+
+- **Timeout enforcement** — bounded by `Copilot.AgentTimeoutSec` (default 600s). If an agent hangs, the process is killed.
+- **Proper argument quoting** — uses `System.Diagnostics.ProcessStartInfo.ArgumentList` for OS-native quoting of prompt content.
+- **UTF-8 encoding** — handles non-ASCII characters in source code and agent responses.
+- **Retry with JSON sanitization** — strips markdown fences, sanitizes JavaScript literals, retries on parse failure.
+
+For details on the agent pipeline, see [Agent Designs](agent-designs.md).
+
 ## Decision Logic
 
 After measuring, the harness compares three metrics against the previous experiment:
@@ -93,10 +121,18 @@ After measuring, the harness compares three metrics against the previous experim
 | Metric | Improved when | Regressed when |
 |--------|--------------|----------------|
 | p95 Latency | Decreased | Increased > MaxRegressionPct (default 10%) AND absolute delta > MinAbsoluteP95DeltaMs (default 5ms) |
-| Requests/sec | Increased | Decreased > MaxRegressionPct |
-| Error Rate | Decreased | Increased > MaxRegressionPct |
+| Requests/sec | Increased | Decreased > MaxRegressionPct AND absolute delta > MinAbsoluteRPSDelta (default 5 req/s) |
+| Error Rate | Decreased | Increased > MaxRegressionPct AND absolute delta > MinAbsoluteErrorRateDelta (default 0.005) |
 
-**Accept** if at least one metric improved and none regressed. **Reject** if any metric regressed beyond tolerance. **Stale** if nothing changed.
+To prevent false positives on metrics with small baselines, each metric requires both a percentage change exceeding `MaxRegressionPct` AND an absolute change exceeding a per-metric threshold:
+
+| Metric | Absolute Threshold Config | Default |
+|--------|--------------------------|---------|
+| p95 Latency | `MinAbsoluteP95DeltaMs` | 5ms |
+| Requests/sec | `MinAbsoluteRPSDelta` | 5 req/s |
+| Error Rate | `MinAbsoluteErrorRateDelta` | 0.005 (0.5%) |
+
+**Accept** if at least one metric improved and none regressed.**Reject** if any metric regressed beyond tolerance. **Stale** if nothing changed.
 
 When performance is flat but OS-level resource usage (CPU or working set) decreased, the **efficiency tiebreaker** accepts the experiment — preventing premature stops when there are genuine resource gains. The tiebreaker can be disabled or tuned via `Tolerances.Efficiency` in `config.psd1`.
 
@@ -169,6 +205,13 @@ After all passes complete:
 9. **Aggregate reports** — all analyzer reports are injected into the main analyst agent's prompt
 
 Since profiling tools (especially PerfView kernel-level CPU sampling) add 5–15% overhead to latency/throughput, the k6 numbers from diagnostic passes are **discarded** — they are never compared against baselines or used in accept/reject decisions. Only the profiling data (stacks, GC stats) is carried forward.
+
+### Diagnostic Safety
+
+- **k6 timeout** — diagnostic runs are bounded by `Diagnostics.K6TimeoutSec` (default 300s)
+- **Process cleanup** — all collector processes have try/finally guards ensuring cleanup on error
+- **Log rotation** — `hone.jsonl` rotates at `Logging.MaxFileSizeMB` (default 50MB)
+- **Atomic queue writes** — optimization queue JSON uses temp-file-then-rename for crash safety
 
 ## Diagnostic Plugin Architecture
 
@@ -388,7 +431,7 @@ The accept/reject decision for each experiment is implemented in `harness/Compar
 
 To modify the decision logic:
 
-- **Adjust thresholds**: Change `Tolerances.MaxRegressionPct` (default 10%) and `Tolerances.MinAbsoluteP95DeltaMs` (default 5ms) in config
+- **Adjust thresholds**: Change `Tolerances.MaxRegressionPct` (default 10%) and per-metric absolute thresholds (`MinAbsoluteP95DeltaMs`, `MinAbsoluteRPSDelta`, `MinAbsoluteErrorRateDelta`) in config
 - **Add new metrics**: Extend `Compare-Results.ps1` to compare additional metrics (e.g., p99 latency, custom k6 counters)
 - **Modify the efficiency tiebreaker**: Tune `Tolerances.Efficiency` settings to control when flat-performance experiments are accepted based on reduced resource usage (CPU, working set)
 - **Change exit conditions**: Adjust `Loop.MaxConsecutiveFailures` and `Loop.MaxExperiments` in config

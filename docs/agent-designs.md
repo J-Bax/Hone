@@ -137,7 +137,7 @@ The diagnostic phase runs PerfView profiling and feeds the results through speci
 | | |
 |---|---|
 | **Definition** | `.github/agents/hone-analyst.agent.md` |
-| **Invoker** | `harness/Invoke-AnalysisAgent.ps1` |
+| **Invoker** | `harness/Invoke-AnalysisAgent.ps1` → `Invoke-CopilotAgent.ps1` |
 | **Prompt builder** | `harness/Build-AnalysisContext.ps1` |
 | **Default model** | `claude-opus-4.6` (via `Copilot.AnalysisModel`) |
 | **Tools** | `read` — can read source files directly |
@@ -154,7 +154,7 @@ The diagnostic phase runs PerfView profiling and feeds the results through speci
 | **HistoryContext** | Previously tried optimizations, optimization queue state, last experiment's fix, experiment metrics table | `experiment-log.md`, `experiment-queue.json`, `run-metadata.json` |
 | **ProfilingContext** | Diagnostic reports from analyzer agents (CPU hotspots, memory/GC analysis) | `DiagnosticReports` hashtable |
 
-The invoker (`Invoke-AnalysisAgent.ps1`) wraps these sections into a structured prompt alongside current and baseline performance metrics, then calls the agent via `copilot --agent hone-analyst`.
+The invoker (`Invoke-AnalysisAgent.ps1`) wraps these sections into a structured prompt alongside current and baseline performance metrics, then delegates to the unified agent runner (`Invoke-CopilotAgent.ps1`) which handles model resolution, UTF-8 encoding, timeout enforcement (configurable via `Copilot.AgentTimeoutSec`, default 600s), JSON extraction, and retry logic.
 
 **Inputs.** Current metrics (p95, RPS, error rate), baseline metrics, comparison result, .NET counter metrics, optimization history, diagnostic profiling reports, and previous experiment's RCA explanation.
 
@@ -202,7 +202,7 @@ The `rootCause` field is a markdown document with four required sections: Eviden
 | | |
 |---|---|
 | **Definition** | `.github/agents/hone-classifier.agent.md` |
-| **Invoker** | `harness/Invoke-ClassificationAgent.ps1` |
+| **Invoker** | `harness/Invoke-ClassificationAgent.ps1` → `Invoke-CopilotAgent.ps1` |
 | **Default model** | `claude-haiku-4.5` (via `Copilot.ClassificationModel`) |
 | **Tools** | `read` — reads the target file to verify scope |
 
@@ -238,7 +238,7 @@ The `rootCause` field is a markdown document with four required sections: Eviden
 | | |
 |---|---|
 | **Definition** | `.github/agents/hone-fixer.agent.md` |
-| **Invoker** | `harness/Invoke-FixAgent.ps1` |
+| **Invoker** | `harness/Invoke-FixAgent.ps1` → `Invoke-CopilotAgent.ps1` |
 | **Default model** | `claude-sonnet-4.6` (via `Copilot.FixModel`) |
 | **Tools** | `read` — reads the target file before generating the replacement |
 
@@ -275,6 +275,49 @@ Apply this specific optimization to the file and return the complete new file co
 
 **Artifacts saved:**
 - `experiment-N/fix-response.md`
+
+## Unified Agent Invocation
+
+All three main pipeline agents share a common invocation layer via `Invoke-CopilotAgent.ps1`. Each domain-specific invoker script handles prompt construction and result interpretation, then delegates execution to the unified runner.
+
+### Execution Flow
+
+```
+Invoker script (prompt building)
+  → Invoke-CopilotAgent.ps1 (execution)
+    → Invoke-CopilotWithTimeout (process management)
+      → copilot CLI
+```
+
+### Model Resolution
+
+The runner resolves the model in priority order:
+1. Per-agent override in config (e.g., `Copilot.AnalysisModel`)
+2. Global `Copilot.Model` fallback
+3. Hardcoded default specified by the invoker
+
+### Timeout Enforcement
+
+Copilot CLI invocations are bounded by `Copilot.AgentTimeoutSec` (default: 600 seconds). The runner uses `System.Diagnostics.ProcessStartInfo` to launch copilot as a subprocess with proper argument quoting, then `WaitForExit` with the configured timeout. If exceeded, the process is terminated and the runner returns a timeout error.
+
+### JSON Response Handling
+
+Agent responses often include markdown code fences around JSON. The runner:
+1. Strips ` ```json ` / ` ``` ` fences
+2. Sanitizes JavaScript literals (`NaN` → `null`, `Infinity` → `null`)
+3. Extracts the first complete JSON object (`{...}`)
+4. Returns both the raw response text and parsed JSON to the invoker
+
+### Retry Logic
+
+When `MaxRetries > 0`, the runner retries on failure:
+- Augments the prompt with a configurable suffix (e.g., strict JSON formatting reminder)
+- Retries up to the specified number of attempts
+- Returns an error result if all retries are exhausted
+
+### DryRun Mock Support
+
+When `-MockResponsePath` is provided, the runner returns the canned file content without invoking copilot. This enables fast iteration on harness logic without consuming API calls.
 
 ## Agent Definition Files
 
