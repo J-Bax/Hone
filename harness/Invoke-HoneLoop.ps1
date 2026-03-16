@@ -66,6 +66,7 @@ $maxExp = $config.Loop.MaxExperiments
 $tolerances = $config.Tolerances
 $stackedDiffs = if ($config.Loop.ContainsKey('StackedDiffs')) { $config.Loop.StackedDiffs } else { $false }
 $waitForMerge = if ($config.Loop.ContainsKey('WaitForMerge')) { $config.Loop.WaitForMerge } else { $true }
+$skipClassification = if ($config.Loop.ContainsKey('SkipClassification')) { $config.Loop.SkipClassification } else { $false }
 $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures')) {
     $tolerances.MaxConsecutiveFailures
 } else {
@@ -437,11 +438,22 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Status "  Queue item #$($currentItem.id): $($currentItem.filePath)"
 
         # ── Classification ────────────────────────────────────────────────
-        $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
-            -FilePath $currentItem.filePath `
-            -Explanation $currentItem.explanation `
-            -Experiment $experiment `
-            -ConfigPath $ConfigPath
+        if ($skipClassification) {
+            $classificationResult = [PSCustomObject]@{
+                Scope = 'narrow'
+                Reasoning = 'Classification skipped (SkipClassification = $true)'
+            }
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'analyze' -Level 'info' `
+                -Message "Classification skipped — treating as narrow: $($currentItem.filePath)" `
+                -Experiment $experiment
+        } else {
+            $classificationResult = & (Join-Path $PSScriptRoot 'Invoke-ClassificationAgent.ps1') `
+                -FilePath $currentItem.filePath `
+                -Explanation $currentItem.explanation `
+                -Experiment $experiment `
+                -ConfigPath $ConfigPath
+        }
 
         $changeScope = $classificationResult.Scope
         Write-Status "  Classification: $changeScope — $($classificationResult.Reasoning)"

@@ -157,6 +157,11 @@
         # In stacked mode $false is recommended; $true is the legacy
         # behaviour when StackedDiffs = $false.
         WaitForMerge = $false
+
+        # Skip the scope classifier and treat all queue items as narrow.
+        # When enabled, the harness attempts every optimization the analyst
+        # suggests and relies on build + E2E tests as the safety gate.
+        SkipClassification = $false
     }
 
     # ── Copilot CLI ─────────────────────────────────────────────
