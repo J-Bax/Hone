@@ -25,19 +25,36 @@ graph LR
 
 ## How It Works
 
-- Hone runs an **iterative optimization loop**: Measure → Analyze → Experiment → Verify → Publish
 - A **five-agent AI pipeline** drives each experiment:
-  - **Analyst** — examines performance metrics, profiling data, and source code to identify the highest-impact optimization
   - **CPU Profiler** — analyzes PerfView CPU sampling stacks to pinpoint hot methods and call paths
   - **Memory Profiler** — analyzes PerfView GC statistics and allocation data to identify memory pressure sources
-  - **Classifier** — determines whether the proposed change is narrow (single-file) or architectural (multi-file)
+  - **Top-level Analyst** — examines upleveled profiling data, and source code to identify the highest-impact optimization
+  - **Classifier** — determines whether the proposed change is narrow or architectural (deferred — requiring expert sign-off)
   - **Fixer** — generates the optimized code for narrow-scope changes
-- Each experiment runs **multi-run load tests** with k6 and computes median latency with variance analysis
-- Results are compared against the previous baseline to compute **measured performance deltas**
+- Each experiment runs **multi-run load tests**: tracking latency, throughput and efficiency metrics (CPU, Memory)
+- Results are compared against the previous baseline to compute **performance deltas**
+- Fixes must pass two gates: **E2E functional tests**, and **improve load test metrics**
 - Passing experiments are published as **stacked PRs** — a linear branch chain, each reviewable independently
 - Failed experiments (test failures or performance regressions) are **automatically reverted**
 - An **optimization history** tracks what has been tried so agents don't repeat failed approaches
-- The loop continues until performance targets are met or the configured experiment limit is reached
+- The loop continues until the configured experiment limit is reached or improvements plateau
+
+## Sample API Results
+
+On the included sample API (.NET 6 ecommerce service), Hone autonomously completed **35 experiments in ~24 hours** — accepting 29 and rejecting 6 — while E2E tests continued to pass throughout:
+
+| Metric | Baseline | After Optimization | Improvement |
+|--------|----------|-------------------|-------------|
+| P50 Latency | 305.7 ms | 132.2 ms | 56.8% |
+| P95 Latency | 7546.1 ms | 544.4 ms | **92.8%** |
+| Throughput (RPS) | 125.5 | 1129.2 | **800%** |
+| CPU Avg Utilization | 46.2% | 13.2% | 71.4% |
+| % Time in GC | 38% | 2.2% | **94.2%** |
+| GC Heap Max | 3424 MB | 844 MB | 75.5% |
+
+Fixes spanned multiple categories: database indexes, SELECT projection, N+1 query elimination (one API generated 150+ DB round trips per request), request batching, and EF ReadOnly mode for queries.
+
+All diffs include a detailed root-cause analysis and explanation of fix — see the [full set of stacked PRs](https://github.com/J-Bax/Hone-SampleAPI/pulls) and [experiment-1](https://github.com/J-Bax/Hone-SampleAPI/pull/67) as an example.
 
 ## Features
 

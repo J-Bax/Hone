@@ -384,6 +384,24 @@ Diagnostics.AnalyzerSettings = @{
 
 Each invoker script resolves the model in order: per-agent override → global `Model` default → hardcoded fallback.
 
+### Observed Cost Breakdown
+
+A full 35-experiment run on the sample API (~24 hours) cost approximately **$108** at public API pricing. The tiered model strategy keeps costs manageable — Opus handles the complex analytical work while cheaper models handle simple decisions and code generation:
+
+| Model | Role | Requests | Input Tokens | Cache Hits | Output Tokens | Est. Cost |
+|-------|------|----------|-------------|------------|---------------|----------|
+| Opus 4.6 | Analyst + Profilers | 1,074 | 67M | 59M (~88%) | 1.3M | ~$102 |
+| Sonnet 4.5 | Fixer | 69 | 2.6M | 2.5M (~96%) | 15K | ~$1.28 |
+| Haiku 4.5 | Classifier | 673 | 16M | 14M (~88%) | 330K | ~$5.05 |
+| **Total** | | **1,816** | **85.6M** | **75.5M** | **1.6M** | **~$108** |
+
+Key observations:
+
+- **Input prompt caching** is critical — ~88% cache hit rate across all models reduces effective input costs significantly. The Copilot CLI handles caching automatically.
+- **Opus dominates cost** (~94% of total) because it handles the most requests with the largest prompts. The analyst and profiler agents receive extensive context (metrics, source code, profiling stacks, optimization history).
+- **Haiku for classification** is ~20x cheaper per-request than Opus. Since classification is a simple binary decision (narrow vs. architecture), using a cheaper model here saves ~$95 compared to using Opus for all agents.
+- **Sonnet for code generation** balances quality with cost. The fixer runs fewer times (69 requests vs. 1,074 for Opus) because it only runs for narrow-classified experiments.
+
 ## Prompt and Response Artifacts
 
 Every agent invocation saves artifacts for debugging, auditing, and history tracking:

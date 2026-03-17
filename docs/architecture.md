@@ -18,6 +18,12 @@ Hone is an agentic performance optimization system. A set of PowerShell scripts 
 
 6. **Structured data everywhere.** PowerShell objects, JSON metrics, typed results. No string parsing when avoidable.
 
+7. **Deterministic orchestration, not agent-orchestrated-agents.** Early iterations attempted to have agents orchestrate other agents, but this rarely succeeded beyond 2–3 experiment iterations before deviating enough to cause failures. The harness uses deterministic scripted orchestration (PowerShell + state files) and restricts each agent to a single focused domain. This separation — deterministic process control with probabilistic reasoning only where needed — is a deliberate design choice.
+
+8. **Focused agents over monolithic analysis.** A single "analysis agent" that reasoned over CPU stack traces, ETW events, memory allocations, and source code simultaneously hit context window limits and produced lower-quality results. Splitting into three tiers — CPU Analyst (uplevels raw stack traces), Memory Analyst (uplevels GC/allocation data), and Top-level Analyst (reasons over upleveled summaries + source) — significantly improved analysis quality.
+
+9. **Profiling data drives prioritization.** Without profiling data, the analyst can examine code and find issues, but cannot prioritize by ROI. Adding PerfView CPU sampling and GC profiling to the diagnostic pass enabled the analyst to focus on the highest-impact hotspots first — the difference between fixing a 0.1% contributor vs. a 30% contributor.
+
 ### Shared Infrastructure
 
 `HoneHelpers.psm1` is a PowerShell module imported by all harness scripts. It exports common functions:

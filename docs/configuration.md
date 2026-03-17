@@ -72,6 +72,30 @@ Dry-run mode is useful for testing the AI pipeline and branch management without
 
 To change any other setting (tolerances, scale-test options, model selection, etc.), edit `config.psd1` directly.
 
+## Model Cost Optimization
+
+The `Copilot` section assigns different models to each agent based on task complexity. This tiered strategy balances analysis quality with cost:
+
+```powershell
+Copilot = @{
+    Model               = 'claude-sonnet-4.5'    # Global default
+    AnalysisModel       = 'claude-opus-4.6'      # hone-analyst (deep reasoning)
+    ClassificationModel = 'claude-haiku-4.5'     # hone-classifier (fast binary decision)
+    FixModel            = 'claude-sonnet-4.6'    # hone-fixer (code generation)
+}
+```
+
+**Why this matters:** In a full run, Opus accounts for ~94% of total cost because it handles analysis and profiling agents with large context windows. Using Haiku for classification is ~20x cheaper per-request than Opus — since classification is a simple narrow-vs-architecture decision, the cheaper model works just as well.
+
+The Copilot CLI automatically caches input prompts, achieving ~88% cache hit rates in practice. This reduces effective costs significantly, especially for the analyst agent which receives large, slowly-changing context (source files, optimization history).
+
+**Tuning tips:**
+- If cost is a concern, switch `AnalysisModel` to `claude-sonnet-4.5` — analysis quality decreases but cost drops dramatically
+- If quality is paramount, use `claude-opus-4.6` for `FixModel` as well — but expect ~3x higher code generation costs
+- The profiler agents (`cpu-hotspots`, `memory-gc`) have separate model overrides under `Diagnostics.AnalyzerSettings` — these can also be downgraded independently
+
+See [Agent Designs — Observed Cost Breakdown](agent-designs.md#observed-cost-breakdown) for detailed per-model token usage from a real run.
+
 ## Diagnostics Configuration
 
 The `Diagnostics` section controls the diagnostic profiling plugin framework. This is separate from the evaluation measurement (ScaleTest + DotnetCounters) used for accept/reject decisions.
