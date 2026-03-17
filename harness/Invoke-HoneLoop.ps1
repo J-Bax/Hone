@@ -216,6 +216,7 @@ Write-Status "Baseline loaded: p95=$($baselineMetrics.HttpReqDuration.P95)ms"
 
 # ── Experiment Loop ──────────────────────────────────────────────────────────
 $previousMetrics = $null
+$previousMetricsExperiment = 0
 $previousCounterMetrics = $null
 $previousScenarioResults = $null
 $previousRcaExplanation = ''
@@ -253,6 +254,33 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
     }
     $successCount = @($priorExperiments | Where-Object { $_.Outcome -eq 'improved' }).Count
 
+    # Restore reference metrics from the last accepted experiment so the first
+    # post-resume comparison is against the correct reference (not baseline).
+    $lastImproved = $priorExperiments | Where-Object { $_.Outcome -eq 'improved' } | Select-Object -Last 1
+    if ($lastImproved) {
+        $resultsBase = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath
+        $lastExpDir = Join-Path $resultsBase "experiment-$($lastImproved.Experiment)"
+        $lastSummaryPath = Join-Path $lastExpDir 'k6-summary.json'
+        if (Test-Path $lastSummaryPath) {
+            $previousMetrics = Get-Content $lastSummaryPath -Raw | ConvertFrom-Json
+            $previousMetricsExperiment = $lastImproved.Experiment
+
+            # Restore per-scenario results if available
+            $scenarioFiles = Get-ChildItem $lastExpDir -Filter 'k6-summary-*.json' -ErrorAction SilentlyContinue
+            if ($scenarioFiles) {
+                $previousScenarioResults = @{}
+                foreach ($sf in $scenarioFiles) {
+                    $scenarioName = $sf.BaseName -replace '^k6-summary-', ''
+                    $previousScenarioResults[$scenarioName] = Get-Content $sf.FullName -Raw | ConvertFrom-Json
+                }
+            }
+
+            Write-Status "  Reference metrics:  experiment $($lastImproved.Experiment) (p95=$($previousMetrics.HttpReqDuration.P95)ms)"
+        } else {
+            Write-Status "  Reference metrics:  baseline (experiment $($lastImproved.Experiment) summary not found)"
+        }
+    }
+
     # Restore stacked-diffs branch state
     if ($stackedDiffs) {
         # For early-exit experiments (e.g., analysis_failed), BranchName may be null.
@@ -285,6 +313,7 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
         staleCount = $staleCount
         consecutiveFailures = $consecutiveFailures
         currentBranch = $currentBranch
+        referenceExperiment = $previousMetricsExperiment
     }
 }
 
@@ -320,7 +349,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     $refP95 = $metricsForAnalysis.HttpReqDuration.P95
     $refRps = [math]::Round($metricsForAnalysis.HttpReqs.Rate, 1)
-    $refLabel = if ($previousMetrics) { "experiment $($experiment - 1)" } else { 'baseline' }
+    $refLabel = if ($previousMetrics) { "experiment $previousMetricsExperiment" } else { 'baseline' }
     Write-Status "  Reference: p95=${refP95}ms, RPS=${refRps} (from $refLabel)"
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -992,7 +1021,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     # Reference metrics used for delta computation (previous improved or baseline)
     $referenceMetrics = if ($previousMetrics) { $previousMetrics } else { $baselineMetrics }
-    $referenceLabel = if ($previousMetrics) { "Experiment $($experiment - 1)" } else { 'Baseline' }
+    $referenceLabel = if ($previousMetrics) { "Experiment $previousMetricsExperiment" } else { 'Baseline' }
 
     # Display per-metric deltas
     $d = $comparison.Deltas
@@ -1440,6 +1469,7 @@ $rcaDocument
     # so the reference metrics should remain from the last successful experiment.
     if ($experimentOutcome -eq 'improved') {
         $previousMetrics = $currentMetrics
+        $previousMetricsExperiment = $experiment
         $previousCounterMetrics = $currentCounterMetrics
         if ($scenarioResults -and $scenarioResults.Count -gt 0) {
             $previousScenarioResults = @{}
