@@ -6,52 +6,71 @@ This document describes design ideas for evolving Hone's agent pipeline and lear
 
 ## Design Ideas
 
-### Actor-Critic Fixer Model
+### Iterative Fixer
 
 The current fixer is a **single-shot** agent: it generates a code fix in one pass, and if the subsequent build or E2E tests fail, the experiment is rejected immediately. This limits the fixer's effectiveness — many optimizations require iterative refinement to get right.
 
-A more robust approach would replace the single-shot fixer with an **actor-critic loop**:
-
-#### Actor
-
-The actor agent (an evolution of the current hone-fixer) generates a code fix, then the harness builds and runs E2E tests. On test failure, the actor receives the failure output (compiler errors, test failures with stack traces) and iterates until E2E passes or a retry budget is exhausted.
+An iterative fixer would replace this single-shot pattern with a **retry loop**. On build or test failure, the fixer receives the failure output (compiler errors, test failures with stack traces) and generates a corrected version. This continues until the fix passes both gates or a retry budget is exhausted.
 
 ```
-Actor generates fix
+Fixer generates fix
     → dotnet build
+    → if build fails → feed compiler errors back to fixer → retry
     → dotnet test
-    → if tests fail → feed failure output back to actor → retry
-    → if tests pass → proceed to critic review
+    → if tests fail → feed test output + stack traces back to fixer → retry
+    → if both pass → proceed to measurement
 ```
 
-This replaces the current pattern where a fixer failure immediately rejects the experiment, giving the agent a chance to learn from concrete errors and self-correct.
-
-#### Critic
-
-A new **critic agent** reviews each actor iteration, enforcing three invariants:
-
-1. **No test modification.** The critic inspects the diff and rejects any change that modifies files under `SampleApi.Tests/`. The actor must fix the production code to satisfy tests, not modify the tests to satisfy the code. This prevents a common failure mode where an agent "cheats" by weakening assertions.
-
-2. **Change quality feedback.** The critic provides substantive review of the actor's changes: correctness, idiomatic style, potential side effects, and alignment with the analyst's root-cause diagnosis. This feedback is returned to the actor on rejection, enabling targeted refinement rather than blind retrying.
-
-3. **Scope guard.** For narrow-classified experiments, the critic ensures the actor's changes stay narrow. If the diff touches multiple files, introduces new classes, modifies dependency injection configuration, adds middleware, or makes other architectural changes, the critic rejects the iteration and instructs the actor to constrain scope. This prevents scope creep from narrow into architecture territory — a risk that increases with each retry as the actor tries more aggressive approaches.
-
-#### Combined Flow
+This gives the agent a chance to learn from concrete errors and self-correct — a common pattern in human development where the first attempt at an optimization introduces a subtle bug that's easily fixed once the test failure is visible.
 
 ```mermaid
 flowchart TD
     ANALYST["hone-analyst<br/>opportunity"] --> CLASSIFIER["hone-classifier<br/>narrow/architecture"]
-    CLASSIFIER -->|narrow| ACTOR["Actor: generate fix"]
-    ACTOR --> BUILD["dotnet build"]
-    BUILD -->|fail| ACTOR
+    CLASSIFIER -->|narrow| FIXER["Fixer: generate fix"]
+    FIXER --> BUILD["dotnet build"]
+    BUILD -->|fail + errors| FIXER
     BUILD -->|pass| TEST["dotnet test"]
-    TEST -->|fail| ACTOR
-    TEST -->|pass| CRITIC["Critic: review changes"]
-    CRITIC -->|reject + feedback| ACTOR
-    CRITIC -->|approve| MEASURE["Proceed to<br/>measurement"]
-    ACTOR -->|retry budget<br/>exhausted| REJECT["Reject experiment"]
+    TEST -->|fail + output| FIXER
+    TEST -->|pass| MEASURE["Proceed to<br/>measurement"]
+    FIXER -->|retry budget<br/>exhausted| REJECT["Reject experiment"]
 
-    style ACTOR fill:#e74c3c,color:#fff
+    style FIXER fill:#e74c3c,color:#fff
+    style MEASURE fill:#50c878,color:#fff
+    style REJECT fill:#999,color:#fff
+```
+
+#### Design Considerations
+
+- **Retry budget.** A cap on fixer iterations per experiment (e.g., 3 attempts) prevents runaway loops. Each retry consumes time and API calls, so the budget should balance persistence with efficiency.
+- **Feedback quality.** The fixer prompt on retry should include: (1) the original optimization goal, (2) the current file content (post-fix), and (3) the full build/test error output. This gives the agent enough context to make a targeted correction rather than starting from scratch.
+- **No test modification.** The fixer must never modify files under `SampleApi.Tests/`. It must fix the production code to satisfy tests, not modify the tests to satisfy the code. This prevents a common failure mode where an agent "cheats" by weakening assertions. The harness should enforce this by rejecting any diff that touches test files.
+- **Scope creep risk.** With each retry, the fixer may attempt increasingly aggressive approaches. The harness should monitor diff size across iterations and reject if the change grows beyond a reasonable threshold for a narrow-scope fix.
+- **Fallback.** If the fixer exhausts its retry budget, the experiment is rejected with a detailed record of what was attempted and why each iteration failed — feeding the optimization history.
+
+### Actor-Critic Review Gate
+
+Building on the iterative fixer, an **actor-critic model** adds an AI review gate between the fixer and measurement. The fixer (actor) produces code; a separate critic agent reviews the diff before the experiment proceeds to load testing.
+
+The critic enforces invariants that are difficult to check deterministically:
+
+1. **Change quality feedback.** The critic provides substantive review of the actor's changes: correctness, idiomatic style, potential side effects, and alignment with the analyst's root-cause diagnosis. This feedback is returned to the actor on rejection, enabling targeted refinement rather than blind retrying.
+
+2. **Scope guard.** For narrow-classified experiments, the critic ensures the actor's changes stay narrow. If the diff touches multiple files, introduces new classes, modifies dependency injection configuration, adds middleware, or makes other architectural changes, the critic rejects the iteration and instructs the actor to constrain scope. This prevents scope creep from narrow into architecture territory — a risk that increases with each retry as the actor tries more aggressive approaches.
+
+3. **Semantic correctness.** The critic can catch issues that compile and pass tests but are semantically wrong — e.g., a caching optimization that doesn't invalidate on writes (will pass E2E tests with small data but regress under load).
+
+```mermaid
+flowchart TD
+    FIXER["Fixer: generate fix"] --> BUILD["dotnet build"]
+    BUILD -->|fail| FIXER
+    BUILD -->|pass| TEST["dotnet test"]
+    TEST -->|fail| FIXER
+    TEST -->|pass| CRITIC["Critic: review changes"]
+    CRITIC -->|reject + feedback| FIXER
+    CRITIC -->|approve| MEASURE["Proceed to<br/>measurement"]
+    FIXER -->|retry budget<br/>exhausted| REJECT["Reject experiment"]
+
+    style FIXER fill:#e74c3c,color:#fff
     style CRITIC fill:#f5a623,color:#fff
     style MEASURE fill:#50c878,color:#fff
     style REJECT fill:#999,color:#fff
@@ -59,9 +78,9 @@ flowchart TD
 
 #### Design Considerations
 
-- **Retry budget.** A cap on actor iterations per experiment (e.g., 3 attempts) prevents runaway loops. Each retry consumes time and API calls, so the budget should balance persistence with efficiency.
 - **Critic model selection.** The critic is a review gate, not a generative agent — a fast model like `claude-haiku-4.5` may suffice since it's evaluating diffs against clear criteria rather than generating code.
 - **History integration.** Critic rejections (especially scope violations) should feed the optimization history so the analyst avoids proposing changes that are likely to escalate from narrow to architecture scope during fixing.
+- **Dependency on iterative fixer.** The critic is most valuable when the fixer can iterate. Without retry capability, a critic rejection immediately rejects the experiment — adding cost without benefit. Implement the iterative fixer first, then layer the critic on top.
 - **Fallback.** If the actor exhausts its retry budget, the experiment is rejected with a detailed COE capturing what was attempted and why each iteration failed — feeding the knowledge base.
 
 ### Correction of Error for Rejected Experiments
@@ -104,7 +123,7 @@ A structured COE document covering:
 
 - **Model selection.** The COE agent is analytical, not generative — a mid-tier model (`claude-sonnet-4.5` or `claude-haiku-4.5`) should suffice since it's synthesizing from structured artifacts rather than reasoning from scratch.
 - **COE quality improves over time.** As the knowledge base (see below) grows, the COE agent can reference patterns from prior COEs, making its analysis more contextual and less generic.
-- **Composability with actor-critic.** If the actor-critic fixer model is implemented, the COE would also capture the critic's per-iteration feedback and the actor's retry trajectory, providing richer failure analysis than a single-shot rejection.
+- **Composability with iterative fixer and actor-critic.** If the iterative fixer and actor-critic review gate are implemented, the COE would also capture per-iteration failure output and the critic's feedback, providing richer failure analysis than a single-shot rejection.
 
 ### Persistent Optimization Knowledge Base
 
