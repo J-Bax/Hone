@@ -24,6 +24,10 @@
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
+
+.PARAMETER TargetDir
+    Root directory of the target project. Used for the security boundary
+    (path-traversal check) and git operations.
 #>
 [CmdletBinding()]
 param(
@@ -40,27 +44,30 @@ param(
 
     [string]$BaseBranch = 'master',
 
-    [string]$ConfigPath
+    [string]$ConfigPath,
+
+    [Parameter(Mandatory)]
+    [string]$TargetDir
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 $branchName = "$($config.Loop.BranchPrefix)-$Experiment"
-$fullPath = Join-Path $repoRoot $FilePath
+$fullPath = Join-Path $TargetDir $FilePath
 
-# Validate target path is within sample-api to prevent path traversal
+# Validate target path is within target directory to prevent path traversal
 $resolvedPath = [System.IO.Path]::GetFullPath($fullPath)
-$allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'sample-api'))
+$allowedRoot = [System.IO.Path]::GetFullPath($TargetDir)
 if (-not $resolvedPath.StartsWith($allowedRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Path traversal blocked: '$FilePath' resolves to '$resolvedPath' which is outside '$allowedRoot'"
 }
 
-# Determine the submodule root for git operations
-$submoduleDir = Join-Path $repoRoot 'sample-api'
-# Strip the 'sample-api/' prefix so paths are relative to the submodule root
-$submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
+# Determine the target root for git operations
+$submoduleDir = $TargetDir
+# Strip the target directory prefix so paths are relative to the target root
+$targetLeaf = Split-Path $TargetDir -Leaf
+$submoduleRelPath = $FilePath -replace "^$([regex]::Escape($targetLeaf))[\\/]", ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'experiment' -Level 'info' `
@@ -87,9 +94,9 @@ try {
 
     # Stage experiment artifacts
     & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
-        -Experiment $Experiment -SubmoduleDir $submoduleDir
+        -Experiment $Experiment -SubmoduleDir $submoduleDir -ConfigPath $ConfigPath
 
-    git commit -m "hone(experiment-$Experiment): $Description" 2>&1 | Out-Null
+    git commit --no-gpg-sign -m "hone(experiment-$Experiment): $Description" 2>&1 | Out-Null
 
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'experiment' -Level 'info' `

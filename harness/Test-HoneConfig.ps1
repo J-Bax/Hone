@@ -7,12 +7,22 @@
     and prerequisite tools are installed. Throws on the first fatal error.
     Warnings are emitted for non-fatal issues.
 
+    When TargetPath is provided, also validates the target project's
+    .hone/config.psd1 structure including hooks, scenario files, and
+    required keys.
+
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
+
+.PARAMETER TargetPath
+    Root directory of the target project.  When provided, validates the
+    .hone/config.psd1 structure inside the target.
 #>
 [CmdletBinding()]
 param(
-    [string]$ConfigPath
+    [string]$ConfigPath,
+
+    [string]$TargetPath
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -20,6 +30,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 $errors = @()
 $warnings = @()
+$harnessRoot = $PSScriptRoot
 
 # ── Tolerance validation ────────────────────────────────────────────────────
 if ($config.Tolerances) {
@@ -108,6 +119,133 @@ if ($config.Diagnostics -and $config.Diagnostics.Enabled -and
 if ($config.ScaleTest -and $config.Tolerances -and
     $config.ScaleTest.MeasuredRuns -eq 1 -and $config.Tolerances.MaxRegressionPct -lt 0.05) {
     $warnings += "MeasuredRuns=1 with tight tolerance ($($config.Tolerances.MaxRegressionPct)): single-run noise may exceed tolerance"
+}
+
+# ── Target config validation (.hone/config.psd1) ───────────────────────────
+if ($TargetPath) {
+    $honeConfigPath = Join-Path -Path $TargetPath -ChildPath '.hone' 'config.psd1'
+    if (-not (Test-Path $honeConfigPath)) {
+        $errors += "Target config not found: $honeConfigPath"
+    } else {
+        $targetCfg = Import-PowerShellDataFile -Path $honeConfigPath
+
+        # Required top-level keys
+        foreach ($requiredKey in @('Name', 'BaseBranch', 'Api', 'Hooks', 'ScaleTest')) {
+            if (-not $targetCfg.ContainsKey($requiredKey)) {
+                $errors += ".hone/config.psd1 is missing required key: $requiredKey"
+            }
+        }
+
+        if ($targetCfg.Api) {
+            foreach ($requiredApiKey in @('SolutionPath', 'ProjectPath', 'TestProjectPath', 'ResultsPath', 'MetadataPath', 'BaseUrl', 'HealthEndpoint', 'StartupTimeout')) {
+                if (-not $targetCfg.Api.ContainsKey($requiredApiKey)) {
+                    $errors += ".hone/config.psd1 Api.$requiredApiKey is missing"
+                }
+            }
+
+            foreach ($relativePathKey in @('SolutionPath', 'ProjectPath', 'TestProjectPath')) {
+                if ($targetCfg.Api.ContainsKey($relativePathKey) -and $targetCfg.Api[$relativePathKey]) {
+                    $resolvedPath = Join-Path -Path $TargetPath -ChildPath $targetCfg.Api[$relativePathKey]
+                    if (-not (Test-Path $resolvedPath)) {
+                        $errors += ".hone/config.psd1 Api.$relativePathKey not found: $resolvedPath"
+                    }
+                }
+            }
+        }
+
+        # All 8 hooks must be declared
+        if ($targetCfg.Hooks) {
+            $requiredHooks = @('Prepare', 'Start', 'Stop', 'Ready', 'Warmup', 'Active', 'Cooldown', 'Cleanup')
+            $validTypes = @('Script', 'Shared', 'Command', 'Http', 'Skip')
+            foreach ($hookName in $requiredHooks) {
+                if (-not $targetCfg.Hooks.ContainsKey($hookName)) {
+                    $errors += ".hone/config.psd1 Hooks.$hookName is not declared"
+                } else {
+                    $hook = $targetCfg.Hooks[$hookName]
+                    if (-not $hook.Type) {
+                        $errors += ".hone/config.psd1 Hooks.$hookName is missing Type"
+                    } elseif ($hook.Type -notin $validTypes) {
+                        $errors += ".hone/config.psd1 Hooks.$hookName has invalid Type '$($hook.Type)' (valid: $($validTypes -join ', '))"
+                    } elseif ($hook.Type -eq 'Script') {
+                        $scriptPath = Join-Path -Path $TargetPath -ChildPath $hook.Path
+                        if (-not (Test-Path $scriptPath)) {
+                            $errors += ".hone/config.psd1 Hooks.$hookName script not found: $scriptPath"
+                        }
+                    } elseif ($hook.Type -eq 'Shared') {
+                        if (-not $hook.Name) {
+                            $errors += ".hone/config.psd1 Hooks.$hookName is missing Name for Shared hook"
+                        } else {
+                            $sharedHookPath = Join-Path -Path $harnessRoot -ChildPath 'hooks' -AdditionalChildPath "$($hook.Name).ps1"
+                            if (-not (Test-Path $sharedHookPath)) {
+                                $errors += ".hone/config.psd1 Hooks.$hookName shared hook not found: $sharedHookPath"
+                            }
+                        }
+                    } elseif ($hook.Type -eq 'Http') {
+                        if (-not $hook.Path) {
+                            $errors += ".hone/config.psd1 Hooks.$hookName is missing Path for Http hook"
+                        }
+                    } elseif ($hook.Type -eq 'Command') {
+                        if (-not $hook.Value) {
+                            $errors += ".hone/config.psd1 Hooks.$hookName is missing Value for Command hook"
+                        }
+                    }
+                }
+            }
+        }
+
+        # Scenario files must exist
+        if ($targetCfg.ScaleTest) {
+            foreach ($requiredScaleKey in @('ScenarioPath', 'ScenarioRegistryPath', 'MeasuredRuns')) {
+                if (-not $targetCfg.ScaleTest.ContainsKey($requiredScaleKey)) {
+                    $errors += ".hone/config.psd1 ScaleTest.$requiredScaleKey is missing"
+                }
+            }
+        }
+
+        if ($targetCfg.ScaleTest -and $targetCfg.ScaleTest.ScenarioPath) {
+            $scenFile = Join-Path -Path $TargetPath -ChildPath $targetCfg.ScaleTest.ScenarioPath
+            if (-not (Test-Path $scenFile)) {
+                $errors += ".hone/config.psd1 ScaleTest.ScenarioPath not found: $scenFile"
+            }
+        }
+
+        $registryPath = $null
+        if ($targetCfg.ScaleTest -and $targetCfg.ScaleTest.ScenarioRegistryPath) {
+            $registryPath = Join-Path -Path $TargetPath -ChildPath $targetCfg.ScaleTest.ScenarioRegistryPath
+            if (-not (Test-Path $registryPath)) {
+                $errors += ".hone/config.psd1 ScaleTest.ScenarioRegistryPath not found: $registryPath"
+            } else {
+                try {
+                    $registry = Get-Content -Path $registryPath -Raw | ConvertFrom-Json -ErrorAction Stop
+                    $registryDir = Split-Path -Parent $registryPath
+                    foreach ($scenarioName in $registry.scenarios.PSObject.Properties.Name) {
+                        $scenarioEntry = $registry.scenarios.$scenarioName
+                        if (-not $scenarioEntry.file) {
+                            $errors += "Scenario registry entry '$scenarioName' is missing a file value"
+                            continue
+                        }
+                        $registryScenarioPath = Join-Path -Path $registryDir -ChildPath $scenarioEntry.file
+                        if (-not (Test-Path $registryScenarioPath)) {
+                            $errors += "Scenario registry entry '$scenarioName' file not found: $registryScenarioPath"
+                        }
+                    }
+                } catch {
+                    $errors += ".hone/config.psd1 ScaleTest.ScenarioRegistryPath could not be parsed as JSON: $registryPath"
+                }
+            }
+        }
+
+        if ($targetCfg.ScaleTest -and $targetCfg.ScaleTest.WarmupEnabled) {
+            if (-not $targetCfg.ScaleTest.WarmupScenarioPath) {
+                $errors += ".hone/config.psd1 ScaleTest.WarmupScenarioPath is required when WarmupEnabled = `$true"
+            } else {
+                $warmupPath = Join-Path -Path $TargetPath -ChildPath $targetCfg.ScaleTest.WarmupScenarioPath
+                if (-not (Test-Path $warmupPath)) {
+                    $errors += ".hone/config.psd1 ScaleTest.WarmupScenarioPath not found: $warmupPath"
+                }
+            }
+        }
+    }
 }
 
 # ── Report results ──────────────────────────────────────────────────────────

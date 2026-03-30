@@ -30,6 +30,9 @@
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
+
+.PARAMETER TargetDir
+    Root directory of the target project. Used for git operations.
 #>
 [CmdletBinding()]
 # ConfigPath is part of the harness script interface; kept for consistency
@@ -50,14 +53,17 @@ param(
 
     [string]$Description,
 
-    [string]$ConfigPath
+    [string]$ConfigPath,
+
+    [Parameter(Mandatory)]
+    [string]$TargetDir
 )
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-$submoduleDir = Join-Path $repoRoot 'sample-api'
-$submoduleRelPath = $FilePath -replace '^sample-api[\\/]', ''
+$submoduleDir = $TargetDir
+$targetLeaf = Split-Path $TargetDir -Leaf
+$submoduleRelPath = $FilePath -replace "^$([regex]::Escape($targetLeaf))[\\/]", ''
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'publish' -Level 'info' `
@@ -76,7 +82,7 @@ try {
 
     # Stage experiment artifacts
     & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
-        -Experiment $Experiment -SubmoduleDir $submoduleDir
+        -Experiment $Experiment -SubmoduleDir $submoduleDir -ConfigPath $ConfigPath
 
     $shortDesc = if ($Description) {
         if ($Description.Length -le 120) { $Description }
@@ -87,7 +93,7 @@ try {
         }
     } else { $Outcome }
 
-    git commit -m "hone(experiment-$Experiment): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null
+    git commit --no-gpg-sign -m "hone(experiment-$Experiment): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null
 
     # Push the branch so the failed attempt is preserved remotely
     git push -u origin $BranchName 2>&1 | Out-Null

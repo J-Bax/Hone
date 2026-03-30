@@ -28,11 +28,13 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
+    [string]$TargetDir,
     [int]$Experiment = 0,
     [string]$ScenarioPath,
     [string]$ScenarioName,
     [string]$BaseUrl,
-    [switch]$SkipHealthCheck
+    [switch]$SkipHealthCheck,
+    [System.Diagnostics.Process]$InitialProcess
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -40,11 +42,26 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
-if (-not $ScenarioPath) {
-    $ScenarioPath = Join-Path $repoRoot $config.ScaleTest.ScenarioPath
+# Merge target config when an external target directory is provided
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
 }
 
-$outputDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+
+# Seed the local config with the caller's process reference so the first
+# between-run Stop can terminate the initial API (which the caller started).
+if ($InitialProcess) { $config._Process = $InitialProcess }
+
+if (-not $ScenarioPath) {
+    $ScenarioPath = Join-Path $pathBase $config.ScaleTest.ScenarioPath
+}
+
+$outputDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if ($ScenarioName) {
     $jsonSummaryPath = Join-Path $outputDir "k6-summary-$ScenarioName.json"
 } else {
@@ -92,7 +109,7 @@ $isPrimary = -not $ScenarioName
 $warmupEnabled = $isPrimary -and $config.ScaleTest.WarmupEnabled -and $config.ScaleTest.WarmupScenarioPath
 
 if ($warmupEnabled) {
-    $warmupPath = Join-Path $repoRoot $config.ScaleTest.WarmupScenarioPath
+    $warmupPath = Join-Path $pathBase $config.ScaleTest.WarmupScenarioPath
     if (Test-Path $warmupPath) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'measure' -Level 'info' `
@@ -126,7 +143,7 @@ if ($warmupEnabled) {
 # ── Start .NET counter collection if enabled (primary scenario only) ─────
 $counterHandle = $null
 $counterMetrics = $null
-$countersEnabled = $config.DotnetCounters -and $config.DotnetCounters.Enabled -and (-not $ScenarioName)
+$countersEnabled = $config.ContainsKey('DotnetCounters') -and $config.DotnetCounters.Enabled -and (-not $ScenarioName)
 
 if ($countersEnabled) {
     # Discover the API process PID from the base URL port
@@ -138,6 +155,7 @@ if ($countersEnabled) {
         $counterHandle = & (Join-Path $PSScriptRoot 'Start-DotnetCounters.ps1') `
             -ProcessId $apiProcess.OwningProcess `
             -ConfigPath $ConfigPath `
+            -OutputPath (Join-Path $outputDir 'dotnet-counters.csv') `
             -Experiment $Experiment
 
         if (-not $counterHandle.Success) {
@@ -182,15 +200,55 @@ try {
     $k6Output = ''
 
     for ($run = 1; $run -le $measuredRuns; $run++) {
-        # Cooldown between runs (skip before the first run)
+        # Reset state between runs (skip before the first run)
         if ($run -gt 1 -and $measuredRuns -gt 1) {
-            $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
-            & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
-                -BaseUrl $baseUrl `
-                -GcEndpoint $config.Api.GcEndpoint `
-                -CooldownSeconds $cooldown `
-                -Experiment $Experiment `
-                -Reason 'between runs'
+            if ($TargetDir -and $targetCfg) {
+                # Stop → Prepare → Start cycle: the API must be stopped before
+                # the database is dropped, otherwise EF Core's cached DbContext
+                # pool holds stale connections to the deleted DB and all
+                # subsequent VUs hit cascading errors.
+                & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                    -Phase 'measure' -Level 'info' `
+                    -Message "Restarting API before run $run (Stop → Prepare → Start)" `
+                    -Experiment $Experiment
+
+                Invoke-LifecycleHook -Name 'Stop' -TargetConfig $targetCfg `
+                    -TargetDir $TargetDir -HarnessRoot $PSScriptRoot `
+                    -Config $config -Experiment $Experiment | Out-Null
+
+                Invoke-LifecycleHook -Name 'Prepare' -TargetConfig $targetCfg `
+                    -TargetDir $TargetDir -HarnessRoot $PSScriptRoot `
+                    -Config $config -Experiment $Experiment | Out-Null
+
+                $restartResult = Invoke-LifecycleHook -Name 'Start' -TargetConfig $targetCfg `
+                    -TargetDir $TargetDir -HarnessRoot $PSScriptRoot `
+                    -Config $config -Experiment $Experiment
+
+                if (-not $restartResult.Success) {
+                    throw "API failed to restart before measured run ${run}: $($restartResult.Message)"
+                }
+
+                $baseUrl = if ($restartResult.ActualBaseUrl) { $restartResult.ActualBaseUrl } else { $baseUrl }
+                $config._Process = $restartResult.Process
+                $config._BaseUrl = $baseUrl
+
+                # Update k6 args with the new base URL (port changes on restart)
+                for ($i = 0; $i -lt $k6Args.Count; $i++) {
+                    if ($k6Args[$i] -eq '--env' -and ($i + 1) -lt $k6Args.Count -and $k6Args[$i + 1] -like 'BASE_URL=*') {
+                        $k6Args[$i + 1] = "BASE_URL=$baseUrl"
+                        break
+                    }
+                }
+            } else {
+                # No target lifecycle hooks — fall back to cooldown only
+                $cooldown = if ($config.ScaleTest.CooldownSeconds) { [int]$config.ScaleTest.CooldownSeconds } else { 3 }
+                & (Join-Path $PSScriptRoot 'Invoke-Cooldown.ps1') `
+                    -BaseUrl $baseUrl `
+                    -GcEndpoint $config.Api.GcEndpoint `
+                    -CooldownSeconds $cooldown `
+                    -Experiment $Experiment `
+                    -Reason 'between runs'
+            }
         }
 
         if ($measuredRuns -gt 1) {
@@ -351,6 +409,8 @@ $result = [ordered]@{
     Output = ($k6Output | Out-String)
     RunCount = $allRunMetrics.Count
     RunMetrics = $allRunMetrics   # per-run p95/RPS for variance analysis
+    LastProcess = $config._Process  # propagate the latest process after between-run restarts
+    LastBaseUrl = $config._BaseUrl  # propagate the latest base URL after restarts
 }
 
 return [PSCustomObject]$result

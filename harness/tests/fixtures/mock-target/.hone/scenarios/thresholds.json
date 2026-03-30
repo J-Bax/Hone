@@ -1,0 +1,9 @@
+{
+  "scenarios": {
+    "baseline": {
+      "description": "Mock baseline scenario",
+      "file": "baseline.js",
+      "use_for_optimization": true
+    }
+  }
+}

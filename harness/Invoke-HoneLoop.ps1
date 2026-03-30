@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Main entry point for the Hone agentic optimization loop.
 
@@ -20,17 +20,17 @@
     - Stacked diffs (default): experiments form a linear branch chain.
       Successful experiments get PRs comparing against the last success.
       Failed experiments are reverted in-place and preserved for the record.
-    - Legacy: each experiment branches from master, PRs target master,
+    - Legacy: each experiment branches from the default branch, PRs target the default branch,
       loop blocks waiting for merge between experiments.
 
 .PARAMETER MaxExperiments
     Override max experiments from config.
 
-.PARAMETER ConfigPath
-    Path to the harness config.psd1 file.
+.PARAMETER TargetPath
+    Path to the target project directory containing .hone/config.psd1.
 
 .EXAMPLE
-    .\Invoke-HoneLoop.ps1
+    .\Invoke-HoneLoop.ps1 -TargetPath ..\my-api
 
 .PARAMETER DryRun
     Skip slow operations (k6 scale tests, API start/stop, DB reset) and use
@@ -38,29 +38,58 @@
     PRs are created with a [DRY RUN] prefix.
 
 .EXAMPLE
-    .\Invoke-HoneLoop.ps1 -MaxExperiments 10
+    .\Invoke-HoneLoop.ps1 -TargetPath ..\my-api -MaxExperiments 10
 
 .EXAMPLE
-    .\Invoke-HoneLoop.ps1 -DryRun -MaxExperiments 3
+    .\Invoke-HoneLoop.ps1 -TargetPath ..\my-api -DryRun -MaxExperiments 3
 #>
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory)][string]$TargetPath,
     [int]$MaxExperiments,
-    [string]$ConfigPath,
     [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent $PSScriptRoot
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
-$config = Get-HoneConfig -ConfigPath $ConfigPath
+# Resolve target directory
+$resolvedTargetPath = Resolve-Path -Path $TargetPath -ErrorAction SilentlyContinue
+if ($resolvedTargetPath) {
+    $targetDir = $resolvedTargetPath.Path
+} else {
+    $targetDir = [System.IO.Path]::GetFullPath($TargetPath, (Get-Location).Path)
+}
+$honeDir = Join-Path $targetDir '.hone'
+if (-not (Test-Path (Join-Path $honeDir 'config.psd1'))) {
+    throw "Target directory '$targetDir' does not contain .hone/config.psd1"
+}
 
-& (Join-Path $PSScriptRoot 'Test-HoneConfig.ps1') -ConfigPath $ConfigPath
+# Load and merge config
+$harnessRoot = $PSScriptRoot
+$engineConfig = Get-HoneConfig -ConfigPath (Join-Path $harnessRoot 'config.psd1')
+$targetConfig = Import-PowerShellDataFile (Join-Path $honeDir 'config.psd1')
+$config = Merge-HoneConfig -Engine $engineConfig -Target $targetConfig
 
-# Apply parameter overrides
-if ($MaxExperiments -gt 0) { $config.Loop.MaxExperiments = $MaxExperiments }
+# Validate merged config
+& (Join-Path $PSScriptRoot 'Test-HoneConfig.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') -TargetPath $targetDir
+
+# Apply CLI overrides
+if ($PSBoundParameters.ContainsKey('MaxExperiments')) {
+    if (-not $config.ContainsKey('Loop')) { $config.Loop = @{} }
+    $config.Loop.MaxExperiments = $MaxExperiments
+}
+
+$targetName = $targetConfig.Name
+
+# Set the log path for Write-HoneLog.ps1 (which runs as a separate script
+# and cannot see the merged config). Uses an env var for cross-script comms.
+$env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath 'hone.jsonl'
+
+# Sub-scripts accept -ConfigPath (engine config file path) alongside
+# -TargetDir/-TargetConfig for target-specific settings.
+$configPath = Join-Path $harnessRoot 'config.psd1'
 
 $maxExp = $config.Loop.MaxExperiments
 $tolerances = $config.Tolerances
@@ -72,6 +101,7 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 } else {
     $tolerances.StaleExperimentsBeforeStop
 }
+$defaultBranch = if ($config.ContainsKey('BaseBranch') -and $config.BaseBranch) { $config.BaseBranch } else { 'master' }
 
 # ── Banner ──────────────────────────────────────────────────────────────────
 $bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
@@ -89,7 +119,7 @@ Write-Status "  Max experiments:       $maxExp"
 Write-Status "  Min improvement:      $([math]::Round($tolerances.MinImprovementPct * 100, 1))% (any metric)"
 Write-Status "  Max regression:       $([math]::Round($tolerances.MaxRegressionPct * 100, 1))% (per metric)"
 Write-Status "  Stale exp stop:       $($tolerances.StaleExperimentsBeforeStop) consecutive"
-$modeLabel = if ($stackedDiffs) { 'stacked diffs (linear chain)' } else { 'legacy (each off master)' }
+$modeLabel = if ($stackedDiffs) { 'stacked diffs (linear chain)' } else { "legacy (each off $defaultBranch)" }
 $mergeLabel = if ($waitForMerge) { 'yes (blocks)' } else { 'no (fire-and-forget)' }
 Write-Status "  Mode:                 $modeLabel"
 Write-Status "  Wait for PR merge:    $mergeLabel"
@@ -180,7 +210,7 @@ Write-Status ''
 }
 
 # ── Run metadata tracking ───────────────────────────────────────────────────
-$runMetadataPath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'run-metadata.json'
+$runMetadataPath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath 'run-metadata.json'
 $loopStartedAt = Get-Date -Format 'o'
 
 if (Test-Path $runMetadataPath) {
@@ -199,11 +229,12 @@ if (Test-Path $runMetadataPath) {
 }
 
 # ── Load baseline ───────────────────────────────────────────────────────────
-$baselinePath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath 'baseline.json'
+$baselinePath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath 'baseline.json'
 
 if (-not (Test-Path $baselinePath)) {
     Write-Status 'No baseline found. Running Get-PerformanceBaseline.ps1 first...'
-    & (Join-Path $PSScriptRoot 'Get-PerformanceBaseline.ps1') -ConfigPath $ConfigPath
+    & (Join-Path $PSScriptRoot 'Get-PerformanceBaseline.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') `
+        -TargetDir $targetDir -TargetConfig $targetConfig
 
     if (-not (Test-Path $baselinePath)) {
         Write-Error 'Failed to establish baseline. Aborting.'
@@ -227,9 +258,9 @@ $staleCount = 0
 $consecutiveFailures = 0
 
 # Stacked-diffs state: track the branch chain and PR stack
-$currentBranch = 'master'
+$currentBranch = $defaultBranch
 $prChain = @()
-$branchChain = @('master')
+$branchChain = @($defaultBranch)
 $failedExperiments = @()
 $successCount = 0
 
@@ -258,7 +289,7 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
     # post-resume comparison is against the correct reference (not baseline).
     $lastImproved = $priorExperiments | Where-Object { $_.Outcome -eq 'improved' } | Select-Object -Last 1
     if ($lastImproved) {
-        $resultsBase = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath
+        $resultsBase = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath
         $lastExpDir = Join-Path $resultsBase "experiment-$($lastImproved.Experiment)"
         $lastSummaryPath = Join-Path $lastExpDir 'k6-summary.json'
         if (Test-Path $lastSummaryPath) {
@@ -286,8 +317,8 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
         # For early-exit experiments (e.g., analysis_failed), BranchName may be null.
         # Walk backward to find the last experiment that had a branch.
         $lastWithBranch = $priorExperiments | Where-Object { $_.BranchName } | Select-Object -Last 1
-        $currentBranch = if ($lastWithBranch) { $lastWithBranch.BranchName } else { 'master' }
-        $branchChain = @('master') + @($priorExperiments | Where-Object { $_.BranchName } | ForEach-Object { $_.BranchName })
+        $currentBranch = if ($lastWithBranch) { $lastWithBranch.BranchName } else { $defaultBranch }
+        $branchChain = @($defaultBranch) + @($priorExperiments | Where-Object { $_.BranchName } | ForEach-Object { $_.BranchName })
         $prChain = @($priorExperiments | Where-Object { $_.PrNumber } | ForEach-Object {
                 [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)"; Outcome = $_.Outcome }
             })
@@ -320,8 +351,8 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
 # MaxExperiments means "run N more" — compute absolute loop end
 $loopEnd = $startExperiment + $maxExp - 1
 
-# Ensure the submodule starts on the correct branch for experiment forking
-Push-Location (Join-Path $repoRoot 'sample-api')
+# Ensure the target starts on the correct branch for experiment forking
+Push-Location $targetDir
 git checkout $currentBranch 2>&1 | Out-Null
 Pop-Location
 
@@ -365,23 +396,24 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -PreviousMetrics $previousMetrics `
         -CurrentCounterMetrics $countersForAnalysis `
         -PreviousCounterMetrics $previousCounterMetrics `
-        -ConfigPath $ConfigPath `
+        -ConfigPath $configPath `
         -Experiment $experiment
 
     $hasQueue = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-        -Action 'HasActionable' -ConfigPath $ConfigPath
+        -Action 'HasActionable' -ConfigPath $configPath -TargetDir $targetDir
 
     if (-not $hasQueue) {
         Write-Status '[2/5] 🧠 Analyzing (queue empty — running analysis)...'
 
         # ── Diagnostic profiling (runs only when analysis is needed) ─────
         $diagnosticReports = $null
-        if ($config.Diagnostics -and $config.Diagnostics.Enabled -and -not $DryRun) {
+        if ($config.ContainsKey('Diagnostics') -and $config.Diagnostics.Enabled -and -not $DryRun) {
             Write-Status '  Running diagnostic measurement (PerfView profiling)...'
             $diagResult = & (Join-Path $PSScriptRoot 'Invoke-DiagnosticMeasurement.ps1') `
                 -Experiment $experiment `
-                -ConfigPath $ConfigPath `
-                -CurrentMetrics $metricsForAnalysis
+                -ConfigPath $configPath `
+                -CurrentMetrics $metricsForAnalysis `
+                -TargetDir $targetDir -TargetConfig $targetConfig
 
             if ($diagResult.Success) {
                 $diagnosticReports = $diagResult.AnalyzerReports
@@ -399,9 +431,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -ComparisonResult $comparisonForAnalysis `
             -CounterMetrics $countersForAnalysis `
             -Experiment $experiment `
-            -ConfigPath $ConfigPath `
+            -ConfigPath $configPath `
             -PreviousRcaExplanation $previousRcaExplanation `
-            -DiagnosticReports $diagnosticReports
+            -DiagnosticReports $diagnosticReports `
+            -TargetDir $targetDir
 
         if (-not $rawAnalysis.Success) {
             Write-Warning '  Analysis agent failed — skipping experiment'
@@ -410,7 +443,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'analysis_failed' `
-                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
                 $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
@@ -430,7 +463,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -Action 'Init' `
             -Opportunities $rawAnalysis.Opportunities `
             -Experiment $experiment `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         if (-not $initResult.Success) {
             Write-Warning '  Failed to initialize optimization queue — skipping experiment'
@@ -439,7 +472,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'queue_init_failed' `
-                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             continue
         }
@@ -459,7 +492,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     while ($true) {
         $currentItem = & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-            -Action 'GetNext' -Experiment $experiment -ConfigPath $ConfigPath
+            -Action 'GetNext' -Experiment $experiment -ConfigPath $configPath -TargetDir $targetDir
 
         if (-not $currentItem) { break }
 
@@ -481,7 +514,9 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -FilePath $currentItem.filePath `
                 -Explanation $currentItem.explanation `
                 -Experiment $experiment `
-                -ConfigPath $ConfigPath
+                -ConfigPath $configPath `
+                -TargetName $targetName `
+                -TargetDir $targetDir
         }
 
         $changeScope = $classificationResult.Scope
@@ -501,7 +536,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
             -Action 'MarkDone' -ItemId $queueItemId `
             -Experiment $experiment -Outcome 'skipped' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
             -Action 'AddTried' `
@@ -509,7 +544,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -Summary $currentItem.explanation `
             -FilePath $currentItem.filePath `
             -Outcome 'queued' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         $currentItem = $null
     }
@@ -521,7 +556,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'no_queue_items' `
-            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop -or ($stackedDiffs -and $consecutiveFailures -ge $maxConsecutiveFailures)) {
             $exitReason = if ($stackedDiffs) { 'max_consecutive_failures' } else { 'no_improvement' }
@@ -547,7 +582,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
     # Otherwise, fall back to the harness-generated RCA template.
     if ($currentItem -and $currentItem.rootCausePath -and (Test-Path $currentItem.rootCausePath)) {
-        $iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$experiment"
+        $iterDir = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath "experiment-$experiment"
         if (-not (Test-Path $iterDir)) {
             New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
         }
@@ -582,7 +617,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -BaselineMetrics $baselineMetrics `
             -ComparisonResult $comparisonForAnalysis `
             -Experiment $experiment `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath `
+            -TargetDir $targetDir
 
         if ($rcaResult.Success) {
             Write-Status "  Root cause analysis saved to: $($rcaResult.Path)"
@@ -604,7 +640,9 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -Explanation $analysisResult.Explanation `
         -RootCauseDocument $rcaDocument `
         -Experiment $experiment `
-        -ConfigPath $ConfigPath
+        -ConfigPath $configPath `
+        -TargetName $targetName `
+        -TargetDir $targetDir
 
     if (-not $fixResult.Success -or -not $fixResult.CodeBlock) {
         Write-Warning '  Fix agent failed to generate code — skipping experiment'
@@ -613,25 +651,26 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
             -Experiment $experiment -StartedAt $experimentStartedAt `
             -Outcome 'fix_failed' -BranchName $branchName `
-            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
             -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
         continue
     }
 
-    # Normalise file path: ensure it starts with 'sample-api/'
+    # Normalise file path: resolve relative to target directory
     $targetFile = $analysisResult.FilePath.Trim()
-    if ($targetFile -notmatch '^sample-api[\\/]') {
-        $targetFile = "sample-api/$targetFile"
+    # Strip leading target name prefix if present (agent may include it)
+    if ($targetFile -match "^$([regex]::Escape($targetName))[\\/]") {
+        $targetFile = $targetFile.Substring($targetName.Length + 1)
     }
 
-    $fullTargetPath = Join-Path $repoRoot $targetFile
+    $fullTargetPath = Join-Path $targetDir $targetFile
     if (-not (Test-Path (Split-Path $fullTargetPath -Parent))) {
         # Fallback: search for the file under the project directory
-        $projectDir = Join-Path $repoRoot $config.Api.ProjectPath
+        $projectDir = Join-Path $targetDir $config.Api.ProjectPath
         $fileName = Split-Path $targetFile -Leaf
         $candidates = @(Get-ChildItem -Path $projectDir -Filter $fileName -Recurse -File -ErrorAction SilentlyContinue)
         if ($candidates.Count -eq 1) {
-            $correctedPath = $candidates[0].FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+            $correctedPath = $candidates[0].FullName.Substring($targetDir.Length + 1).Replace('\', '/')
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'experiment' -Level 'warning' `
                 -Message "Path corrected: '$targetFile' → '$correctedPath'" `
@@ -645,7 +684,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'invalid_target' -BranchName $branchName `
-                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
             continue
         }
@@ -654,7 +693,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     Write-Status "  Applying fix to: $targetFile"
 
     # Determine the base branch for this experiment
-    $baseBranch = if ($stackedDiffs) { $currentBranch } else { 'master' }
+    $baseBranch = if ($stackedDiffs) { $currentBranch } else { $defaultBranch }
 
     $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
         -FilePath $targetFile `
@@ -662,7 +701,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -Description (Limit-String $analysisResult.Explanation 120) `
         -Experiment $experiment `
         -BaseBranch $baseBranch `
-        -ConfigPath $ConfigPath
+        -ConfigPath $configPath `
+        -TargetDir $targetDir
 
     if (-not $applyResult.Success) {
         Write-Warning "  Fix application failed: $($applyResult.Description)"
@@ -680,7 +720,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
     # Build the project with the fix applied
     Write-Status '  Building...'
-    $buildResult = & (Join-Path $PSScriptRoot 'Build-SampleApi.ps1') -ConfigPath $ConfigPath -Experiment $experiment
+    $buildResult = & (Join-Path $PSScriptRoot 'Invoke-Build.ps1') -ConfigPath $configPath -TargetDir $targetDir -Experiment $experiment
 
     if (-not $buildResult.Success) {
         if ($stackedDiffs) {
@@ -693,7 +733,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -MetadataSummary "Build failure: $($analysisResult.Explanation)" `
                 -MetadataFilePath $analysisResult.FilePath `
                 -QueueItemId $queueItemId `
-                -ConfigPath $ConfigPath
+                -ConfigPath $configPath `
+                -TargetDir $targetDir
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -710,7 +751,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
                 -OutcomeLabel '❌ **Build failure**' `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
-            Push-Location (Join-Path $repoRoot 'sample-api')
+            Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -725,7 +766,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'build_failure' -BranchName $branchName `
-                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -738,7 +779,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         } else {
             $exitReason = 'build_failure'
             Write-Error "Build failed at experiment $experiment — rolling back"
-            Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
             break
         }
     }
@@ -746,7 +787,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     # ── Phase 4: Verify (tests + measure + compare) ──────────────────────
     Write-Status '[4/5] ✅ Verifying...'
     $testResult = & (Join-Path $PSScriptRoot 'Invoke-E2ETests.ps1') `
-        -ConfigPath $ConfigPath -Experiment $experiment
+        -ConfigPath $configPath -TargetDir $targetDir -Experiment $experiment
 
     if (-not $testResult.Success) {
         if ($stackedDiffs) {
@@ -759,7 +800,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -MetadataSummary "Test failure: $($analysisResult.Explanation)" `
                 -MetadataFilePath $analysisResult.FilePath `
                 -QueueItemId $queueItemId `
-                -ConfigPath $ConfigPath
+                -ConfigPath $configPath `
+                -TargetDir $targetDir
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -776,7 +818,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
                 -OutcomeLabel '❌ **E2E test failure**' `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
-            Push-Location (Join-Path $repoRoot 'sample-api')
+            Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -791,7 +833,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'test_failure' -BranchName $branchName `
-                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
                 -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -804,7 +846,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         } else {
             $exitReason = 'test_failure'
             Write-Warning "E2E tests failed at experiment $experiment — rolling back"
-            Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
             break
         }
     }
@@ -846,41 +888,102 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         Write-Status "  Synthetic p95: $($syntheticMetrics.HttpReqDuration.P95)ms (5% improvement over reference)"
     } else {
         Write-Status '  Measuring (k6 scale tests)...'
+        $measurementFailure = $null
+        $measurementFailureReason = $null
+        $measurementFailureLabel = $null
+        $scenarioResults = @()
 
-        # Reset database so every experiment starts with identical seed data
-        & (Join-Path $PSScriptRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath -Experiment $experiment
+        try {
+            $prepareResult = Invoke-LifecycleHook -Name 'Prepare' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -Experiment $experiment
+            if (-not $prepareResult.Success) {
+                $measurementFailureReason = 'prepare_failure'
+                $measurementFailureLabel = 'Prepare hook failed'
+                throw $prepareResult.Message
+            }
 
-        $apiResult = & (Join-Path $PSScriptRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
+            $startResult = Invoke-LifecycleHook -Name 'Start' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -Experiment $experiment
+            if (-not $startResult.Success) {
+                $measurementFailureReason = 'api_start_failure'
+                $measurementFailureLabel = 'API failed to start'
+                throw $startResult.Message
+            }
 
-        if (-not $apiResult.Success) {
+            $apiProcess = $startResult.Process
+            $baseUrl = if ($startResult.PSObject.Properties['ActualBaseUrl']) { $startResult.ActualBaseUrl } elseif ($startResult.PSObject.Properties['BaseUrl']) { $startResult.BaseUrl } else { $null }
+            $config._Process = $apiProcess
+            $config._BaseUrl = $baseUrl
+
+            $readyResult = Invoke-LifecycleHook -Name 'Ready' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -BaseUrl $baseUrl -Experiment $experiment
+            if (-not $readyResult.Success) {
+                $measurementFailureReason = 'api_start_failure'
+                $measurementFailureLabel = 'API failed readiness check'
+                throw $readyResult.Message
+            }
+
+            $scaleResult = Invoke-LifecycleHook -Name 'Active' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -BaseUrl $baseUrl -Experiment $experiment
+            if (-not $scaleResult.Success) {
+                $measurementFailureReason = 'scale_test_failure'
+                $measurementFailureLabel = 'Scale test failure'
+                throw $scaleResult.Message
+            }
+
+            if ($scaleResult.PSObject.Properties['LastProcess'] -and $scaleResult.LastProcess) { $config._Process = $scaleResult.LastProcess }
+            if ($scaleResult.PSObject.Properties['LastBaseUrl'] -and $scaleResult.LastBaseUrl) { $baseUrl = $scaleResult.LastBaseUrl; $config._BaseUrl = $scaleResult.LastBaseUrl }
+
+            Write-Status '      Running additional scenarios...'
+            $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
+                -ConfigPath $configPath -TargetDir $targetDir -Experiment $experiment -SkipPrimary -SkipHealthCheck -BaseUrl $baseUrl
+        } catch {
+            $measurementFailure = $_
+        } finally {
+            if ($config._BaseUrl) {
+                $null = Invoke-LifecycleHook -Name 'Cooldown' -TargetConfig $targetConfig `
+                    -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $experiment
+            }
+
+            $null = Invoke-LifecycleHook -Name 'Stop' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $experiment
+
+            $null = Invoke-LifecycleHook -Name 'Cleanup' -TargetConfig $targetConfig `
+                -TargetDir $targetDir -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $experiment
+        }
+
+        if ($measurementFailure) {
+            $failureDetail = if ($measurementFailure.Exception) { $measurementFailure.Exception.Message } else { "$measurementFailure" }
+
             if ($stackedDiffs) {
-                Write-Warning "API failed to start at experiment $experiment — reverting and continuing"
+                Write-Warning "$measurementFailureLabel at experiment $experiment — reverting and continuing"
 
                 & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                     -BranchName $branchName -FilePath $targetFile `
                     -Experiment $experiment -Outcome 'regressed' `
-                    -RevertDescription 'API start failure' `
-                    -MetadataSummary "API start failure: $($analysisResult.Explanation)" `
+                    -RevertDescription $measurementFailureLabel `
+                    -MetadataSummary "${measurementFailureLabel}: $($analysisResult.Explanation)" `
                     -MetadataFilePath $analysisResult.FilePath `
                     -QueueItemId $queueItemId `
-                    -ConfigPath $ConfigPath
+                    -ConfigPath $configPath `
+                    -TargetDir $targetDir
 
                 $currentBranch = $branchName
                 $branchChain += $branchName
-                $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'api_start_failure' }
+                $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = $measurementFailureReason }
                 $consecutiveFailures++
                 $staleCount++
 
-                # Create rejected PR for the record
                 $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
                     -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
                 $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode.`n" } else { '' }
                 $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
                     -Type 'Rejected' -Experiment $experiment `
                     -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-                    -OutcomeLabel '❌ **API failed to start**' `
+                    -OutcomeLabel "❌ **$measurementFailureLabel**" `
+                    -OutcomeDetail $failureDetail `
                     -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
-                Push-Location (Join-Path $repoRoot 'sample-api')
+                Push-Location $targetDir
                 $rejPrResult = New-ExperimentPR `
                     -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                     -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -888,14 +991,14 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 if ($rejPrResult.Success) {
                     $prNumber = $rejPrResult.PrNumber
                     $prUrl = $rejPrResult.PrUrl
-                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'api_start_failure' }
+                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $measurementFailureReason }
                 }
                 Pop-Location
 
                 Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                     -Experiment $experiment -StartedAt $experimentStartedAt `
-                    -Outcome 'api_start_failure' -BranchName $branchName `
-                    -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+                    -Outcome $measurementFailureReason -BranchName $branchName `
+                    -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
                     -PrNumber $prNumber -PrUrl $prUrl `
                     -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
 
@@ -906,85 +1009,10 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 }
                 continue
             } else {
-                $exitReason = 'api_start_failure'
-                Write-Error "API failed to start at experiment $experiment. Aborting."
+                $exitReason = $measurementFailureReason
+                Write-Error "$measurementFailureLabel at experiment $experiment. Aborting. $failureDetail"
                 break
             }
-        }
-
-        try {
-            $scaleResult = & (Join-Path $PSScriptRoot 'Invoke-ScaleTests.ps1') `
-                -ConfigPath $ConfigPath -Experiment $experiment -BaseUrl $apiResult.BaseUrl -SkipHealthCheck
-
-            if (-not $scaleResult.Success) {
-                if (-not $stackedDiffs) {
-                    $exitReason = 'scale_test_failure'
-                    Write-Error "Scale tests failed at experiment $experiment. Aborting."
-                    break
-                }
-                # Stacked mode: flag for revert after API is stopped (below finally)
-                Write-Warning "Scale tests failed at experiment $experiment — will revert after cleanup"
-            } else {
-                # Run additional (diagnostic) scenarios only on success
-                Write-Status '      Running additional scenarios...'
-                $scenarioResults = & (Join-Path $PSScriptRoot 'Invoke-AllScaleTests.ps1') `
-                    -ConfigPath $ConfigPath -Experiment $experiment -SkipPrimary -SkipHealthCheck -BaseUrl $apiResult.BaseUrl
-            }
-        } finally {
-            & (Join-Path $PSScriptRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process
-        }
-
-        # Handle scale test failure in stacked mode (after API is stopped)
-        if ($stackedDiffs -and (-not $scaleResult.Success)) {
-            & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
-                -BranchName $branchName -FilePath $targetFile `
-                -Experiment $experiment -Outcome 'regressed' `
-                -RevertDescription 'Scale test failure' `
-                -MetadataSummary "Scale test failure: $($analysisResult.Explanation)" `
-                -MetadataFilePath $analysisResult.FilePath `
-                -QueueItemId $queueItemId `
-                -ConfigPath $ConfigPath
-
-            $currentBranch = $branchName
-            $branchChain += $branchName
-            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'scale_test_failure' }
-            $consecutiveFailures++
-            $staleCount++
-
-            # Create rejected PR for the record
-            $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
-                -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
-            $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode.`n" } else { '' }
-            $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
-                -Type 'Rejected' -Experiment $experiment `
-                -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-                -OutcomeLabel '❌ **Scale test failure**' `
-                -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
-            Push-Location (Join-Path $repoRoot 'sample-api')
-            $rejPrResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome 'regressed' -Description $analysisResult.Explanation `
-                -Body $rejBody -IsDryRun:$DryRun
-            if ($rejPrResult.Success) {
-                $prNumber = $rejPrResult.PrNumber
-                $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'scale_test_failure' }
-            }
-            Pop-Location
-
-            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
-                -Experiment $experiment -StartedAt $experimentStartedAt `
-                -Outcome 'scale_test_failure' -BranchName $branchName `
-                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
-                -PrNumber $prNumber -PrUrl $prUrl `
-                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-
-            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
-                $exitReason = 'max_consecutive_failures'
-                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
-                break
-            }
-            continue
         }
     }
 
@@ -1016,7 +1044,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         -CurrentCounterMetrics $currentCounterMetrics `
         -PreviousCounterMetrics $previousCounterMetrics `
         -RunMetrics $scaleResult.RunMetrics `
-        -ConfigPath $ConfigPath `
+        -ConfigPath $configPath `
         -Experiment $experiment
 
     # Reference metrics used for delta computation (previous improved or baseline)
@@ -1061,13 +1089,13 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -Summary $analysisResult.Explanation `
             -FilePath $analysisResult.FilePath `
             -Outcome 'regressed' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         # Mark queue item as done
         & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
             -Action 'MarkDone' -ItemId $queueItemId `
             -Experiment $experiment -Outcome 'regressed' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         if ($stackedDiffs) {
             Write-Warning "  Reverting code change, preserving artifacts"
@@ -1077,7 +1105,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Experiment $experiment -Outcome 'regressed' `
                 -RevertDescription (Limit-String $analysisResult.Explanation 120) `
                 -SkipMetadataUpdate -SkipQueueMarkDone `
-                -ConfigPath $ConfigPath
+                -ConfigPath $configPath `
+                -TargetDir $targetDir
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -1122,7 +1151,7 @@ $rcaDocument
                 -OutcomeDetail $comparison.RegressionDetail `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -MetricsSection $rejMetrics -RcaSection $rejRcaSection
-            Push-Location (Join-Path $repoRoot 'sample-api')
+            Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'regressed' -Description $analysisResult.Explanation `
@@ -1142,7 +1171,7 @@ $rcaDocument
         } else {
             $exitReason = 'regression'
             Write-Warning "  Rolling back to previous state"
-            Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
             break
         }
     } elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
@@ -1166,19 +1195,19 @@ $rcaDocument
             -Summary $analysisResult.Explanation `
             -FilePath $analysisResult.FilePath `
             -Outcome 'improved' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         # Mark queue item as done
         & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
             -Action 'MarkDone' -ItemId $queueItemId `
             -Experiment $experiment -Outcome 'improved' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         # Amend the commit to include post-fix artifacts
-        Push-Location (Join-Path $repoRoot 'sample-api')
+        Push-Location $targetDir
         & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
-            -Experiment $experiment -SubmoduleDir (Join-Path $repoRoot 'sample-api')
-        git commit --amend --no-edit 2>&1 | Out-Null
+            -Experiment $experiment -SubmoduleDir $targetDir
+        git commit --amend --no-gpg-sign --no-edit 2>&1 | Out-Null
 
         # Push and create PR
         git push -u origin $branchName 2>&1 | Out-Null
@@ -1188,8 +1217,8 @@ $rcaDocument
             -Message "Branch pushed to origin: $branchName" `
             -Experiment $experiment
 
-        # Determine PR base: stacked mode uses baseBranch (previous experiment); legacy uses master
-        $prBaseBranch = if ($stackedDiffs) { $baseBranch } else { 'master' }
+        # Determine PR base: stacked mode uses baseBranch (previous experiment); legacy uses default branch
+        $prBaseBranch = if ($stackedDiffs) { $baseBranch } else { $defaultBranch }
 
         # Build PR body with stack context
         $stackNote = ''
@@ -1212,7 +1241,7 @@ $rcaDocument
                     $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
                     $scenarioRefLabel = $referenceLabel
                 } else {
-                    $scenarioBaselinePath = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
+                    $scenarioBaselinePath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
                     if (-not (Test-Path $scenarioBaselinePath)) { continue }
                     $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
                 }
@@ -1328,11 +1357,11 @@ $rcaDocument
                         -Experiment $experiment
 
                     if (-not $stackedDiffs) {
-                        # Legacy mode: update local master
-                        git fetch origin master 2>&1 | Out-Null
-                        git checkout master 2>&1 | Out-Null
-                        git merge origin/master --ff-only 2>&1 | Out-Null
-                        $currentBranch = 'master'
+                        # Legacy mode: update local default branch
+                        git fetch origin $defaultBranch 2>&1 | Out-Null
+                        git checkout $defaultBranch 2>&1 | Out-Null
+                        git merge "origin/$defaultBranch" --ff-only 2>&1 | Out-Null
+                        $currentBranch = $defaultBranch
                     }
                     break
                 } elseif ($prState.state -eq 'CLOSED') {
@@ -1344,8 +1373,8 @@ $rcaDocument
                         -Experiment $experiment
 
                     if (-not $stackedDiffs) {
-                        git checkout master 2>&1 | Out-Null
-                        $currentBranch = 'master'
+                        git checkout $defaultBranch 2>&1 | Out-Null
+                        $currentBranch = $defaultBranch
                     }
                     $exitReason = 'pr_rejected'
                     break
@@ -1376,13 +1405,13 @@ $rcaDocument
             -Summary $analysisResult.Explanation `
             -FilePath $analysisResult.FilePath `
             -Outcome 'stale' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         # Mark queue item as done
         & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
             -Action 'MarkDone' -ItemId $queueItemId `
             -Experiment $experiment -Outcome 'stale' `
-            -ConfigPath $ConfigPath
+            -ConfigPath $configPath -TargetDir $targetDir
 
         if ($stackedDiffs) {
             Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
@@ -1392,7 +1421,8 @@ $rcaDocument
                 -Experiment $experiment -Outcome 'stale' `
                 -RevertDescription (Limit-String $analysisResult.Explanation 120) `
                 -SkipMetadataUpdate -SkipQueueMarkDone `
-                -ConfigPath $ConfigPath
+                -ConfigPath $configPath `
+                -TargetDir $targetDir
 
             $currentBranch = $branchName
             $branchChain += $branchName
@@ -1434,7 +1464,7 @@ $rcaDocument
                 -OutcomeLabel "⚪ **No improvement detected**" `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -MetricsSection $rejMetrics -RcaSection $rejRcaSection
-            Push-Location (Join-Path $repoRoot 'sample-api')
+            Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
                 -Outcome 'stale' -Description $analysisResult.Explanation `
@@ -1454,7 +1484,7 @@ $rcaDocument
         } else {
             Write-Status "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))"
 
-            Undo-ExperimentBranch -BranchName $branchName -RepoRoot $repoRoot -RestoreBranch $currentBranch
+            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
 
             if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop) {
                 $exitReason = 'no_improvement'
@@ -1487,7 +1517,7 @@ $rcaDocument
     Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
         -Experiment $experiment -StartedAt $experimentStartedAt `
         -Outcome $experimentOutcome -BranchName $branchName `
-        -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { 'master' }) `
+        -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
         -Metrics $currentMetrics `
         -Improved $comparison.Improved -Regression $comparison.Regression `
         -PrNumber $experimentPrNumber -PrUrl $experimentPrUrl `
@@ -1567,6 +1597,7 @@ if ($stackedDiffs) {
 $runMetadata | ConvertTo-Json -Depth 10 | Out-File -FilePath $runMetadataPath -Encoding utf8
 
 # Return summary object
+$global:LASTEXITCODE = 0
 [PSCustomObject][ordered]@{
     ExitReason = $exitReason
     Experiments = $experimentsRun

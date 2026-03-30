@@ -31,6 +31,14 @@
 .PARAMETER CurrentMetrics
     Current performance metrics (for analysis context).
 
+.PARAMETER TargetDir
+    Root directory of the target project. Lifecycle hooks are used for
+    Prepare/Start/Stop and config paths are resolved relative to this directory.
+
+.PARAMETER TargetConfig
+    The target project's .hone/config.psd1 hashtable. Required so lifecycle
+    hooks can be resolved.
+
 .OUTPUTS
     @{
         Success          = $true
@@ -45,7 +53,13 @@ param(
 
     [string]$ConfigPath,
 
-    $CurrentMetrics
+    $CurrentMetrics,
+
+    [Parameter(Mandatory)]
+    [string]$TargetDir,
+
+    [Parameter(Mandatory)]
+    [hashtable]$TargetConfig
 )
 
 Set-StrictMode -Version Latest
@@ -54,17 +68,20 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $harnessRoot = $PSScriptRoot
-$repoRoot = Split-Path -Parent $harnessRoot
 
 # ── Load config ─────────────────────────────────────────────────────────────
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
-if (-not $config.Diagnostics -or -not $config.Diagnostics.Enabled) {
+# Merge target config so hooks receive Api settings
+$config = Merge-HoneConfig -Engine $config -Target $TargetConfig
+$pathBase = $TargetDir
+
+if (-not $config.ContainsKey('Diagnostics') -or -not $config.Diagnostics.Enabled) {
     throw 'Diagnostics are not enabled in config. Set Diagnostics.Enabled = $true.'
 }
 
 $diagnostics = $config.Diagnostics
-$resultsDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
+$resultsDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment" 'diagnostics'
 
 if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
@@ -85,9 +102,9 @@ Write-Status "  Collection groups: $($groupNames -join ', ') ($totalPasses pass$
 # ── Merged collector data across all passes ─────────────────────────────────
 $mergedCollectorData = @{}
 
-$scenarioPath = $diagnostics.DiagnosticScenarioPath ?? $config.ScaleTest.ScenarioPath
-$scenarioFullPath = Join-Path $repoRoot $scenarioPath
-$diagnosticRuns = $diagnostics.DiagnosticRuns ?? 1
+$scenarioPath = if ($diagnostics.ContainsKey('DiagnosticScenarioPath')) { $diagnostics.DiagnosticScenarioPath } else { $config.ScaleTest.ScenarioPath }
+$scenarioFullPath = Join-Path $pathBase $scenarioPath
+$diagnosticRuns = if ($diagnostics.ContainsKey('DiagnosticRuns')) { $diagnostics.DiagnosticRuns } else { 1 }
 $passNumber = 0
 
 foreach ($groupName in $groupNames) {
@@ -100,16 +117,27 @@ foreach ($groupName in $groupNames) {
 
     # ── Reset database ──────────────────────────────────────────────────────
     Write-Status '     Resetting database...'
-    & (Join-Path $harnessRoot 'Reset-Database.ps1') -ConfigPath $ConfigPath | Out-Null
+    $null = Assert-LifecycleHookSucceeded -Name 'Prepare' -Result (
+        Invoke-LifecycleHook -Name 'Prepare' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+            -HarnessRoot $harnessRoot -Config $config
+    )
 
     # ── Start API ───────────────────────────────────────────────────────────
     Write-Status '     Starting API...'
-    $apiResult = & (Join-Path $harnessRoot 'Start-SampleApi.ps1') -ConfigPath $ConfigPath
-
-    if (-not $apiResult.Success) {
-        Write-Warning "     API failed to start for pass $passNumber — skipping group '$groupName'"
-        continue
+    $apiResult = Assert-LifecycleHookSucceeded -Name 'Start' -Result (
+        Invoke-LifecycleHook -Name 'Start' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+            -HarnessRoot $harnessRoot -Config $config
+    )
+    $baseUrl = if ($apiResult.PSObject.Properties['ActualBaseUrl']) { $apiResult.ActualBaseUrl } elseif ($apiResult.PSObject.Properties['BaseUrl']) { $apiResult.BaseUrl } else { $null }
+    if ($baseUrl -and -not $apiResult.PSObject.Properties['BaseUrl']) {
+        $apiResult | Add-Member -NotePropertyName BaseUrl -NotePropertyValue $baseUrl -Force
     }
+    $config['_Process'] = $apiResult.Process
+    $config['_BaseUrl'] = $apiResult.BaseUrl
+    $null = Assert-LifecycleHookSucceeded -Name 'Ready' -Result (
+        Invoke-LifecycleHook -Name 'Ready' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+            -HarnessRoot $harnessRoot -Config $config -BaseUrl $apiResult.BaseUrl -Experiment $Experiment
+    )
 
     try {
         # ── Discover API PID ────────────────────────────────────────────────
@@ -151,7 +179,7 @@ foreach ($groupName in $groupNames) {
                     & (Join-Path $harnessRoot 'Invoke-Cooldown.ps1') -BaseUrl $baseUrl -GcEndpoint $config.Api.GcEndpoint -CooldownSeconds 3 | Out-Null
                 }
                 $k6SummaryPath = Join-Path $resultsDir "k6-diagnostic-$groupName-run$run.json"
-                $k6TimeoutSec = if ($config.Diagnostics.K6TimeoutSec) { $config.Diagnostics.K6TimeoutSec } else { 300 }
+                $k6TimeoutSec = if ($diagnostics.ContainsKey('K6TimeoutSec')) { $diagnostics.K6TimeoutSec } else { 300 }
                 $k6OutFile = [System.IO.Path]::GetTempFileName()
                 try {
                     $k6Proc = Start-Process -FilePath 'k6' `
@@ -203,9 +231,18 @@ foreach ($groupName in $groupNames) {
         $exportedNames = ($exportResult.CollectorData.Keys -join ', ')
         Write-Status "     Exported: $exportedNames"
     } finally {
+        if ($config._BaseUrl) {
+            $null = Invoke-LifecycleHook -Name 'Cooldown' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+                -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $Experiment
+        }
+
         # ── Stop API (always) ───────────────────────────────────────────────
         Write-Status '     Stopping API...'
-        & (Join-Path $harnessRoot 'Stop-SampleApi.ps1') -Process $apiResult.Process | Out-Null
+        $null = Invoke-LifecycleHook -Name 'Stop' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+            -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $Experiment
+
+        $null = Invoke-LifecycleHook -Name 'Cleanup' -TargetConfig $TargetConfig -TargetDir $TargetDir `
+            -HarnessRoot $harnessRoot -Config $config -BaseUrl $config._BaseUrl -Experiment $Experiment
     }
 }
 
