@@ -1,21 +1,21 @@
-∩╗┐<#
+﻿<#
 .SYNOPSIS
     Shared helper module for the Hone harness.
 
 .DESCRIPTION
     Contains common functions used across multiple harness scripts:
-    - Write-Status              ΓÇö Timestamped status output with box-drawing support
-    - Get-HoneConfig            ΓÇö Centralized config loading from .psd1
-    - Wait-ApiHealthy           ΓÇö HTTP health check polling with configurable retry
-    - Limit-String              ΓÇö Word-boundary-aware string truncation
-    - Invoke-CopilotWithTimeout ΓÇö Runs copilot CLI with a timeout guard
-    - Undo-ExperimentBranch     ΓÇö Legacy-mode branch rollback
-    - Add-ExperimentMetadatum    ΓÇö Records experiment entries in run-metadata.json
-    - New-ExperimentPR          ΓÇö Creates GitHub PRs for experiments
-    - Build-StackNote           ΓÇö Builds PR stack context note for stacked-diffs mode
-    - Resolve-Hook              ΓÇö Resolves hook definitions from .hone/config.psd1
-    - Invoke-LifecycleHook      ΓÇö Resolves and dispatches lifecycle hooks
-    - Merge-HoneConfig          ΓÇö Merges engine defaults with target config
+    - Write-Status              — Timestamped status output with box-drawing support
+    - Get-HoneConfig            — Centralized config loading from .psd1
+    - Wait-ApiHealthy           — HTTP health check polling with configurable retry
+    - Limit-String              — Word-boundary-aware string truncation
+    - Invoke-CopilotWithTimeout — Runs copilot CLI with a timeout guard
+    - Undo-ExperimentBranch     — Legacy-mode branch rollback
+    - Add-ExperimentMetadatum    — Records experiment entries in run-metadata.json
+    - New-ExperimentPR          — Creates GitHub PRs for experiments
+    - Build-StackNote           — Builds PR stack context note for stacked-diffs mode
+    - Resolve-Hook              — Resolves hook definitions from .hone/config.psd1
+    - Invoke-LifecycleHook      — Resolves and dispatches lifecycle hooks
+    - Merge-HoneConfig          — Merges engine defaults with target config
 #>
 
 function Write-Status {
@@ -25,7 +25,7 @@ function Write-Status {
         Box-drawing lines and blank lines are passed through without timestamps.
     #>
     param([string]$Message)
-    if ($Message -match '^\s*$' -or $Message -match '^[ΓöüΓòÉΓöÇΓòöΓòÜΓòùΓò¥ΓòæΓòáΓòúΓòªΓò⌐]') {
+    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
         Write-Information $Message -InformationAction Continue
     } else {
         Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
@@ -82,7 +82,7 @@ function Wait-ApiHealthy {
                 return $true
             }
         } catch {
-            Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s ΓÇö not ready"
+            Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s — not ready"
         }
         $remainingSec = $TimeoutSec - $stopwatch.Elapsed.TotalSeconds
         if ($remainingSec -le 0) { break }
@@ -95,7 +95,7 @@ function Limit-String {
     <#
     .SYNOPSIS
         Truncates a string at the last word boundary before MaxLength,
-        appending "ΓÇª" when truncated.
+        appending "…" when truncated.
     #>
     param(
         [string]$Text,
@@ -105,9 +105,9 @@ function Limit-String {
     $truncated = $Text.Substring(0, $MaxLength)
     $lastSpace = $truncated.LastIndexOf(' ')
     if ($lastSpace -gt ($MaxLength * 0.5)) {
-        return $truncated.Substring(0, $lastSpace) + 'ΓÇª'
+        return $truncated.Substring(0, $lastSpace) + '…'
     }
-    return $truncated + 'ΓÇª'
+    return $truncated + '…'
 }
 
 function Invoke-CopilotWithTimeout {
@@ -116,7 +116,7 @@ function Invoke-CopilotWithTimeout {
         Runs the copilot CLI with a timeout. Kills the process if it exceeds the deadline.
     .DESCRIPTION
         Uses System.Diagnostics.ProcessStartInfo.ArgumentList for proper argument
-        quoting ΓÇö essential because the prompt argument contains spaces, newlines,
+        quoting — essential because the prompt argument contains spaces, newlines,
         and special characters that Start-Process -ArgumentList would mangle.
     .PARAMETER ArgumentList
         Arguments to pass to copilot as individual elements. Each element is
@@ -297,7 +297,7 @@ function New-ExperimentPR {
             -Experiment $Experiment `
             -Data @{ prUrl = "$result"; prNumber = $extractedNumber; baseBranch = $BaseBranch; outcome = $outcomeTag }
 
-        Write-Status "  Γ£ô Pull request created: $result (base: $BaseBranch) [$outcomeTag]"
+        Write-Status "  ✓ Pull request created: $result (base: $BaseBranch) [$outcomeTag]"
 
         return [PSCustomObject]@{
             Success = $true
@@ -338,11 +338,11 @@ function Build-StackNote {
 
     $stackParts = @('`master`')
     foreach ($pr in $PrChain) {
-        $tag = if ($pr.Outcome -eq 'improved') { 'Γ£ô' } else { 'Γ£ù' }
+        $tag = if ($pr.Outcome -eq 'improved') { '✓' } else { '✗' }
         $stackParts += "PR #$($pr.Number) (experiment-$($pr.Experiment)) $tag"
     }
     $stackParts += "**this PR** (experiment-$Experiment) $OutcomeTag"
-    $stackLine = $stackParts -join ' ΓåÆ '
+    $stackLine = $stackParts -join ' → '
 
     $prExperimentNums = @($PrChain | ForEach-Object { $_.Experiment })
     $failedBetween = @($FailedExperiments | Where-Object {
@@ -401,7 +401,7 @@ function Resolve-Hook {
             if (-not (Test-Path $resolvedPath)) {
                 throw "Hook script not found: $resolvedPath (declared in Hooks.$HookName)"
             }
-            Write-Verbose "Resolved hook '$HookName' ΓåÆ Script: $resolvedPath"
+            Write-Verbose "Resolved hook '$HookName' → Script: $resolvedPath"
             return @{ Type = 'Script'; Path = $resolvedPath }
         }
         'Shared' {
@@ -409,19 +409,19 @@ function Resolve-Hook {
             if (-not (Test-Path $resolvedPath)) {
                 throw "Shared hook not found: $resolvedPath (declared in Hooks.$HookName)"
             }
-            Write-Verbose "Resolved hook '$HookName' ΓåÆ Shared: $resolvedPath"
+            Write-Verbose "Resolved hook '$HookName' → Shared: $resolvedPath"
             return @{ Type = 'Script'; Path = $resolvedPath }
         }
         'Command' {
-            Write-Verbose "Resolved hook '$HookName' ΓåÆ Command"
+            Write-Verbose "Resolved hook '$HookName' → Command"
             return $hook
         }
         'Http' {
-            Write-Verbose "Resolved hook '$HookName' ΓåÆ Http"
+            Write-Verbose "Resolved hook '$HookName' → Http"
             return $hook
         }
         'Skip' {
-            Write-Verbose "Resolved hook '$HookName' ΓåÆ Skip"
+            Write-Verbose "Resolved hook '$HookName' → Skip"
             return $hook
         }
         default {

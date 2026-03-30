@@ -1,4 +1,4 @@
-∩╗┐<#
+﻿<#
 .SYNOPSIS
     Unified runner for Copilot CLI agent invocations.
 
@@ -74,7 +74,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
-# DryRun mock support ΓÇö return canned response instead of calling copilot
+# DryRun mock support — return canned response instead of calling copilot
 if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
     $mockResponse = Get-Content $MockResponsePath -Raw
     $parsedJson = $null
@@ -94,7 +94,7 @@ if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
         })
 }
 
-# ΓöÇΓöÇ Resolve model ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── Resolve model ───────────────────────────────────────────────────────────
 $copilotModel = $DefaultModel
 if ($ModelConfigKey -and $config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey($ModelConfigKey)) {
     $copilotModel = $config.Copilot[$ModelConfigKey]
@@ -102,13 +102,13 @@ if ($ModelConfigKey -and $config.ContainsKey('Copilot') -and $config.Copilot.Con
     $copilotModel = $config.Copilot.Model
 }
 
-# ΓöÇΓöÇ Resolve timeout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── Resolve timeout ─────────────────────────────────────────────────────────
 $timeoutSec = 600
 if ($config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey('AgentTimeoutSec')) {
     $timeoutSec = $config.Copilot.AgentTimeoutSec
 }
 
-# ΓöÇΓöÇ Retry loop ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ── Retry loop ──────────────────────────────────────────────────────────────
 $lastError = $null
 for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
     $spinner = $null
@@ -173,7 +173,7 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
                 })
         }
 
-        # Parse JSON ΓÇö strip code fences, sanitize JS literals, extract first JSON object
+        # Parse JSON — strip code fences, sanitize JS literals, extract first JSON object
         $jsonText = $responseText -replace '(?s)^```(?:json)?\s*', '' -replace '(?s)\s*```\s*$', ''
         $jsonText = $jsonText -replace '(?<=[\s,:[\{])\bNaN\b', 'null'
         $jsonText = $jsonText -replace '(?<=[\s,:[\{])-?Infinity\b', 'null'
