@@ -1,18 +1,21 @@
-﻿<#
+∩╗┐<#
 .SYNOPSIS
     Shared helper module for the Hone harness.
 
 .DESCRIPTION
     Contains common functions used across multiple harness scripts:
-    - Write-Status              — Timestamped status output with box-drawing support
-    - Get-HoneConfig            — Centralized config loading from .psd1
-    - Wait-ApiHealthy           — HTTP health check polling with configurable retry
-    - Limit-String              — Word-boundary-aware string truncation
-    - Invoke-CopilotWithTimeout — Runs copilot CLI with a timeout guard
-    - Undo-ExperimentBranch     — Legacy-mode branch rollback
-    - Add-ExperimentMetadatum    — Records experiment entries in run-metadata.json
-    - New-ExperimentPR          — Creates GitHub PRs for experiments
-    - Build-StackNote           — Builds PR stack context note for stacked-diffs mode
+    - Write-Status              ΓÇö Timestamped status output with box-drawing support
+    - Get-HoneConfig            ΓÇö Centralized config loading from .psd1
+    - Wait-ApiHealthy           ΓÇö HTTP health check polling with configurable retry
+    - Limit-String              ΓÇö Word-boundary-aware string truncation
+    - Invoke-CopilotWithTimeout ΓÇö Runs copilot CLI with a timeout guard
+    - Undo-ExperimentBranch     ΓÇö Legacy-mode branch rollback
+    - Add-ExperimentMetadatum    ΓÇö Records experiment entries in run-metadata.json
+    - New-ExperimentPR          ΓÇö Creates GitHub PRs for experiments
+    - Build-StackNote           ΓÇö Builds PR stack context note for stacked-diffs mode
+    - Resolve-Hook              ΓÇö Resolves hook definitions from .hone/config.psd1
+    - Invoke-LifecycleHook      ΓÇö Resolves and dispatches lifecycle hooks
+    - Merge-HoneConfig          ΓÇö Merges engine defaults with target config
 #>
 
 function Write-Status {
@@ -22,7 +25,7 @@ function Write-Status {
         Box-drawing lines and blank lines are passed through without timestamps.
     #>
     param([string]$Message)
-    if ($Message -match '^\s*$' -or $Message -match '^[━═─╔╚╗╝║╠╣╦╩]') {
+    if ($Message -match '^\s*$' -or $Message -match '^[ΓöüΓòÉΓöÇΓòöΓòÜΓòùΓò¥ΓòæΓòáΓòúΓòªΓò⌐]') {
         Write-Information $Message -InformationAction Continue
     } else {
         Write-Information "[$(Get-Date -Format 'HH:mm:ss')] $Message" -InformationAction Continue
@@ -79,7 +82,7 @@ function Wait-ApiHealthy {
                 return $true
             }
         } catch {
-            Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s — not ready"
+            Write-Verbose "Health check at $($stopwatch.Elapsed.TotalSeconds.ToString('F0'))s/${TimeoutSec}s ΓÇö not ready"
         }
         $remainingSec = $TimeoutSec - $stopwatch.Elapsed.TotalSeconds
         if ($remainingSec -le 0) { break }
@@ -92,7 +95,7 @@ function Limit-String {
     <#
     .SYNOPSIS
         Truncates a string at the last word boundary before MaxLength,
-        appending "…" when truncated.
+        appending "ΓÇª" when truncated.
     #>
     param(
         [string]$Text,
@@ -102,9 +105,9 @@ function Limit-String {
     $truncated = $Text.Substring(0, $MaxLength)
     $lastSpace = $truncated.LastIndexOf(' ')
     if ($lastSpace -gt ($MaxLength * 0.5)) {
-        return $truncated.Substring(0, $lastSpace) + '…'
+        return $truncated.Substring(0, $lastSpace) + 'ΓÇª'
     }
-    return $truncated + '…'
+    return $truncated + 'ΓÇª'
 }
 
 function Invoke-CopilotWithTimeout {
@@ -113,7 +116,7 @@ function Invoke-CopilotWithTimeout {
         Runs the copilot CLI with a timeout. Kills the process if it exceeds the deadline.
     .DESCRIPTION
         Uses System.Diagnostics.ProcessStartInfo.ArgumentList for proper argument
-        quoting — essential because the prompt argument contains spaces, newlines,
+        quoting ΓÇö essential because the prompt argument contains spaces, newlines,
         and special characters that Start-Process -ArgumentList would mangle.
     .PARAMETER ArgumentList
         Arguments to pass to copilot as individual elements. Each element is
@@ -121,13 +124,18 @@ function Invoke-CopilotWithTimeout {
         '-p', $prompt)).
     .PARAMETER TimeoutSec
         Maximum seconds to wait. Default: 600.
+    .PARAMETER WorkingDirectory
+        Working directory for the copilot process. When set, the agent's file
+        tools resolve relative paths from this directory. Used to point agents
+        at the target project rather than the harness repo.
     .OUTPUTS
         PSCustomObject with Success, Output, TimedOut, ExitCode properties.
     #>
     param(
         [Parameter(Mandatory)]
         [string[]]$ArgumentList,
-        [int]$TimeoutSec = 600
+        [int]$TimeoutSec = 600,
+        [string]$WorkingDirectory
     )
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = 'copilot'
@@ -135,6 +143,9 @@ function Invoke-CopilotWithTimeout {
     $psi.CreateNoWindow = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    if ($WorkingDirectory) {
+        $psi.WorkingDirectory = $WorkingDirectory
+    }
     foreach ($arg in $ArgumentList) {
         $psi.ArgumentList.Add($arg)
     }
@@ -177,11 +188,11 @@ function Undo-ExperimentBranch {
     #>
     param(
         [Parameter(Mandatory)][string]$BranchName,
-        [Parameter(Mandatory)][string]$RepoRoot,
-        [string]$RestoreBranch = 'master'
+        [string]$RestoreBranch = 'master',
+        [Parameter(Mandatory)][string]$TargetDir
     )
     try {
-        Push-Location (Join-Path $RepoRoot 'sample-api')
+        Push-Location $TargetDir
         git checkout $RestoreBranch 2>&1 | Out-Null
         git branch -D $BranchName 2>&1 | Out-Null
         Pop-Location
@@ -286,7 +297,7 @@ function New-ExperimentPR {
             -Experiment $Experiment `
             -Data @{ prUrl = "$result"; prNumber = $extractedNumber; baseBranch = $BaseBranch; outcome = $outcomeTag }
 
-        Write-Status "  ✓ Pull request created: $result (base: $BaseBranch) [$outcomeTag]"
+        Write-Status "  Γ£ô Pull request created: $result (base: $BaseBranch) [$outcomeTag]"
 
         return [PSCustomObject]@{
             Success = $true
@@ -327,11 +338,11 @@ function Build-StackNote {
 
     $stackParts = @('`master`')
     foreach ($pr in $PrChain) {
-        $tag = if ($pr.Outcome -eq 'improved') { '✓' } else { '✗' }
+        $tag = if ($pr.Outcome -eq 'improved') { 'Γ£ô' } else { 'Γ£ù' }
         $stackParts += "PR #$($pr.Number) (experiment-$($pr.Experiment)) $tag"
     }
     $stackParts += "**this PR** (experiment-$Experiment) $OutcomeTag"
-    $stackLine = $stackParts -join ' → '
+    $stackLine = $stackParts -join ' ΓåÆ '
 
     $prExperimentNums = @($PrChain | ForEach-Object { $_.Experiment })
     $failedBetween = @($FailedExperiments | Where-Object {
@@ -353,4 +364,163 @@ function Build-StackNote {
 "@
 }
 
-Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote
+function Resolve-Hook {
+    <#
+    .SYNOPSIS
+        Resolves a hook definition from .hone/config.psd1 into an executable descriptor.
+    .DESCRIPTION
+        Looks up the named hook in TargetConfig.Hooks and resolves its path:
+        - Script : resolves relative path under TargetDir
+        - Shared : resolves to a built-in hook under HarnessRoot/hooks/
+        - Command, Http, Skip : returned as-is
+    .PARAMETER HookName
+        Name of the hook to resolve (e.g., 'Build', 'Start', 'Verify').
+    .PARAMETER TargetConfig
+        The target project's .hone/config.psd1 hashtable.
+    .PARAMETER TargetDir
+        Root directory of the target project.
+    .PARAMETER HarnessRoot
+        Root directory of the Hone harness.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$HookName,
+        [Parameter(Mandatory)] [hashtable]$TargetConfig,
+        [Parameter(Mandatory)] [string]$TargetDir,
+        [Parameter(Mandatory)] [string]$HarnessRoot
+    )
+
+    $hook = $TargetConfig.Hooks[$HookName]
+    if (-not $hook) {
+        throw ".hone/config.psd1 must declare Hooks.$HookName (use Type = 'Skip' if not needed)"
+    }
+
+    switch ($hook.Type) {
+        'Script' {
+            $resolvedPath = Join-Path $TargetDir $hook.Path
+            if (-not (Test-Path $resolvedPath)) {
+                throw "Hook script not found: $resolvedPath (declared in Hooks.$HookName)"
+            }
+            Write-Verbose "Resolved hook '$HookName' ΓåÆ Script: $resolvedPath"
+            return @{ Type = 'Script'; Path = $resolvedPath }
+        }
+        'Shared' {
+            $resolvedPath = Join-Path $HarnessRoot "hooks\$($hook.Name).ps1"
+            if (-not (Test-Path $resolvedPath)) {
+                throw "Shared hook not found: $resolvedPath (declared in Hooks.$HookName)"
+            }
+            Write-Verbose "Resolved hook '$HookName' ΓåÆ Shared: $resolvedPath"
+            return @{ Type = 'Script'; Path = $resolvedPath }
+        }
+        'Command' {
+            Write-Verbose "Resolved hook '$HookName' ΓåÆ Command"
+            return $hook
+        }
+        'Http' {
+            Write-Verbose "Resolved hook '$HookName' ΓåÆ Http"
+            return $hook
+        }
+        'Skip' {
+            Write-Verbose "Resolved hook '$HookName' ΓåÆ Skip"
+            return $hook
+        }
+        default {
+            throw "Unknown hook type '$($hook.Type)' for Hooks.$HookName"
+        }
+    }
+}
+
+function Invoke-LifecycleHook {
+    <#
+    .SYNOPSIS
+        Resolves and dispatches a lifecycle hook by name.
+    .DESCRIPTION
+        High-level entry point that resolves a hook definition via Resolve-Hook
+        and then dispatches it through the Invoke-Hook.ps1 script.
+    .PARAMETER Name
+        Name of the lifecycle hook (e.g., 'Build', 'Start', 'Verify').
+    .PARAMETER TargetConfig
+        The target project's .hone/config.psd1 hashtable.
+    .PARAMETER TargetDir
+        Root directory of the target project.
+    .PARAMETER HarnessRoot
+        Root directory of the Hone harness.
+    .PARAMETER Config
+        Merged harness configuration hashtable passed to the hook.
+    .PARAMETER BaseUrl
+        Base URL of the running API.
+    .PARAMETER Experiment
+        Current experiment identifier.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string]$Name,
+        [Parameter(Mandatory)] [hashtable]$TargetConfig,
+        [Parameter(Mandatory)] [string]$TargetDir,
+        [Parameter(Mandatory)] [string]$HarnessRoot,
+        [hashtable]$Config,
+        [string]$BaseUrl,
+        [string]$Experiment
+    )
+
+    $resolved = Resolve-Hook -HookName $Name -TargetConfig $TargetConfig -TargetDir $TargetDir -HarnessRoot $HarnessRoot
+
+    $hookScript = Join-Path $HarnessRoot 'hooks\Invoke-Hook.ps1'
+    Write-Verbose "Dispatching lifecycle hook '$Name' via $hookScript"
+    & $hookScript -Hook $resolved -TargetPath $TargetDir -Config $Config -BaseUrl $BaseUrl -Experiment $Experiment
+}
+
+function Merge-HoneConfig {
+    <#
+    .SYNOPSIS
+        Shallow-merges target config on top of engine defaults.
+    .DESCRIPTION
+        For top-level scalar keys, target values override engine values.
+        For top-level hashtable keys (Api, Tolerances, Loop, etc.), merges
+        at the section level so partial target overrides are supported.
+    .PARAMETER Engine
+        Engine defaults hashtable.
+    .PARAMETER Target
+        Target-specific overrides hashtable.
+    .OUTPUTS
+        [hashtable] Merged configuration.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [hashtable]$Engine,
+        [Parameter(Mandatory)] [hashtable]$Target
+    )
+
+    $merged = @{}
+
+    # Start with all engine keys
+    foreach ($key in $Engine.Keys) {
+        if ($Engine[$key] -is [hashtable]) {
+            $merged[$key] = @{}
+            foreach ($subKey in $Engine[$key].Keys) {
+                $merged[$key][$subKey] = $Engine[$key][$subKey]
+            }
+        } else {
+            $merged[$key] = $Engine[$key]
+        }
+    }
+
+    # Overlay target keys (target wins)
+    foreach ($key in $Target.Keys) {
+        if ($Target[$key] -is [hashtable]) {
+            if (-not $merged.ContainsKey($key)) {
+                $merged[$key] = @{}
+            }
+            foreach ($subKey in $Target[$key].Keys) {
+                $merged[$key][$subKey] = $Target[$key][$subKey]
+            }
+        } else {
+            $merged[$key] = $Target[$key]
+        }
+    }
+
+    Write-Verbose "Merged config: $($merged.Keys.Count) top-level keys"
+    return $merged
+}
+
+Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote, Resolve-Hook, Invoke-LifecycleHook, Merge-HoneConfig

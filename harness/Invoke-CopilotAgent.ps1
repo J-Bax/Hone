@@ -1,4 +1,4 @@
-﻿<#
+∩╗┐<#
 .SYNOPSIS
     Unified runner for Copilot CLI agent invocations.
 
@@ -64,7 +64,9 @@ param(
 
     [string]$ConfigPath,
 
-    [string]$MockResponsePath
+    [string]$MockResponsePath,
+
+    [string]$WorkingDirectory
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -72,7 +74,7 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
-# DryRun mock support — return canned response instead of calling copilot
+# DryRun mock support ΓÇö return canned response instead of calling copilot
 if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
     $mockResponse = Get-Content $MockResponsePath -Raw
     $parsedJson = $null
@@ -92,21 +94,21 @@ if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
         })
 }
 
-# ── Resolve model ───────────────────────────────────────────────────────────
+# ΓöÇΓöÇ Resolve model ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $copilotModel = $DefaultModel
-if ($ModelConfigKey -and $config.Copilot -and $config.Copilot.ContainsKey($ModelConfigKey)) {
+if ($ModelConfigKey -and $config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey($ModelConfigKey)) {
     $copilotModel = $config.Copilot[$ModelConfigKey]
-} elseif ($config.Copilot -and $config.Copilot.Model) {
+} elseif ($config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey('Model')) {
     $copilotModel = $config.Copilot.Model
 }
 
-# ── Resolve timeout ─────────────────────────────────────────────────────────
+# ΓöÇΓöÇ Resolve timeout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $timeoutSec = 600
-if ($config.Copilot -and $config.Copilot.AgentTimeoutSec) {
+if ($config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey('AgentTimeoutSec')) {
     $timeoutSec = $config.Copilot.AgentTimeoutSec
 }
 
-# ── Retry loop ──────────────────────────────────────────────────────────────
+# ΓöÇΓöÇ Retry loop ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 $lastError = $null
 for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
     $spinner = $null
@@ -127,9 +129,20 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
 
         $spinner = Start-Spinner -Message $spinMsg
 
-        $copilotResult = Invoke-CopilotWithTimeout `
-            -ArgumentList @('--agent', $AgentName, '--model', $copilotModel, '-p', $effectivePrompt, '-s', '--no-auto-update', '--no-ask-user') `
-            -TimeoutSec $timeoutSec
+        $copilotArgs = @('--agent', $AgentName, '--model', $copilotModel, '-p', $effectivePrompt, '-s', '--no-auto-update', '--no-ask-user')
+        if ($WorkingDirectory) {
+            $copilotArgs += '--no-custom-instructions'
+        }
+
+        $copilotParams = @{
+            ArgumentList = $copilotArgs
+            TimeoutSec = $timeoutSec
+        }
+        if ($WorkingDirectory) {
+            $copilotParams.WorkingDirectory = $WorkingDirectory
+        }
+
+        $copilotResult = Invoke-CopilotWithTimeout @copilotParams
 
         [Console]::OutputEncoding = $prevEncoding
 
@@ -160,7 +173,7 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
                 })
         }
 
-        # Parse JSON — strip code fences, sanitize JS literals, extract first JSON object
+        # Parse JSON ΓÇö strip code fences, sanitize JS literals, extract first JSON object
         $jsonText = $responseText -replace '(?s)^```(?:json)?\s*', '' -replace '(?s)\s*```\s*$', ''
         $jsonText = $jsonText -replace '(?<=[\s,:[\{])\bNaN\b', 'null'
         $jsonText = $jsonText -replace '(?<=[\s,:[\{])-?Infinity\b', 'null'
