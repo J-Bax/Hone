@@ -12,6 +12,10 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER TargetDir
+    Root directory of the target project. Paths are resolved relative to this
+    directory when provided.
+
 .PARAMETER Experiment
     Current experiment number — forwarded to Invoke-ScaleTests.ps1 for file
     naming and logging.
@@ -31,6 +35,7 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
+    [string]$TargetDir,
     [int]$Experiment = 0,
     [switch]$SkipPrimary,
     [switch]$SkipHealthCheck,
@@ -43,15 +48,26 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+
 # ── Load scenario registry ──────────────────────────────────────────────────
 
-$registryPath = Join-Path $repoRoot $config.ScaleTest.ScenarioRegistryPath
+$registryPath = Join-Path $pathBase $config.ScaleTest.ScenarioRegistryPath
 if (-not (Test-Path $registryPath)) {
     Write-Error "Scenario registry not found at $registryPath"
     return
 }
 
 $registry = Get-Content $registryPath -Raw | ConvertFrom-Json
+$registryDir = Split-Path -Parent $registryPath
 
 # ── Iterate scenarios ───────────────────────────────────────────────────────
 
@@ -79,7 +95,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
     }
     $scenarioIndex++
 
-    $scenarioFile = Join-Path -Path $repoRoot -ChildPath (Split-Path $config.ScaleTest.ScenarioRegistryPath -Parent) $scenario.file
+    $scenarioFile = Join-Path -Path $registryDir -ChildPath $scenario.file
 
     # For the primary optimization scenario use no ScenarioName so the
     # existing k6-summary.json naming is preserved.
@@ -95,6 +111,7 @@ foreach ($name in ($registry.scenarios.PSObject.Properties.Name)) {
         Experiment = $Experiment
         ScenarioPath = $scenarioFile
     }
+    if ($TargetDir) { $params.TargetDir = $TargetDir }
     if ($scenarioNameArg) { $params.ScenarioName = $scenarioNameArg }
     if ($BaseUrl) { $params.BaseUrl = $BaseUrl }
     if ($SkipHealthCheck) { $params.SkipHealthCheck = $true }

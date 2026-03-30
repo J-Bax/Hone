@@ -116,13 +116,40 @@ function Compare-Metric {
         return [Math]::Max(-10.0, [Math]::Min(10.0, $r))
     }
 
+    function Test-Improvement {
+        param(
+            [Parameter(Mandatory)]
+            [double]$Change,
+
+            [Parameter(Mandatory)]
+            [double]$Threshold,
+
+            [Parameter(Mandatory)]
+            [bool]$LowerIsBetter
+        )
+
+        if ($LowerIsBetter) {
+            if ($Threshold -eq 0) {
+                return $Change -lt 0
+            }
+
+            return $Change -le - $Threshold
+        }
+
+        if ($Threshold -eq 0) {
+            return $Change -gt 0
+        }
+
+        return $Change -ge $Threshold
+    }
+
     # ── Calculate per-metric deltas vs reference ────────────────────────────
 
     # p95 latency — lower is better
     $p95Current = $Current.HttpReqDuration.P95
     $p95Previous = $Previous.HttpReqDuration.P95
     $p95Change = Get-PctChange $p95Current $p95Previous
-    $p95Improved = $p95Change -le - $Tolerances.MinImprovementPct
+    $p95Improved = Test-Improvement -Change $p95Change -Threshold $Tolerances.MinImprovementPct -LowerIsBetter $true
     $p95AbsoluteDelta = $p95Current - $p95Previous
     $minAbsDelta = if ($Tolerances.MinAbsoluteP95DeltaMs) { $Tolerances.MinAbsoluteP95DeltaMs } else { 0 }
     $p95Regressed = ($p95Change -gt $Tolerances.MaxRegressionPct) -and
@@ -132,7 +159,7 @@ function Compare-Metric {
     $rpsCurrent = $Current.HttpReqs.Rate
     $rpsPrevious = $Previous.HttpReqs.Rate
     $rpsChange = Get-PctChange $rpsCurrent $rpsPrevious
-    $rpsImproved = $rpsChange -ge $Tolerances.MinImprovementPct
+    $rpsImproved = Test-Improvement -Change $rpsChange -Threshold $Tolerances.MinImprovementPct -LowerIsBetter $false
     $rpsAbsoluteDelta = $rpsPrevious - $rpsCurrent
     $minAbsRpsDelta = if ($Tolerances.MinAbsoluteRPSDelta) { $Tolerances.MinAbsoluteRPSDelta } else { 0 }
     $rpsRegressed = ($rpsChange -lt - $Tolerances.MaxRegressionPct) -and
@@ -142,7 +169,7 @@ function Compare-Metric {
     $errCurrent = $Current.HttpReqFailed.Rate
     $errPrevious = $Previous.HttpReqFailed.Rate
     $errChange = Get-PctChange $errCurrent $errPrevious
-    $errImproved = ($errChange -le - $Tolerances.MinImprovementPct) -and ($errPrevious -gt 0)
+    $errImproved = (Test-Improvement -Change $errChange -Threshold $Tolerances.MinImprovementPct -LowerIsBetter $true) -and ($errPrevious -gt 0)
     $errAbsoluteDelta = $errCurrent - $errPrevious
     $minAbsErrDelta = if ($Tolerances.MinAbsoluteErrorRateDelta) { $Tolerances.MinAbsoluteErrorRateDelta } else { 0 }
     $errRegressed = ($errChange -gt $Tolerances.MaxRegressionPct) -and ($errCurrent -gt 0) -and

@@ -37,11 +37,17 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
 
 # Merge target config into engine config so hooks receive Api settings
 $config = Merge-HoneConfig -Engine $config -Target $TargetConfig
+$fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
+$fixtureBaseline = if ($fixture) {
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Baseline') -Experiment 0
+} else {
+    $null
+}
 
 $pathBase = $TargetDir
 
 # ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
-if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
+if (-not $fixtureBaseline -and -not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
     Write-Error 'k6 is not on PATH — install k6 or add its directory to PATH before running the baseline'
     return
 }

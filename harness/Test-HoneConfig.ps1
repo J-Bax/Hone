@@ -153,6 +153,19 @@ if ($TargetPath) {
             }
         }
 
+        if ($targetCfg.ContainsKey('HarnessTesting') -and $targetCfg.HarnessTesting.Enabled) {
+            $manifestRelPath = if ($targetCfg.HarnessTesting.ContainsKey('ManifestPath') -and $targetCfg.HarnessTesting.ManifestPath) {
+                $targetCfg.HarnessTesting.ManifestPath
+            } else {
+                '.hone\fixtures\fixture.psd1'
+            }
+
+            $manifestPath = Join-Path -Path $TargetPath -ChildPath $manifestRelPath
+            if (-not (Test-Path -Path $manifestPath)) {
+                $errors += ".hone/config.psd1 HarnessTesting manifest not found: $manifestPath"
+            }
+        }
+
         # All 8 hooks must be declared
         if ($targetCfg.Hooks) {
             $requiredHooks = @('Prepare', 'Start', 'Stop', 'Ready', 'Warmup', 'Active', 'Cooldown', 'Cleanup')

@@ -7,7 +7,7 @@
     as NARROW or ARCHITECTURE. Returns structured JSON with scope and reasoning.
 
 .PARAMETER FilePath
-    Target file path (relative to sample-api/).
+    Target file path (relative to the target project root).
 
 .PARAMETER Explanation
     Description of the proposed optimization.
@@ -15,8 +15,18 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER TargetDir
+    Root directory of the target project. Config paths are resolved relative to
+    this directory and agent file exploration runs from this directory.
+
+.PARAMETER TargetName
+    Human-readable target name for prompt text.
+
 .PARAMETER Experiment
     Current experiment number for logging.
+
+.PARAMETER MockResponsePath
+    Optional path to a canned agent response for deterministic testing.
 #>
 [CmdletBinding()]
 param(
@@ -28,7 +38,13 @@ param(
 
     [string]$ConfigPath,
 
-    [int]$Experiment = 0
+    [string]$TargetDir,
+
+    [string]$TargetName,
+
+    [int]$Experiment = 0,
+
+    [string]$MockResponsePath
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -36,6 +52,16 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+$targetLabel = if ($TargetName) { $TargetName } elseif ($TargetDir) { Split-Path -Path $TargetDir -Leaf } else { 'target project' }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Classifying change scope for: $FilePath" `
@@ -55,10 +81,10 @@ Read the target file at the path above (relative to sample-api/) to verify the
 change can be contained to a single file.
 
 Respond with JSON only. No markdown, no code blocks around the JSON.
-"@
+"@ -replace 'relative to sample-api/', "relative to the $targetLabel root"
 
 # ── Call the hone-classifier agent ───────────────────────────────────────────
-$iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
+$iterDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
@@ -73,7 +99,10 @@ $agentResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAgent.ps1') `
     -ResponsePath (Join-Path $iterDir 'classification-response.json') `
     -MaxRetries 2 `
     -RetryPromptSuffix 'IMPORTANT: Respond with strict RFC 8259 JSON only. Do not use NaN, Infinity, undefined, or any JavaScript literals. Use null for missing numeric values.' `
-    -ConfigPath $ConfigPath
+    -ConfigPath $ConfigPath `
+    -MockResponsePath $MockResponsePath `
+    -WorkingDirectory $TargetDir `
+    -Experiment $Experiment
 
 $parsed = $agentResult.ParsedJson
 

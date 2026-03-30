@@ -52,6 +52,17 @@ if ($TargetDir) {
 }
 
 $pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+$fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
+$fixtureScale = $null
+if ($fixture) {
+    if ($ScenarioName) {
+        $fixtureScale = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Scale', 'Scenarios', $ScenarioName) -Experiment $Experiment
+    }
+
+    if (-not $fixtureScale) {
+        $fixtureScale = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Scale', 'Primary') -Experiment $Experiment
+    }
+}
 
 # Seed the local config with the caller's process reference so the first
 # between-run Stop can terminate the initial API (which the caller started).
@@ -82,7 +93,7 @@ if (-not (Test-Path $outputDir)) {
 . (Join-Path $PSScriptRoot 'Show-Progress.ps1')
 
 # ── Pre-flight: verify k6 is available ──────────────────────────────────────
-if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
+if (-not $fixtureScale -and -not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
     $msg = 'k6 is not on PATH — cannot run scale tests'
     & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
         -Phase 'measure' -Level 'error' -Message $msg -Experiment $Experiment
@@ -90,7 +101,7 @@ if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
 }
 
 # ── Pre-flight: verify API is healthy ───────────────────────────────────────
-if (-not $SkipHealthCheck) {
+if (-not $fixtureScale -and -not $SkipHealthCheck) {
     $healthEndpoint = $config.Api.HealthEndpoint
     if ($healthEndpoint) {
         $healthUrl = "$baseUrl$healthEndpoint"
@@ -108,7 +119,7 @@ if (-not $SkipHealthCheck) {
 $isPrimary = -not $ScenarioName
 $warmupEnabled = $isPrimary -and $config.ScaleTest.WarmupEnabled -and $config.ScaleTest.WarmupScenarioPath
 
-if ($warmupEnabled) {
+if (-not $fixtureScale -and $warmupEnabled) {
     $warmupPath = Join-Path $pathBase $config.ScaleTest.WarmupScenarioPath
     if (Test-Path $warmupPath) {
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
@@ -145,7 +156,7 @@ $counterHandle = $null
 $counterMetrics = $null
 $countersEnabled = $config.ContainsKey('DotnetCounters') -and $config.DotnetCounters.Enabled -and (-not $ScenarioName)
 
-if ($countersEnabled) {
+if (-not $fixtureScale -and $countersEnabled) {
     # Discover the API process PID from the base URL port
     $apiPort = ([Uri]$baseUrl).Port
     $apiProcess = Get-NetTCPConnection -LocalPort $apiPort -State Listen -ErrorAction SilentlyContinue |
@@ -174,6 +185,92 @@ if ($countersEnabled) {
 }
 
 try {
+    if ($fixtureScale) {
+        $runSummaryPaths = @()
+        if ($fixtureScale.ContainsKey('RunSummaryPaths') -and $fixtureScale.RunSummaryPaths) {
+            $runSummaryPaths = @($fixtureScale.RunSummaryPaths)
+        } elseif ($fixtureScale.ContainsKey('SummaryPath') -and $fixtureScale.SummaryPath) {
+            $runSummaryPaths = @($fixtureScale.SummaryPath)
+        }
+
+        $allRunMetrics = @()
+        $k6ExitCode = if ($fixtureScale.ContainsKey('ExitCode')) { [int]$fixtureScale.ExitCode } else { 0 }
+        $k6Output = if ($fixtureScale.ContainsKey('Output')) { $fixtureScale.Output } else { 'Fixture scale test completed' }
+
+        for ($run = 0; $run -lt $runSummaryPaths.Count; $run++) {
+            $sourceSummaryPath = Resolve-HarnessTestingFixturePath -Fixture $fixture -Path $runSummaryPaths[$run]
+            if (-not (Test-Path -Path $sourceSummaryPath)) {
+                throw "Fixture scale summary not found: $sourceSummaryPath"
+            }
+
+            $runNumber = $run + 1
+            $runSummaryPath = if ($runSummaryPaths.Count -gt 1) {
+                Join-Path -Path $outputDir -ChildPath "k6-summary-run$runNumber.json"
+            } else {
+                $jsonSummaryPath
+            }
+
+            Copy-Item -Path $sourceSummaryPath -Destination $runSummaryPath -Force
+            $summary = Get-Content -Path $runSummaryPath -Raw | ConvertFrom-Json
+            $allRunMetrics += Convert-HoneK6SummaryToMetricSet -Summary $summary -Experiment $Experiment -Run $runNumber -SummaryPath $runSummaryPath
+        }
+
+        if ($allRunMetrics.Count -gt 0) {
+            if ($allRunMetrics.Count -eq 1) {
+                $selectedRun = $allRunMetrics[0]
+            } else {
+                $sorted = $allRunMetrics | Sort-Object { $_.HttpReqDuration.P95 }
+                $medianIndex = [math]::Floor($sorted.Count / 2)
+                $selectedRun = $sorted[$medianIndex]
+                if ($selectedRun.SummaryPath -ne $jsonSummaryPath) {
+                    Copy-Item -Path $selectedRun.SummaryPath -Destination $jsonSummaryPath -Force
+                }
+            }
+
+            $metrics = [ordered]@{
+                Timestamp = $selectedRun.Timestamp
+                Experiment = $selectedRun.Experiment
+                HttpReqDuration = $selectedRun.HttpReqDuration
+                HttpReqs = $selectedRun.HttpReqs
+                HttpReqFailed = $selectedRun.HttpReqFailed
+            }
+        } else {
+            $metrics = $null
+        }
+
+        if ($fixtureScale.ContainsKey('CounterMetricsPath') -and $fixtureScale.CounterMetricsPath) {
+            $counterMetricsPath = Resolve-HarnessTestingFixturePath -Fixture $fixture -Path $fixtureScale.CounterMetricsPath
+            if (-not (Test-Path -Path $counterMetricsPath)) {
+                throw "Fixture counter metrics not found: $counterMetricsPath"
+            }
+
+            $counterMetrics = Get-Content -Path $counterMetricsPath -Raw | ConvertFrom-Json
+            Copy-Item -Path $counterMetricsPath -Destination (Join-Path -Path $outputDir -ChildPath 'dotnet-counters.json') -Force
+        } elseif ($fixtureScale.ContainsKey('CounterMetrics') -and $fixtureScale.CounterMetrics) {
+            $counterMetrics = [PSCustomObject]$fixtureScale.CounterMetrics
+            $counterMetrics | ConvertTo-Json -Depth 10 | Out-File -FilePath (Join-Path -Path $outputDir -ChildPath 'dotnet-counters.json') -Encoding utf8
+        } else {
+            $counterMetrics = $null
+        }
+
+        $fixtureLogName = if ($ScenarioName) { "k6-$ScenarioName.log" } else { 'k6.log' }
+        ($k6Output | Out-String) | Out-File -FilePath (Join-Path -Path $outputDir -ChildPath $fixtureLogName) -Encoding utf8
+
+        $result = [ordered]@{
+            Success = ($null -ne $metrics -and $k6ExitCode -eq 0)
+            ExitCode = $k6ExitCode
+            Metrics = if ($metrics) { [PSCustomObject]$metrics } else { $null }
+            CounterMetrics = $counterMetrics
+            SummaryPath = $jsonSummaryPath
+            Output = ($k6Output | Out-String)
+            RunCount = $allRunMetrics.Count
+            RunMetrics = $allRunMetrics
+            LastProcess = $config._Process
+            LastBaseUrl = $config._BaseUrl
+        }
+
+        return [PSCustomObject]$result
+    }
 
     # Build k6 arguments
     $k6Args = @(

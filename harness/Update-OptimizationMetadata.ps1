@@ -30,6 +30,10 @@
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
+
+.PARAMETER TargetDir
+    Root directory of the target project. Metadata paths are resolved relative
+    to this directory when provided.
 #>
 [CmdletBinding()]
 param(
@@ -52,7 +56,9 @@ param(
 
     [PSCustomObject]$ImpactEstimate,
 
-    [string]$ConfigPath
+    [string]$ConfigPath,
+
+    [string]$TargetDir
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -60,7 +66,16 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
-$metadataDir = Join-Path $repoRoot $config.Api.MetadataPath
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+$metadataDir = Join-Path $pathBase $config.Api.MetadataPath
 if (-not (Test-Path $metadataDir)) {
     New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
 }

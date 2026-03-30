@@ -9,12 +9,17 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER TargetDir
+    Root directory of the target project. Config paths are resolved relative
+    to this directory when provided.
+
 .PARAMETER Experiment
     Current experiment number for logging.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
+    [string]$TargetDir,
     [int]$Experiment = 0
 )
 
@@ -22,9 +27,24 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
-$testProjectPath = Join-Path $repoRoot $config.Api.TestProjectPath
-$resultsDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+$testProjectPath = Join-Path $pathBase $config.Api.TestProjectPath
+$resultsDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 $trxPath = Join-Path $resultsDir "e2e-results.trx"
+$fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
+$fixtureTests = if ($fixture) {
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Tests') -Experiment $Experiment
+} else {
+    $null
+}
 
 . (Join-Path $PSScriptRoot 'Show-Progress.ps1')
 
@@ -39,22 +59,42 @@ if (-not (Test-Path $resultsDir)) {
 
 $spinner = Start-Spinner -Message 'Running E2E tests'
 try {
-    $testOutput = dotnet test $testProjectPath `
-        --configuration Release `
-        --logger "trx;LogFileName=$trxPath" `
-        --verbosity normal 2>&1
+    if ($fixtureTests) {
+        $testExitCode = if ($fixtureTests.ContainsKey('ExitCode')) { [int]$fixtureTests.ExitCode } else { 0 }
+        $testOutput = if ($fixtureTests.ContainsKey('Output')) {
+            $fixtureTests.Output
+        } elseif ($fixtureTests.ContainsKey('Passed') -and $fixtureTests.ContainsKey('Total')) {
+            @"
+Test run for fixture target
+Total tests: $($fixtureTests.Total)
+Passed: $($fixtureTests.Passed)
+Failed: $(if ($fixtureTests.ContainsKey('Failed')) { $fixtureTests.Failed } else { 0 })
+"@
+        } else {
+            'Test run for fixture target'
+        }
 
-    $testExitCode = $LASTEXITCODE
+        if ($fixtureTests.ContainsKey('TrxContent')) {
+            $fixtureTests.TrxContent | Out-File -FilePath $trxPath -Encoding utf8
+        }
+    } else {
+        $testOutput = dotnet test $testProjectPath `
+            --configuration Release `
+            --logger "trx;LogFileName=$trxPath" `
+            --verbosity normal 2>&1
+
+        $testExitCode = $LASTEXITCODE
+    }
 } finally {
     # Parse the output for test counts
     $testOutputString = ($testOutput | Out-String)
-    $totalMatch = $testOutputString -match 'Total tests:\s*(\d+)'
-    $passedMatch = $testOutputString -match 'Passed:\s*(\d+)'
-    $failedMatch = $testOutputString -match 'Failed:\s*(\d+)'
+    $totalMatch = [regex]::Match($testOutputString, 'Total tests:\s*(\d+)')
+    $passedMatch = [regex]::Match($testOutputString, 'Passed:\s*(\d+)')
+    $failedMatch = [regex]::Match($testOutputString, 'Failed:\s*(\d+)')
 
-    $totalTests = if ($totalMatch) { [int]$Matches[1] } else { 0 }
-    $passedTests = if ($passedMatch) { [int]$Matches[1] } else { 0 }
-    $failedTests = if ($failedMatch) { [int]$Matches[1] } else { 0 }
+    $totalTests = if ($totalMatch.Success) { [int]$totalMatch.Groups[1].Value } else { 0 }
+    $passedTests = if ($passedMatch.Success) { [int]$passedMatch.Groups[1].Value } else { 0 }
+    $failedTests = if ($failedMatch.Success) { [int]$failedMatch.Groups[1].Value } else { 0 }
 
     $testMsg = if ($testExitCode -eq 0) { "$passedTests/$totalTests tests passed" } else { "$failedTests/$totalTests tests FAILED" }
     Stop-Spinner -Spinner $spinner -CompletionMessage $testMsg
