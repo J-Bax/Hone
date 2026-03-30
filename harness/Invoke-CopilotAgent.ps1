@@ -64,7 +64,9 @@ param(
 
     [string]$ConfigPath,
 
-    [string]$MockResponsePath
+    [string]$MockResponsePath,
+
+    [string]$WorkingDirectory
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -94,15 +96,15 @@ if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
 
 # ── Resolve model ───────────────────────────────────────────────────────────
 $copilotModel = $DefaultModel
-if ($ModelConfigKey -and $config.Copilot -and $config.Copilot.ContainsKey($ModelConfigKey)) {
+if ($ModelConfigKey -and $config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey($ModelConfigKey)) {
     $copilotModel = $config.Copilot[$ModelConfigKey]
-} elseif ($config.Copilot -and $config.Copilot.Model) {
+} elseif ($config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey('Model')) {
     $copilotModel = $config.Copilot.Model
 }
 
 # ── Resolve timeout ─────────────────────────────────────────────────────────
 $timeoutSec = 600
-if ($config.Copilot -and $config.Copilot.AgentTimeoutSec) {
+if ($config.ContainsKey('Copilot') -and $config.Copilot.ContainsKey('AgentTimeoutSec')) {
     $timeoutSec = $config.Copilot.AgentTimeoutSec
 }
 
@@ -127,9 +129,20 @@ for ($attempt = 0; $attempt -le $MaxRetries; $attempt++) {
 
         $spinner = Start-Spinner -Message $spinMsg
 
-        $copilotResult = Invoke-CopilotWithTimeout `
-            -ArgumentList @('--agent', $AgentName, '--model', $copilotModel, '-p', $effectivePrompt, '-s', '--no-auto-update', '--no-ask-user') `
-            -TimeoutSec $timeoutSec
+        $copilotArgs = @('--agent', $AgentName, '--model', $copilotModel, '-p', $effectivePrompt, '-s', '--no-auto-update', '--no-ask-user')
+        if ($WorkingDirectory) {
+            $copilotArgs += '--no-custom-instructions'
+        }
+
+        $copilotParams = @{
+            ArgumentList = $copilotArgs
+            TimeoutSec = $timeoutSec
+        }
+        if ($WorkingDirectory) {
+            $copilotParams.WorkingDirectory = $WorkingDirectory
+        }
+
+        $copilotResult = Invoke-CopilotWithTimeout @copilotParams
 
         [Console]::OutputEncoding = $prevEncoding
 

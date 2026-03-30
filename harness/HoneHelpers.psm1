@@ -506,7 +506,6 @@ function Assert-LifecycleHookSucceeded {
 
     return $Result
 }
-
 function Merge-HoneConfig {
     <#
     .SYNOPSIS
