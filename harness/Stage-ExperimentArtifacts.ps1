@@ -48,12 +48,16 @@ try {
     if (Test-Path $experimentDir) {
         # Analysis artifacts
         foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
-                'classification-response.json', 'root-cause.md')) {
+                'classification-response.json', 'fix-response.md', 'root-cause.md',
+                'build.log', 'e2e-tests.log', 'e2e-results.trx', 'k6.log')) {
             $f = Join-Path $experimentDir $pattern
             if (Test-Path $f) {
                 git add "$resultsRoot/experiment-$Experiment/$pattern" 2>&1 | Out-Null
             }
         }
+
+        Get-ChildItem -Path $experimentDir -Filter 'k6-*.log' -ErrorAction SilentlyContinue |
+            ForEach-Object { git add "$resultsRoot/experiment-$Experiment/$($_.Name)" 2>&1 | Out-Null }
         # k6 performance summaries
         Get-ChildItem $experimentDir -Filter 'k6-summary*.json' -ErrorAction SilentlyContinue |
             ForEach-Object { git add "$resultsRoot/experiment-$Experiment/$($_.Name)" 2>&1 | Out-Null }

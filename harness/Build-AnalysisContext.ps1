@@ -13,6 +13,10 @@
 .PARAMETER RepoRoot
     Absolute path to the repository root.
 
+.PARAMETER TargetDir
+    Root directory of the target project. When provided, source, scenario, and
+    metadata paths are resolved relative to this directory instead of RepoRoot.
+
 .PARAMETER CounterMetrics
     PSCustomObject with .NET counter metrics (optional).
 
@@ -30,6 +34,8 @@ param(
     [Parameter(Mandatory)]
     [string]$RepoRoot,
 
+    [string]$TargetDir,
+
     [PSCustomObject]$CounterMetrics,
 
     [string]$PreviousRcaExplanation,
@@ -37,8 +43,11 @@ param(
     [hashtable]$DiagnosticReports
 )
 
+$pathBase = if ($TargetDir) { $TargetDir } else { $RepoRoot }
+$relativeBase = $pathBase
+
 # ── Source file paths (agent explores files itself) ──────────────────────────
-$apiProjectPath = Join-Path $RepoRoot $Config.Api.ProjectPath
+$apiProjectPath = Join-Path $pathBase $Config.Api.ProjectPath
 $sourceGlob = if ($Config.Api.SourceFileGlob) { $Config.Api.SourceFileGlob } else { '*.*' }
 $sourcePaths = if ($Config.Api.SourceCodePaths) { $Config.Api.SourceCodePaths } else { @('.') }
 
@@ -46,7 +55,7 @@ $sourceFilePaths = foreach ($subPath in $sourcePaths) {
     $searchDir = Join-Path $apiProjectPath $subPath
     if (Test-Path $searchDir) {
         Get-ChildItem -Path $searchDir -Filter $sourceGlob -Recurse | ForEach-Object {
-            $_.FullName.Substring($RepoRoot.Length + 1).Replace('\', '/')
+            $_.FullName.Substring($relativeBase.Length + 1)
         }
     }
 }
@@ -71,7 +80,7 @@ if ($CounterMetrics) {
 # ── Traffic distribution context ─────────────────────────────────────────────
 $trafficContext = ''
 $scenarioPath = if ($Config.ScaleTest.ScenarioPath) {
-    Join-Path $RepoRoot $Config.ScaleTest.ScenarioPath
+    Join-Path $pathBase $Config.ScaleTest.ScenarioPath
 } else { $null }
 
 if ($scenarioPath -and (Test-Path $scenarioPath)) {
@@ -90,7 +99,7 @@ $scenarioContent
 
 # ── Optimization history context ─────────────────────────────────────────────
 $historyContext = ''
-$metadataDir = Join-Path $RepoRoot $Config.Api.MetadataPath
+$metadataDir = Join-Path $pathBase $Config.Api.MetadataPath
 $logPath = Join-Path $metadataDir 'experiment-log.md'
 $queueJsonPath = Join-Path $metadataDir 'experiment-queue.json'
 $queueMdPath = Join-Path $metadataDir 'experiment-queue.md'
@@ -126,7 +135,7 @@ if ($PreviousRcaExplanation) {
 }
 
 # ── Structured experiment history from run-metadata.json ─────────────────────
-$runMetadataPath = Join-Path -Path $RepoRoot -ChildPath $Config.Api.ResultsPath 'run-metadata.json'
+$runMetadataPath = Join-Path -Path $pathBase -ChildPath $Config.Api.ResultsPath 'run-metadata.json'
 if (Test-Path $runMetadataPath) {
     try {
         $runMeta = Get-Content $runMetadataPath -Raw | ConvertFrom-Json

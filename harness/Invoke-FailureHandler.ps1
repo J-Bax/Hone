@@ -31,6 +31,10 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER TargetDir
+    Root directory of the target project. Required for revert, metadata, and
+    queue updates in target-centric execution.
+
 .PARAMETER MetadataSummary
     Summary for Update-OptimizationMetadata -Summary.
     Required unless -SkipMetadataUpdate is set.
@@ -61,6 +65,7 @@ param(
     [Parameter(Mandatory)][ValidateSet('regressed', 'stale')][string]$Outcome,
     [Parameter(Mandatory)][string]$RevertDescription,
     [string]$ConfigPath,
+    [Parameter(Mandatory)][string]$TargetDir,
 
     [string]$MetadataSummary,
     [string]$MetadataFilePath,
@@ -80,7 +85,8 @@ $revertResult = & (Join-Path $PSScriptRoot 'Revert-ExperimentCode.ps1') `
     -Experiment $Experiment `
     -Outcome $Outcome `
     -Description $RevertDescription `
-    -ConfigPath $ConfigPath
+    -ConfigPath $ConfigPath `
+    -TargetDir $TargetDir
 
 if (-not $revertResult.Success) {
     Write-Warning "  Revert failed: $($revertResult.Outcome)"
@@ -94,7 +100,8 @@ if (-not $SkipMetadataUpdate) {
         -Summary $MetadataSummary `
         -FilePath $MetadataFilePath `
         -Outcome $Outcome `
-        -ConfigPath $ConfigPath
+        -ConfigPath $ConfigPath `
+        -TargetDir $TargetDir
 }
 
 # 3. Mark queue item done
@@ -102,7 +109,8 @@ if (-not $SkipQueueMarkDone) {
     & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
         -Action 'MarkDone' -ItemId $QueueItemId `
         -Experiment $Experiment -Outcome $Outcome `
-        -ConfigPath $ConfigPath
+        -ConfigPath $ConfigPath `
+        -TargetDir $TargetDir
 }
 
 return [PSCustomObject]@{

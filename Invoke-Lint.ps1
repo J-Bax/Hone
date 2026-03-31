@@ -74,6 +74,217 @@ Or run Setup-DevEnvironment.ps1 to install all dependencies.
 }
 
 Import-Module PSScriptAnalyzer -ErrorAction Stop
+$script:AnalyzerHostPath = (Get-Process -Id $PID).Path
+$script:AnalyzerTimeoutMs = 30000
+
+function Get-HoneScriptAnalyzerEnabledRuleName {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$SettingsPath
+    )
+
+    $settings = Import-PowerShellDataFile -Path $SettingsPath
+    $excludedRuleNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($ruleName in @($settings.ExcludeRules)) {
+        $null = $excludedRuleNames.Add([string]$ruleName)
+    }
+
+    $disabledRuleNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    if ($settings.ContainsKey('Rules') -and $settings.Rules -is [System.Collections.IDictionary]) {
+        foreach ($entry in $settings.Rules.GetEnumerator()) {
+            if ($entry.Value -is [System.Collections.IDictionary] -and
+                $entry.Value.Contains('Enable') -and
+                -not [bool]$entry.Value.Enable) {
+                $null = $disabledRuleNames.Add([string]$entry.Key)
+            }
+        }
+    }
+
+    [string[]]$enabledRuleNames = Get-ScriptAnalyzerRule |
+        Where-Object {
+            -not $excludedRuleNames.Contains($_.RuleName) -and
+            -not $disabledRuleNames.Contains($_.RuleName)
+        } |
+        Select-Object -ExpandProperty RuleName -Unique
+
+    return $enabledRuleNames
+}
+
+function Invoke-HoneScriptAnalyzerChild {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory)]
+        [string]$SettingsPath,
+
+        [string[]]$IncludeRule,
+
+        [switch]$Fix
+    )
+
+    $escapedFilePath = $FilePath.Replace("'", "''")
+    $escapedSettingsPath = $SettingsPath.Replace("'", "''")
+    $jsonMarker = '__PSSA_JSON__'
+    $fixLine = if ($Fix) { "`$params['Fix'] = `$true" } else { '' }
+    $includeRuleLine = ''
+    if ($IncludeRule -and $IncludeRule.Count -gt 0) {
+        $ruleLiteral = ($IncludeRule | ForEach-Object { "'$($_.Replace("'", "''"))'" }) -join ', '
+        $includeRuleLine = "`$params['IncludeRule'] = @($ruleLiteral)"
+    }
+
+    $childScript = @"
+`$ErrorActionPreference = 'Stop'
+Import-Module PSScriptAnalyzer -ErrorAction Stop
+`$null = Get-ScriptAnalyzerRule
+`$params = @{
+    Path = '$escapedFilePath'
+    Settings = '$escapedSettingsPath'
+    ErrorAction = 'Stop'
+}
+$fixLine
+$includeRuleLine
+`$results = @(Invoke-ScriptAnalyzer @params)
+`$payload = foreach (`$item in `$results) {
+    [PSCustomObject]@{
+        Line = `$item.Line
+        Severity = [string]`$item.Severity
+        RuleName = `$item.RuleName
+        Message = `$item.Message
+    }
+}
+Write-Output '$jsonMarker'
+`$payload | ConvertTo-Json -Depth 4 -Compress
+"@
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $script:AnalyzerHostPath
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $null = $startInfo.ArgumentList.Add('-NoProfile')
+    $null = $startInfo.ArgumentList.Add('-NonInteractive')
+    $null = $startInfo.ArgumentList.Add('-Command')
+    $null = $startInfo.ArgumentList.Add($childScript)
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $process.Start() | Out-Null
+
+    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+    $stderrTask = $process.StandardError.ReadToEndAsync()
+
+    if (-not $process.WaitForExit($script:AnalyzerTimeoutMs)) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        } catch {
+            Write-Verbose "Failed to stop hung ScriptAnalyzer child process $($process.Id): $_"
+        }
+
+        throw "ScriptAnalyzer timed out after $($script:AnalyzerTimeoutMs / 1000) seconds."
+    }
+
+    $output = $stdoutTask.GetAwaiter().GetResult()
+    $stderr = $stderrTask.GetAwaiter().GetResult()
+    $exitCode = $process.ExitCode
+    $combinedOutput = @($output, $stderr) -join [Environment]::NewLine
+
+    if ($exitCode -ne 0) {
+        throw ($combinedOutput.Trim())
+    }
+
+    $markerIndex = $output.LastIndexOf($jsonMarker)
+    if ($markerIndex -lt 0) {
+        return @()
+    }
+
+    $jsonText = $output.Substring($markerIndex + $jsonMarker.Length).Trim()
+    if (-not $jsonText) {
+        return @()
+    }
+
+    $parsed = $jsonText | ConvertFrom-Json
+    if ($parsed -is [System.Array]) {
+        return @($parsed)
+    }
+
+    return @($parsed)
+}
+
+function Invoke-HoneScriptAnalyzerWithRetry {
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory)]
+        [string]$SettingsPath,
+
+        [string[]]$IncludeRule,
+
+        [switch]$Fix
+    )
+
+    $lastErrorMessage = $null
+    foreach ($attempt in 1..3) {
+        try {
+            return Invoke-HoneScriptAnalyzerChild -FilePath $FilePath -SettingsPath $SettingsPath -IncludeRule $IncludeRule -Fix:$Fix
+        } catch {
+            $lastErrorMessage = $_.Exception.Message
+            if ($attempt -lt 3) {
+                Start-Sleep -Milliseconds 200
+            }
+        }
+    }
+
+    throw $lastErrorMessage
+}
+
+function Invoke-HoneScriptAnalyzerIsolated {
+    <#
+    .SYNOPSIS
+        Runs ScriptAnalyzer in a fresh child PowerShell process for one file.
+    .DESCRIPTION
+        PSScriptAnalyzer occasionally terminates the hosting process with
+        unhandled exceptions on certain files. Running each file in an isolated
+        child process keeps linting reliable while preserving the same rules.
+    #>
+    [CmdletBinding()]
+    [OutputType([object[]])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory)]
+        [string]$SettingsPath,
+
+        [switch]$Fix
+    )
+
+    try {
+        return Invoke-HoneScriptAnalyzerWithRetry -FilePath $FilePath -SettingsPath $SettingsPath -Fix:$Fix
+    } catch {
+        $fullRunError = $_.Exception.Message
+        $fallbackResults = @()
+        $enabledRuleNames = Get-HoneScriptAnalyzerEnabledRuleName -SettingsPath $SettingsPath
+
+        foreach ($ruleName in $enabledRuleNames) {
+            try {
+                $fallbackResults += Invoke-HoneScriptAnalyzerWithRetry -FilePath $FilePath -SettingsPath $SettingsPath -IncludeRule $ruleName -Fix:$Fix
+            } catch {
+                throw "Full analyzer run failed and fallback rule '$ruleName' also failed for '$FilePath'. Full run error: $fullRunError. Rule error: $($_.Exception.Message)"
+            }
+        }
+
+        return $fallbackResults
+    }
+}
 
 # PowerShell file extensions to lint
 $psExtensions = @('.ps1', '.psm1', '.psd1')
@@ -163,6 +374,7 @@ $blockingRules = @(
 
 # Run PSScriptAnalyzer
 $allResults = @()
+$analyzerFailures = @()
 
 foreach ($file in $filesToLint) {
     $relPath = $file
@@ -170,20 +382,15 @@ foreach ($file in $filesToLint) {
         $relPath = $file.Substring($repoRoot.Length).TrimStart('\', '/')
     }
 
-    $analyzerParams = @{
-        Path = $file
-        Settings = $SettingsPath
-    }
-
-    if ($Fix) {
-        $analyzerParams['Fix'] = $true
-    }
-
     $results = $null
     try {
-        $results = Invoke-ScriptAnalyzer @analyzerParams
+        $results = Invoke-HoneScriptAnalyzerIsolated -FilePath $file -SettingsPath $SettingsPath -Fix:$Fix
     } catch {
-        Write-Warning "PSScriptAnalyzer internal error on $relPath — skipping: $($_.Exception.Message)"
+        $analyzerFailures += [PSCustomObject]@{
+            File = $relPath
+            Message = $_.Exception.Message
+        }
+        Write-Warning "PSScriptAnalyzer internal error on ${relPath}: $($_.Exception.Message)"
     }
 
     if ($results) {
@@ -220,10 +427,18 @@ if ($allResults.Count -gt 0) {
     Write-Information '' -InformationAction Continue
 }
 
-$summary = "Lint complete: $($filesToLint.Count) file(s), $($errors.Count) error(s), $($warnings.Count) warning(s)"
+if ($analyzerFailures.Count -gt 0) {
+    foreach ($failure in $analyzerFailures) {
+        Write-Information "  $($failure.File)" -InformationAction Continue
+        Write-Information "    [X] PSScriptAnalyzer internal error - $($failure.Message)" -InformationAction Continue
+    }
+    Write-Information '' -InformationAction Continue
+}
+
+$summary = "Lint complete: $($filesToLint.Count) file(s), $($errors.Count) error(s), $($warnings.Count) warning(s), $($analyzerFailures.Count) analyzer failure(s)"
 Write-Information $summary -InformationAction Continue
 
-if ($errors.Count -gt 0) {
+if ($errors.Count -gt 0 -or $analyzerFailures.Count -gt 0) {
     Write-Information 'Lint FAILED — errors must be fixed before committing.' -InformationAction Continue
     exit 1
 }

@@ -1,0 +1,10 @@
+{
+  "hottestMethods": [
+    "MockApi.Controllers.ProductsController.GetAll",
+    "MockApi.Data.ProductRepository.List"
+  ],
+  "observations": [
+    "Controller allocates repeatedly during response shaping",
+    "Repository query path dominates CPU samples"
+  ]
+}

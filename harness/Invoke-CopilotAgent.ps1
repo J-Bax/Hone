@@ -66,17 +66,39 @@ param(
 
     [string]$MockResponsePath,
 
-    [string]$WorkingDirectory
+    [string]$WorkingDirectory,
+
+    [int]$Experiment = 0
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 . (Join-Path $PSScriptRoot 'Show-Progress.ps1')
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
+if ($WorkingDirectory) {
+    $targetConfigPath = Join-Path -Path $WorkingDirectory -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path -Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+if (-not $MockResponsePath -and $WorkingDirectory) {
+    $fixtureAgent = switch ($AgentName) {
+        'hone-analyst' { 'Analysis' }
+        'hone-classifier' { 'Classification' }
+        'hone-fixer' { 'Fix' }
+        default { $null }
+    }
+
+    if ($fixtureAgent) {
+        $MockResponsePath = Get-HarnessTestingMockResponsePath -Config $config -TargetDir $WorkingDirectory -Agent $fixtureAgent -Experiment $Experiment
+    }
+}
 
 # DryRun mock support — return canned response instead of calling copilot
 if ($MockResponsePath -and (Test-Path $MockResponsePath)) {
-    $mockResponse = Get-Content $MockResponsePath -Raw
+    $mockResponse = (Get-Content $MockResponsePath -Raw).Trim()
     $parsedJson = $null
     try { $parsedJson = $mockResponse | ConvertFrom-Json } catch { Write-Verbose "Mock JSON parse failed: $_" }
     if ($ResponsePath) {

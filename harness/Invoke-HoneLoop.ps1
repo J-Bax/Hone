@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Main entry point for the Hone agentic optimization loop.
 
@@ -71,9 +71,22 @@ $harnessRoot = $PSScriptRoot
 $engineConfig = Get-HoneConfig -ConfigPath (Join-Path $harnessRoot 'config.psd1')
 $targetConfig = Import-PowerShellDataFile (Join-Path $honeDir 'config.psd1')
 $config = Merge-HoneConfig -Engine $engineConfig -Target $targetConfig
+$fixture = Get-HarnessTestingFixture -Config $config -TargetDir $targetDir
+$fixtureLoop = if ($fixture) {
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Loop') -Experiment 0
+} else {
+    $null
+}
+$fixtureSkipExternalChecks = [bool]($fixtureLoop -and $fixtureLoop.ContainsKey('SkipExternalPrerequisites') -and $fixtureLoop.SkipExternalPrerequisites)
+$fixtureSkipBranchCheckout = [bool]($fixtureLoop -and $fixtureLoop.ContainsKey('SkipInitialBranchCheckout') -and $fixtureLoop.SkipInitialBranchCheckout)
+$fixtureMachineInfo = if ($fixtureLoop -and $fixtureLoop.ContainsKey('MachineInfo')) { [PSCustomObject]$fixtureLoop.MachineInfo } else { $null }
+
+if ($fixture) {
+    $env:HONE_HARNESS_TEST_TARGET_DIR = $targetDir
+}
 
 # Validate merged config
-& (Join-Path $PSScriptRoot 'Test-HoneConfig.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') -TargetPath $targetDir
+$null = & (Join-Path $PSScriptRoot 'Test-HoneConfig.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') -TargetPath $targetDir
 
 # Apply CLI overrides
 if ($PSBoundParameters.ContainsKey('MaxExperiments')) {
@@ -133,7 +146,7 @@ if ($effCfg -and $effCfg.Enabled) {
 Write-Status ''
 
 # ── Prerequisite check: k6 must be on PATH ──────────────────────────────────
-if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
+if (-not $fixtureSkipExternalChecks -and -not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
     # Auto-add common install location before failing
     $k6Default = Join-Path $env:ProgramFiles 'k6'
     if (Test-Path (Join-Path $k6Default 'k6.exe')) {
@@ -145,7 +158,7 @@ if (-not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
 }
 
 # ── Prerequisite check: gh must be on PATH ───────────────────────────────────
-if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
+if (-not $fixtureSkipExternalChecks -and -not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
     # Auto-add common install location before failing
     $ghDefault = Join-Path $env:ProgramFiles 'GitHub CLI'
     if (Test-Path (Join-Path $ghDefault 'gh.exe')) {
@@ -157,13 +170,13 @@ if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
 }
 
 # ── Prerequisite check: standalone copilot CLI must be on PATH ───────────────
-if (-not (Get-Command 'copilot' -ErrorAction SilentlyContinue)) {
+if (-not $fixtureSkipExternalChecks -and -not (Get-Command 'copilot' -ErrorAction SilentlyContinue)) {
     Write-Error 'copilot CLI is not on PATH — install the GitHub Copilot CLI (https://docs.github.com/copilot/how-tos/copilot-cli) before running the optimization loop'
     return
 }
 
 # ── Ensure GH_TOKEN is set and valid ─────────────────────────────────────────
-if (-not $env:GH_TOKEN) {
+if (-not $fixtureSkipExternalChecks -and -not $env:GH_TOKEN) {
     # Try 'gh auth token' (gh >= 2.17) then fall back to parsing hosts.yml
     $ghToken = gh auth token 2>$null
     if (-not $ghToken -or $LASTEXITCODE -ne 0) {
@@ -183,17 +196,23 @@ if (-not $env:GH_TOKEN) {
     }
 }
 # Validate the token actually works (catches expired/revoked tokens)
-$ghStatus = gh auth status 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "gh token is invalid or expired — run 'gh auth login' to refresh.`n$ghStatus"
-    return
+if (-not $fixtureSkipExternalChecks) {
+    $ghStatus = gh auth status 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "gh token is invalid or expired — run 'gh auth login' to refresh.`n$ghStatus"
+        return
+    }
 }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'loop' -Level 'info' -Message "Hone loop starting (max $maxExp experiments)"
 
 # ── Collect machine info ────────────────────────────────────────────────────
-$machineInfo = & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
+$machineInfo = if ($fixtureMachineInfo) {
+    $fixtureMachineInfo
+} else {
+    & (Join-Path $PSScriptRoot 'Get-MachineInfo.ps1')
+}
 Write-Status "  CPU:     $($machineInfo.Cpu.Name) ($($machineInfo.Cpu.LogicalProcessors) logical cores)"
 Write-Status "  RAM:     $($machineInfo.Memory.TotalGB)GB"
 Write-Status "  OS:      $($machineInfo.OS.Description)"
@@ -233,7 +252,7 @@ $baselinePath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath 'b
 
 if (-not (Test-Path $baselinePath)) {
     Write-Status 'No baseline found. Running Get-PerformanceBaseline.ps1 first...'
-    & (Join-Path $PSScriptRoot 'Get-PerformanceBaseline.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') `
+    $null = & (Join-Path $PSScriptRoot 'Get-PerformanceBaseline.ps1') -ConfigPath (Join-Path $harnessRoot 'config.psd1') `
         -TargetDir $targetDir -TargetConfig $targetConfig
 
     if (-not (Test-Path $baselinePath)) {
@@ -314,10 +333,12 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
 
     # Restore stacked-diffs branch state
     if ($stackedDiffs) {
-        # For early-exit experiments (e.g., analysis_failed), BranchName may be null.
-        # Walk backward to find the last experiment that had a branch.
-        $lastWithBranch = $priorExperiments | Where-Object { $_.BranchName } | Select-Object -Last 1
-        $currentBranch = if ($lastWithBranch) { $lastWithBranch.BranchName } else { $defaultBranch }
+        # Failed experiments preserve their own branches for review, but the next
+        # successful experiment must still branch from the last successful tip.
+        $lastSuccessfulBranch = $priorExperiments |
+            Where-Object { $_.BranchName -and $_.Outcome -eq 'improved' } |
+            Select-Object -Last 1
+        $currentBranch = if ($lastSuccessfulBranch) { $lastSuccessfulBranch.BranchName } else { $defaultBranch }
         $branchChain = @($defaultBranch) + @($priorExperiments | Where-Object { $_.BranchName } | ForEach-Object { $_.BranchName })
         $prChain = @($priorExperiments | Where-Object { $_.PrNumber } | ForEach-Object {
                 [PSCustomObject]@{ Number = $_.PrNumber; Experiment = $_.Experiment; Url = "$($_.PrUrl)"; Outcome = $_.Outcome }
@@ -352,9 +373,11 @@ if ($runMetadata.Experiments -and $runMetadata.Experiments.Count -gt 0) {
 $loopEnd = $startExperiment + $maxExp - 1
 
 # Ensure the target starts on the correct branch for experiment forking
-Push-Location $targetDir
-git checkout $currentBranch 2>&1 | Out-Null
-Pop-Location
+if (-not $fixtureSkipBranchCheckout) {
+    Push-Location $targetDir
+    git checkout $currentBranch 2>&1 | Out-Null
+    Pop-Location
+}
 
 for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
 
@@ -726,7 +749,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) {
             Write-Warning "Build failed at experiment $experiment — reverting and continuing"
 
-            & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome 'regressed' `
                 -RevertDescription 'Build failure' `
@@ -736,7 +759,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -ConfigPath $configPath `
                 -TargetDir $targetDir
 
-            $currentBranch = $branchName
             $branchChain += $branchName
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'build_failure' }
             $consecutiveFailures++
@@ -793,7 +815,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) {
             Write-Warning "E2E tests failed at experiment $experiment — reverting and continuing"
 
-            & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome 'regressed' `
                 -RevertDescription 'E2E test failure' `
@@ -803,7 +825,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -ConfigPath $configPath `
                 -TargetDir $targetDir
 
-            $currentBranch = $branchName
             $branchChain += $branchName
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'test_failure' }
             $consecutiveFailures++
@@ -958,7 +979,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             if ($stackedDiffs) {
                 Write-Warning "$measurementFailureLabel at experiment $experiment — reverting and continuing"
 
-                & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+                $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                     -BranchName $branchName -FilePath $targetFile `
                     -Experiment $experiment -Outcome 'regressed' `
                     -RevertDescription $measurementFailureLabel `
@@ -968,7 +989,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     -ConfigPath $configPath `
                     -TargetDir $targetDir
 
-                $currentBranch = $branchName
                 $branchChain += $branchName
                 $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = $measurementFailureReason }
                 $consecutiveFailures++
@@ -1100,7 +1120,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) {
             Write-Warning "  Reverting code change, preserving artifacts"
 
-            & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome 'regressed' `
                 -RevertDescription (Limit-String $analysisResult.Explanation 120) `
@@ -1108,7 +1128,6 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -ConfigPath $configPath `
                 -TargetDir $targetDir
 
-            $currentBranch = $branchName
             $branchChain += $branchName
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'regressed' }
             $consecutiveFailures++
@@ -1416,7 +1435,7 @@ $rcaDocument
         if ($stackedDiffs) {
             Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
 
-            & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome 'stale' `
                 -RevertDescription (Limit-String $analysisResult.Explanation 120) `
@@ -1424,7 +1443,6 @@ $rcaDocument
                 -ConfigPath $configPath `
                 -TargetDir $targetDir
 
-            $currentBranch = $branchName
             $branchChain += $branchName
             $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'stale' }
 

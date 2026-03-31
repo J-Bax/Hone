@@ -274,6 +274,40 @@ function New-ExperimentPR {
     $dryRunPrefix = if ($IsDryRun) { '[DRY RUN] ' } else { '' }
     $prTitle = "${dryRunPrefix}hone(experiment-${Experiment})[${outcomeTag}]: $(Limit-String $Description 120)"
 
+    $fixtureTargetDir = $env:HONE_HARNESS_TEST_TARGET_DIR
+    if ($fixtureTargetDir -and (Test-Path -Path (Join-Path -Path $fixtureTargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'))) {
+        $engineConfig = Get-HoneConfig
+        $targetCfg = Import-PowerShellDataFile -Path (Join-Path -Path $fixtureTargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1')
+        $mergedConfig = Merge-HoneConfig -Engine $engineConfig -Target $targetCfg
+        $fixture = Get-HarnessTestingFixture -Config $mergedConfig -TargetDir $fixtureTargetDir
+        $fixturePublish = if ($fixture) {
+            Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Publish') -Experiment $Experiment
+        } else {
+            $null
+        }
+
+        if ($fixturePublish -and $fixturePublish.ContainsKey('SkipPRCreation') -and $fixturePublish.SkipPRCreation) {
+            $fakeNumber = if ($fixturePublish.ContainsKey('PrNumber') -and $fixturePublish.PrNumber) { $fixturePublish.PrNumber } else { (1000 + $Experiment) }
+            $fakeUrl = if ($fixturePublish.ContainsKey('PrUrl') -and $fixturePublish.PrUrl) {
+                $fixturePublish.PrUrl
+            } else {
+                "https://example.invalid/hone/fixture/pull/$fakeNumber"
+            }
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'publish' -Level 'info' `
+                -Message "Fixture PR created: $fakeUrl" `
+                -Experiment $Experiment `
+                -Data @{ prUrl = "$fakeUrl"; prNumber = $fakeNumber; baseBranch = $BaseBranch; outcome = $outcomeTag; fixture = $true }
+
+            return [PSCustomObject]@{
+                Success = $true
+                PrUrl = "$fakeUrl"
+                PrNumber = $fakeNumber
+            }
+        }
+    }
+
     if ($PSCmdlet.ShouldProcess('GitHub PR', 'Create')) {
         $result = gh pr create `
             --base $BaseBranch `
@@ -464,6 +498,38 @@ function Invoke-LifecycleHook {
         [string]$Experiment
     )
 
+    $fixture = if ($Config) { Get-HarnessTestingFixture -Config $Config -TargetDir $TargetDir } else { $null }
+    if ($fixture) {
+        $fixtureExperiment = 0
+        if ($Experiment -and ($Experiment -as [int])) {
+            $fixtureExperiment = [int]$Experiment
+        }
+
+        $hookFixture = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Hooks', $Name) -Experiment $fixtureExperiment
+        if ($hookFixture) {
+            $result = [ordered]@{
+                Success = if ($hookFixture.ContainsKey('Success')) { [bool]$hookFixture.Success } else { $true }
+                Message = if ($hookFixture.ContainsKey('Message')) { $hookFixture.Message } else { "Fixture hook '$Name' completed" }
+                Duration = [timespan]::Zero
+                Artifacts = @()
+            }
+
+            foreach ($key in $hookFixture.Keys) {
+                if ($key -in @('Success', 'Message')) {
+                    continue
+                }
+
+                $result[$key] = $hookFixture[$key]
+            }
+
+            if ($Name -eq 'Start' -and $result.Contains('ActualBaseUrl') -and -not $result.Contains('BaseUrl')) {
+                $result['BaseUrl'] = $result['ActualBaseUrl']
+            }
+
+            return [PSCustomObject]$result
+        }
+    }
+
     $resolved = Resolve-Hook -HookName $Name -TargetConfig $TargetConfig -TargetDir $TargetDir -HarnessRoot $HarnessRoot
 
     $hookScript = Join-Path $HarnessRoot 'hooks\Invoke-Hook.ps1'
@@ -560,4 +626,306 @@ function Merge-HoneConfig {
     return $merged
 }
 
-Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote, Resolve-Hook, Invoke-LifecycleHook, Assert-LifecycleHookSucceeded, Merge-HoneConfig
+function Copy-HoneHashtable {
+    <#
+    .SYNOPSIS
+        Deep-copies a hashtable-like dictionary.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [System.Collections.IDictionary]$Dictionary
+    )
+
+    $copy = @{}
+
+    foreach ($key in $Dictionary.Keys) {
+        if ($Dictionary[$key] -is [System.Collections.IDictionary]) {
+            $copy[$key] = Copy-HoneHashtable -Dictionary $Dictionary[$key]
+        } else {
+            $copy[$key] = $Dictionary[$key]
+        }
+    }
+
+    return $copy
+}
+
+function Convert-HoneK6SummaryToMetricSet {
+    <#
+    .SYNOPSIS
+        Converts a k6 JSON summary payload into Hone's metric object shape.
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)]
+        $Summary,
+
+        [Parameter(Mandatory)]
+        [int]$Experiment,
+
+        [int]$Run = 1,
+
+        [string]$SummaryPath
+    )
+
+    $failedCount = 0
+    if ($null -ne $Summary.metrics.http_req_failed.passes) {
+        $failedCount = [int]$Summary.metrics.http_req_failed.passes
+    }
+
+    $failedRate = 0
+    if ($null -ne $Summary.metrics.http_req_failed.value) {
+        $failedRate = $Summary.metrics.http_req_failed.value
+    }
+
+    return [pscustomobject][ordered]@{
+        Timestamp = (Get-Date -Format 'o')
+        Experiment = $Experiment
+        Run = $Run
+        HttpReqDuration = [ordered]@{
+            Avg = $Summary.metrics.http_req_duration.avg
+            P50 = $Summary.metrics.http_req_duration.med
+            P90 = $Summary.metrics.http_req_duration.'p(90)'
+            P95 = $Summary.metrics.http_req_duration.'p(95)'
+            P99 = $Summary.metrics.http_req_duration.'p(99)'
+            Max = $Summary.metrics.http_req_duration.max
+        }
+        HttpReqs = [ordered]@{
+            Count = $Summary.metrics.http_reqs.count
+            Rate = $Summary.metrics.http_reqs.rate
+        }
+        HttpReqFailed = [ordered]@{
+            Count = $failedCount
+            Rate = $failedRate
+        }
+        SummaryPath = $SummaryPath
+    }
+}
+
+function Get-HarnessTestingContract {
+    <#
+    .SYNOPSIS
+        Loads the canonical harness-testing contract data.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+
+    $contractPath = Join-Path -Path $PSScriptRoot -ChildPath 'test-fixtures' -AdditionalChildPath 'contracts\harness-testing-contract.psd1'
+    if (-not (Test-Path -Path $contractPath)) {
+        throw "Harness-testing contract file not found: $contractPath"
+    }
+
+    return (Import-PowerShellDataFile -Path $contractPath)
+}
+
+function Get-HarnessTestingFixture {
+    <#
+    .SYNOPSIS
+        Loads the deterministic harness-testing fixture manifest for a target.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+
+        [string]$TargetDir
+    )
+
+    if (-not $TargetDir) {
+        return $null
+    }
+
+    if (-not $Config.ContainsKey('HarnessTesting') -or -not $Config.HarnessTesting.Enabled) {
+        return $null
+    }
+
+    $manifestRelPath = if ($Config.HarnessTesting.ContainsKey('ManifestPath') -and $Config.HarnessTesting.ManifestPath) {
+        $Config.HarnessTesting.ManifestPath
+    } else {
+        '.hone\fixtures\fixture.psd1'
+    }
+
+    $manifestPath = if ([System.IO.Path]::IsPathRooted($manifestRelPath)) {
+        $manifestRelPath
+    } else {
+        Join-Path -Path $TargetDir -ChildPath $manifestRelPath
+    }
+
+    if (-not (Test-Path -Path $manifestPath)) {
+        return $null
+    }
+
+    $fixture = Import-PowerShellDataFile -Path $manifestPath
+    $fixture['_ManifestPath'] = $manifestPath
+    $fixture['_TargetDir'] = $TargetDir
+
+    return $fixture
+}
+
+function Resolve-HarnessTestingFixtureDefinition {
+    <#
+    .SYNOPSIS
+        Resolves a fixture definition, applying any experiment-specific overrides.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [System.Collections.IDictionary]$Definition,
+
+        [int]$Experiment = -1
+    )
+
+    $hasDefault = $Definition.Contains('Default')
+    $hasByExperiment = $Definition.Contains('ByExperiment')
+
+    if (-not $hasDefault -and -not $hasByExperiment) {
+        return (Copy-HoneHashtable -Dictionary $Definition)
+    }
+
+    $resolved = @{}
+
+    if ($hasDefault -and $Definition['Default'] -is [System.Collections.IDictionary]) {
+        $resolved = Copy-HoneHashtable -Dictionary $Definition['Default']
+    }
+
+    if ($hasByExperiment -and $Experiment -ge 0 -and $Definition['ByExperiment'] -is [System.Collections.IDictionary]) {
+        $byExperiment = $Definition['ByExperiment']
+        $experimentKey = "$Experiment"
+
+        if ($byExperiment.Contains($experimentKey) -and $byExperiment[$experimentKey] -is [System.Collections.IDictionary]) {
+            foreach ($key in $byExperiment[$experimentKey].Keys) {
+                if ($byExperiment[$experimentKey][$key] -is [System.Collections.IDictionary]) {
+                    $resolved[$key] = Copy-HoneHashtable -Dictionary $byExperiment[$experimentKey][$key]
+                } else {
+                    $resolved[$key] = $byExperiment[$experimentKey][$key]
+                }
+            }
+        } elseif ($byExperiment.Contains('*') -and $byExperiment['*'] -is [System.Collections.IDictionary]) {
+            foreach ($key in $byExperiment['*'].Keys) {
+                if ($byExperiment['*'][$key] -is [System.Collections.IDictionary]) {
+                    $resolved[$key] = Copy-HoneHashtable -Dictionary $byExperiment['*'][$key]
+                } else {
+                    $resolved[$key] = $byExperiment['*'][$key]
+                }
+            }
+        }
+    }
+
+    if ($resolved.Count -eq 0) {
+        return $null
+    }
+
+    return $resolved
+}
+
+function Get-HarnessTestingRuntimeDefinition {
+    <#
+    .SYNOPSIS
+        Resolves a runtime definition from a fixture manifest.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Fixture,
+
+        [Parameter(Mandatory)]
+        [string[]]$Path,
+
+        [int]$Experiment = -1
+    )
+
+    if (-not $Fixture.ContainsKey('Runtime')) {
+        return $null
+    }
+
+    $cursor = $Fixture['Runtime']
+    foreach ($segment in $Path) {
+        if (-not ($cursor -is [System.Collections.IDictionary]) -or -not $cursor.Contains($segment)) {
+            return $null
+        }
+
+        $cursor = $cursor[$segment]
+    }
+
+    if ($cursor -is [System.Collections.IDictionary]) {
+        return (Resolve-HarnessTestingFixtureDefinition -Definition $cursor -Experiment $Experiment)
+    }
+
+    return $null
+}
+
+function Resolve-HarnessTestingFixturePath {
+    <#
+    .SYNOPSIS
+        Resolves a fixture-relative asset path to an absolute path.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [hashtable]$Fixture,
+
+        [string]$Path
+    )
+
+    if (-not $Path) {
+        return $null
+    }
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return $Path
+    }
+
+    if ($Path.StartsWith('__HARNESS_ROOT__\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return (Join-Path -Path $PSScriptRoot -ChildPath $Path.Substring('__HARNESS_ROOT__\'.Length))
+    }
+
+    $baseDir = $PSScriptRoot
+    if ($Fixture -and $Fixture.ContainsKey('_ManifestPath') -and $Fixture['_ManifestPath']) {
+        $baseDir = Split-Path -Path $Fixture['_ManifestPath'] -Parent
+    } elseif ($Fixture -and $Fixture.ContainsKey('_TargetDir') -and $Fixture['_TargetDir']) {
+        $baseDir = $Fixture['_TargetDir']
+    }
+
+    return (Join-Path -Path $baseDir -ChildPath $Path)
+}
+
+function Get-HarnessTestingMockResponsePath {
+    <#
+    .SYNOPSIS
+        Resolves the mock response path for a deterministic fixture agent.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Config,
+
+        [string]$TargetDir,
+
+        [Parameter(Mandatory)]
+        [ValidateSet('Analysis', 'Classification', 'Fix')]
+        [string]$Agent,
+
+        [int]$Experiment = 0
+    )
+
+    $fixture = Get-HarnessTestingFixture -Config $Config -TargetDir $TargetDir
+    if (-not $fixture) {
+        return $null
+    }
+
+    $definition = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Agents', $Agent) -Experiment $Experiment
+    if (-not $definition -or -not $definition.ContainsKey('MockResponsePath') -or -not $definition.MockResponsePath) {
+        return $null
+    }
+
+    return (Resolve-HarnessTestingFixturePath -Fixture $fixture -Path $definition.MockResponsePath)
+}
+
+Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote, Resolve-Hook, Invoke-LifecycleHook, Assert-LifecycleHookSucceeded, Merge-HoneConfig, Convert-HoneK6SummaryToMetricSet, Get-HarnessTestingContract, Get-HarnessTestingFixture, Get-HarnessTestingRuntimeDefinition, Resolve-HarnessTestingFixturePath, Get-HarnessTestingMockResponsePath

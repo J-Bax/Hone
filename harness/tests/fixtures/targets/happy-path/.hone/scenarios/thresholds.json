@@ -1,0 +1,14 @@
+{
+  "scenarios": {
+    "baseline": {
+      "description": "Deterministic primary scenario",
+      "file": "baseline.js",
+      "use_for_optimization": true
+    },
+    "secondary": {
+      "description": "Deterministic secondary scenario",
+      "file": "secondary.js",
+      "use_for_optimization": false
+    }
+  }
+}

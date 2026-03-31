@@ -1,0 +1,44 @@
+{
+  "Runtime": {
+    "CpuUsage": {
+      "Avg": 12.5,
+      "Max": 18.0
+    },
+    "GcHeapSizeMB": {
+      "Avg": 64.0,
+      "Max": 80.0
+    },
+    "Gen0Collections": {
+      "Last": 2
+    },
+    "Gen1Collections": {
+      "Last": 1
+    },
+    "Gen2Collections": {
+      "Last": 0
+    },
+    "GcPauseRatio": {
+      "Avg": 0.01,
+      "Max": 0.02
+    },
+    "ThreadPoolThreads": {
+      "Avg": 8.0,
+      "Max": 12.0
+    },
+    "ThreadPoolQueue": {
+      "Avg": 0.0,
+      "Max": 1.0
+    },
+    "ExceptionCount": {
+      "Last": 0
+    },
+    "WorkingSetMB": {
+      "Avg": 80.0,
+      "Max": 100.0
+    },
+    "AllocRateMB": {
+      "Avg": 12.0,
+      "Max": 15.0
+    }
+  }
+}

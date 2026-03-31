@@ -25,11 +25,21 @@
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
+.PARAMETER TargetDir
+    Root directory of the target project. Config paths are resolved relative to
+    this directory and agent file exploration runs from this directory.
+
+.PARAMETER TargetName
+    Human-readable target name for prompt text.
+
 .PARAMETER PreviousRcaExplanation
     Explanation from the previous experiment's RCA (optional).
 
 .PARAMETER DiagnosticReports
     Hashtable of analyzer name → @{ Report; Summary } from diagnostic profiling (optional).
+
+.PARAMETER MockResponsePath
+    Optional path to a canned agent response for deterministic testing.
 #>
 [CmdletBinding()]
 param(
@@ -47,9 +57,15 @@ param(
 
     [string]$ConfigPath,
 
+    [string]$TargetDir,
+
+    [string]$TargetName,
+
     [string]$PreviousRcaExplanation,
 
-    [hashtable]$DiagnosticReports
+    [hashtable]$DiagnosticReports,
+
+    [string]$MockResponsePath
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -57,6 +73,16 @@ Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
+$targetLabel = if ($TargetName) { $TargetName } elseif ($TargetDir) { Split-Path -Path $TargetDir -Leaf } else { 'target project' }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message 'Preparing analysis agent prompt' `
@@ -65,6 +91,7 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
 # ── Build analysis context (source code, counters, history, profiling) ───────
 $analysisContext = & (Join-Path $PSScriptRoot 'Build-AnalysisContext.ps1') `
     -Config $config -RepoRoot $repoRoot `
+    -TargetDir $TargetDir `
     -CounterMetrics $CounterMetrics -PreviousRcaExplanation $PreviousRcaExplanation `
     -DiagnosticReports $DiagnosticReports
 
@@ -80,7 +107,7 @@ $improvementPct = if ($ComparisonResult -and $ComparisonResult.ImprovementPct) {
 $fileList = ($sourceFilePaths | ForEach-Object { "- $_" }) -join "`n"
 
 $prompt = @"
-Analyze this Web API's performance and identify 1-3 optimization opportunities ranked by expected impact. For each, provide a detailed root-cause analysis with evidence (code snippets + line references, not full files), theory, proposed fixes, and expected impact.
+Analyze this target project's performance and identify 1-3 optimization opportunities ranked by expected impact. For each, provide a detailed root-cause analysis with evidence (code snippets + line references, not full files), theory, proposed fixes, and expected impact.
 
 ## Current Performance (Experiment $Experiment)
 - p95 Latency: $($CurrentMetrics.HttpReqDuration.P95)ms
@@ -98,7 +125,7 @@ $historyContext
 $profilingContext
 
 ## Source Files
-The following source files are available for analysis (paths relative to repo root).
+The following source files are available for analysis (paths relative to the $targetLabel root).
 Read the files that are relevant to identifying performance bottlenecks.
 
 $fileList
@@ -107,7 +134,7 @@ Respond with JSON only. No markdown, no code blocks around the JSON.
 "@
 
 # ── Save the prompt for audit ───────────────────────────────────────────────
-$iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
+$iterDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
@@ -127,7 +154,10 @@ $agentResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAgent.ps1') `
     -SpinnerMessage 'Analyzing performance data' `
     -CompletionMessage 'Analysis complete' `
     -ResponsePath (Join-Path $iterDir 'analysis-response.json') `
-    -ConfigPath $ConfigPath
+    -ConfigPath $ConfigPath `
+    -MockResponsePath $MockResponsePath `
+    -WorkingDirectory $TargetDir `
+    -Experiment $Experiment
 
 $responsePath = Join-Path $iterDir 'analysis-response.json'
 $parsed = $agentResult.ParsedJson

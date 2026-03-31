@@ -75,6 +75,12 @@ $config = Get-HoneConfig -ConfigPath $ConfigPath
 # Merge target config so hooks receive Api settings
 $config = Merge-HoneConfig -Engine $config -Target $TargetConfig
 $pathBase = $TargetDir
+$fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
+$fixtureDiagnostics = if ($fixture) {
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Diagnostics') -Experiment $Experiment
+} else {
+    $null
+}
 
 if (-not $config.ContainsKey('Diagnostics') -or -not $config.Diagnostics.Enabled) {
     throw 'Diagnostics are not enabled in config. Set Diagnostics.Enabled = $true.'
@@ -85,6 +91,46 @@ $resultsDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "expe
 
 if (-not (Test-Path $resultsDir)) {
     New-Item -ItemType Directory -Path $resultsDir -Force | Out-Null
+}
+
+if ($fixtureDiagnostics) {
+    $reports = @{}
+
+    if ($fixtureDiagnostics.ContainsKey('Reports') -and $fixtureDiagnostics.Reports -is [System.Collections.IDictionary]) {
+        foreach ($analyzerName in $fixtureDiagnostics.Reports.Keys) {
+            $entry = $fixtureDiagnostics.Reports[$analyzerName]
+            $report = $null
+            if ($entry -is [System.Collections.IDictionary] -and $entry.Contains('ReportPath') -and $entry.ReportPath) {
+                $reportPath = Resolve-HarnessTestingFixturePath -Fixture $fixture -Path $entry.ReportPath
+                if (-not (Test-Path -Path $reportPath)) {
+                    throw "Fixture diagnostic report not found: $reportPath"
+                }
+
+                $report = Get-Content -Path $reportPath -Raw | ConvertFrom-Json
+                $targetAnalyzerDir = Join-Path -Path $resultsDir -ChildPath $analyzerName
+                if (-not (Test-Path -Path $targetAnalyzerDir)) {
+                    New-Item -ItemType Directory -Path $targetAnalyzerDir -Force | Out-Null
+                }
+
+                Copy-Item -Path $reportPath -Destination (Join-Path -Path $targetAnalyzerDir -ChildPath 'fixture-report.json') -Force
+            } elseif ($entry -is [System.Collections.IDictionary] -and $entry.Contains('Report')) {
+                $report = [PSCustomObject]$entry.Report
+            }
+
+            $reports[$analyzerName] = @{
+                Report = $report
+                Summary = if ($entry -is [System.Collections.IDictionary] -and $entry.Contains('Summary')) { $entry.Summary } else { 'Fixture diagnostic report' }
+                PromptPath = $null
+                ResponsePath = $null
+            }
+        }
+    }
+
+    return @{
+        Success = $true
+        CollectorData = @{}
+        AnalyzerReports = $reports
+    }
 }
 
 Write-Status ''

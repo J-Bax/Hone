@@ -22,6 +22,7 @@ param(
 )
 
 # TargetPath, BaseUrl, Experiment accepted for contract conformance but not used.
+$null = $TargetPath, $BaseUrl, $Experiment
 
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
