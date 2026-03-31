@@ -164,6 +164,19 @@
         SkipClassification = $false
     }
 
+    # ── Iterative Fixer ─────────────────────────────────────────
+    Fixer = @{
+        # Total fixer attempts per experiment (1 = single-shot behavior)
+        MaxAttempts = 3
+
+        # Maximum allowed diff-size growth vs. the first attempt before the
+        # iteration is rejected as likely scope creep.
+        MaxDiffGrowthFactor = 3.0
+
+        # Reject iterations that modify files under test-project paths.
+        TestFileGuard = $true
+    }
+
     # ── Copilot CLI ─────────────────────────────────────────────
     Copilot = @{
         # Default AI model for all agents (see 'copilot --help' for choices)

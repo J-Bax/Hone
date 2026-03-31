@@ -23,7 +23,8 @@
     Current experiment number.
 
 .PARAMETER Outcome
-    Why the experiment failed: 'regressed' or 'stale'.
+    Why the experiment failed: 'regressed', 'stale', 'build_failure',
+    'test_failure', 'retry_budget_exhausted', or 'retry'.
 
 .PARAMETER Description
     Brief description of the original optimization that was attempted.
@@ -48,12 +49,14 @@ param(
     [int]$Experiment,
 
     [Parameter(Mandatory)]
-    [ValidateSet('regressed', 'stale')]
+    [ValidateSet('regressed', 'stale', 'build_failure', 'test_failure', 'retry_budget_exhausted', 'retry')]
     [string]$Outcome,
 
     [string]$Description,
 
     [string]$ConfigPath,
+
+    [switch]$SoftReset,
 
     [Parameter(Mandatory)]
     [string]$TargetDir
@@ -73,6 +76,35 @@ $submoduleRelPath = $FilePath -replace "^$([regex]::Escape($targetLeaf))[\\/]", 
 
 try {
     Push-Location $submoduleDir
+
+    if ($SoftReset) {
+        git reset --soft HEAD~1 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "git reset --soft HEAD~1 failed with exit code $LASTEXITCODE"
+        }
+
+        git checkout HEAD -- $submoduleRelPath 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "git checkout HEAD -- $submoduleRelPath failed with exit code $LASTEXITCODE"
+        }
+
+        git reset HEAD -- $submoduleRelPath 2>&1 | Out-Null
+
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'publish' -Level 'info' `
+            -Message "Soft reset completed for retry on branch: $BranchName" `
+            -Experiment $Experiment
+
+        $result = [ordered]@{
+            Success = $true
+            BranchName = $BranchName
+            FilePath = $FilePath
+            Outcome = $Outcome
+            SoftReset = $true
+        }
+
+        return [PSCustomObject]$result
+    }
 
     # Restore the modified file to its state before the fix commit
     git checkout HEAD~1 -- $submoduleRelPath 2>&1 | Out-Null

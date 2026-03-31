@@ -47,6 +47,9 @@
 .PARAMETER ScenarioBreakdown
     (Accepted only) Pre-built per-scenario breakdown table.
 
+.PARAMETER IterationSummary
+    Optional retry-attempt summary for iterative fixer experiments.
+
 .OUTPUTS
     [string] The PR body markdown.
 #>
@@ -76,7 +79,9 @@ param(
 
     # Accepted-specific
     [string]$ImprovementPct = '',
-    [string]$ScenarioBreakdown = ''
+    [string]$ScenarioBreakdown = '',
+
+    [string]$IterationSummary = ''
 )
 
 if ($Type -eq 'Rejected') {
@@ -89,7 +94,7 @@ $DryRunNotice$StackNote
 
 **Outcome:** $OutcomeLabel
 $OutcomeDetail
-$RcaSection$MetricsSection
+$IterationSummary$RcaSection$MetricsSection
 > ⚠️ This experiment was rejected. The code change has been reverted.
 > This PR contains only the experiment artifacts for the record.
 
@@ -105,6 +110,7 @@ $DryRunNotice$StackNote
 **File changed:** ``$FilePath``
 $RcaSection
 $MetricsSection
+$IterationSummary
 **vs baseline improvement:** $ImprovementPct%
 $ScenarioBreakdown
 ---

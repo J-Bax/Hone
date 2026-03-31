@@ -116,6 +116,167 @@ $maxConsecutiveFailures = if ($tolerances.ContainsKey('MaxConsecutiveFailures'))
 }
 $defaultBranch = if ($config.ContainsKey('BaseBranch') -and $config.BaseBranch) { $config.BaseBranch } else { 'master' }
 
+function Get-FixPhaseIterationSummary {
+    param([PSCustomObject]$IterativeResult)
+
+    if (-not $IterativeResult -or -not $IterativeResult.IterationLog) {
+        return ''
+    }
+
+    $attempts = @($IterativeResult.IterationLog.attempts)
+    if ($attempts.Count -eq 0) {
+        return ''
+    }
+
+    if ($IterativeResult.Success -and $attempts.Count -le 1) {
+        return ''
+    }
+
+    $attemptWord = if ($IterativeResult.AttemptCount -eq 1) { 'attempt' } else { 'attempts' }
+    $summaryLead = if ($IterativeResult.Success) {
+        "Fix reached build + test success after $($IterativeResult.AttemptCount) $attemptWord."
+    } else {
+        "Fix stopped after $($IterativeResult.AttemptCount) $attemptWord with outcome ``$($IterativeResult.ExitReason)``."
+    }
+
+    $summaryExtras = @()
+    if ($IterativeResult.IterationLogRelativePath) {
+        $summaryExtras += "> Iteration log: ``$($IterativeResult.IterationLogRelativePath)``"
+    }
+
+    if (-not $IterativeResult.Success -and $IterativeResult.FailureDetail) {
+        $summaryExtras += "> Final failure: $($IterativeResult.FailureDetail)"
+    }
+
+    $rows = foreach ($attempt in $attempts) {
+        $diffLines = if ($null -ne $attempt.diffLines) { $attempt.diffLines } else { '-' }
+        "| $($attempt.attempt) | $($attempt.stage) | $($attempt.outcome) | $diffLines |"
+    }
+
+    $extrasBlock = if ($summaryExtras.Count -gt 0) {
+        ($summaryExtras -join "`n") + "`n"
+    } else {
+        ''
+    }
+
+    return @"
+
+### Iterative Fix Summary
+$summaryLead
+$extrasBlock
+| Attempt | Stage | Outcome | Diff lines |
+|--------|-------|---------|------------|
+$($rows -join "`n")
+
+"@
+}
+
+function Add-FixPhaseSummaryToRca {
+    param(
+        [string]$RcaPath,
+        [string]$IterationSummary
+    )
+
+    if (-not $RcaPath -or -not $IterationSummary -or -not (Test-Path $RcaPath)) {
+        return
+    }
+
+    $existing = Get-Content -Path $RcaPath -Raw
+    if ($existing -match '### Iterative Fix Summary') {
+        return
+    }
+
+    ($existing.TrimEnd() + "`r`n`r`n" + $IterationSummary.Trim() + "`r`n") | Out-File -FilePath $RcaPath -Encoding utf8
+}
+
+function Get-FixPhaseMetadataPropertyMap {
+    param([PSCustomObject]$IterativeResult)
+
+    if (-not $IterativeResult) {
+        return $null
+    }
+
+    $props = [ordered]@{
+        FixAttemptCount = $IterativeResult.AttemptCount
+        FixFinalAttempt = $IterativeResult.Attempt
+        FixRetried = [bool]($IterativeResult.AttemptCount -gt 1)
+    }
+
+    if ($IterativeResult.IterationLogRelativePath) {
+        $props.FixIterationLogPath = $IterativeResult.IterationLogRelativePath
+    }
+
+    if ($IterativeResult.CommitSha) {
+        $props.FixCommitSha = $IterativeResult.CommitSha
+    }
+
+    if (-not $IterativeResult.Success -and $IterativeResult.LastFailureStage) {
+        $props.FixFailureStage = $IterativeResult.LastFailureStage
+    }
+
+    if (-not $IterativeResult.Success -and $IterativeResult.ExitReason) {
+        $props.FixExitReason = $IterativeResult.ExitReason
+    }
+
+    return $props
+}
+
+function Get-FixPhaseFailurePresentation {
+    param([PSCustomObject]$IterativeResult)
+
+    switch ($IterativeResult.ExitReason) {
+        'build_failure' {
+            return [PSCustomObject]@{
+                Label = '❌ **Build failure**'
+                RevertDescription = 'Build failure'
+                MetadataPrefix = 'Build failure'
+                Detail = if ($IterativeResult.FailureDetail) { $IterativeResult.FailureDetail } else { 'Build failed during the fix phase.' }
+            }
+        }
+
+        'test_failure' {
+            return [PSCustomObject]@{
+                Label = '❌ **E2E test failure**'
+                RevertDescription = 'E2E test failure'
+                MetadataPrefix = 'Test failure'
+                Detail = if ($IterativeResult.FailureDetail) { $IterativeResult.FailureDetail } else { 'E2E tests failed during the fix phase.' }
+            }
+        }
+
+        'retry_budget_exhausted' {
+            $detail = "The fixer exhausted its retry budget."
+            if ($IterativeResult.AttemptCount -gt 0) {
+                $attemptWord = if ($IterativeResult.AttemptCount -eq 1) { 'attempt' } else { 'attempts' }
+                $detail = "The fixer exhausted its retry budget after $($IterativeResult.AttemptCount) $attemptWord."
+            }
+
+            if ($IterativeResult.LastFailureStage) {
+                $detail += " Final failure stage: $($IterativeResult.LastFailureStage)."
+            }
+
+            if ($IterativeResult.FailureDetail) {
+                $detail += "`n`n$($IterativeResult.FailureDetail)"
+            }
+
+            return [PSCustomObject]@{
+                Label = '♻️ **Retry budget exhausted**'
+                RevertDescription = 'Retry budget exhausted'
+                MetadataPrefix = 'Retry budget exhausted'
+                Detail = $detail
+            }
+        }
+
+        default {
+            return [PSCustomObject]@{
+                Label = '❌ **Fix phase failure**'
+                RevertDescription = 'Fix phase failure'
+                MetadataPrefix = 'Fix phase failure'
+                Detail = if ($IterativeResult.FailureDetail) { $IterativeResult.FailureDetail } else { 'The fix phase failed.' }
+            }
+        }
+    }
+}
+
 # ── Banner ──────────────────────────────────────────────────────────────────
 $bannerTitle = if ($DryRun) { 'HONE — Agentic Optimizer [DRY RUN]' } else { 'HONE — Agentic Optimizer' }
 Write-Status ''
@@ -598,8 +759,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     }
 
     $rcaResult = $null
-    $applyResult = $null
     $branchName = "$($config.Loop.BranchPrefix)-$experiment"
+    $rcaDocument = $null
 
     # Save root-cause analysis to experiment directory.
     # If the analyst provided a rich root-cause document, copy it (with metrics header).
@@ -629,6 +790,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         $rcaPath = Join-Path $iterDir 'root-cause.md'
         ($metricsHeader + $agentRca) | Out-File -FilePath $rcaPath -Encoding utf8
         $rcaResult = [PSCustomObject]@{ Success = $true; Path = $rcaPath }
+        $rcaDocument = Get-Content $rcaPath -Raw
         Write-Status "  Root cause analysis saved to: $rcaPath"
     } else {
         $rcaResult = & (Join-Path $PSScriptRoot 'Export-ExperimentRCA.ps1') `
@@ -644,6 +806,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             -TargetDir $targetDir
 
         if ($rcaResult.Success) {
+            $rcaDocument = Get-Content $rcaResult.Path -Raw
             Write-Status "  Root cause analysis saved to: $($rcaResult.Path)"
         }
     }
@@ -651,56 +814,44 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
     # ── Phase 3: Experiment (fix + build) ──────────────────────────────────
     Write-Status '[3/5] 🧪 Experimenting (fix + build)...'
 
-    # ── Sub-agent 3: Fix ───────────────────────────────────────────────────
-    # Load root-cause document if available for this queue item
-    $rcaDocument = $null
-    if ($currentItem -and $currentItem.rootCausePath -and (Test-Path $currentItem.rootCausePath)) {
-        $rcaDocument = Get-Content $currentItem.rootCausePath -Raw
-    }
-
-    $fixResult = & (Join-Path $PSScriptRoot 'Invoke-FixAgent.ps1') `
+    # Determine the base branch for this experiment
+    $baseBranch = if ($stackedDiffs) { $currentBranch } else { $defaultBranch }
+    $iterativeResult = & (Join-Path $PSScriptRoot 'Invoke-IterativeFix.ps1') `
         -FilePath $analysisResult.FilePath `
         -Explanation $analysisResult.Explanation `
         -RootCauseDocument $rcaDocument `
         -Experiment $experiment `
+        -BaseBranch $baseBranch `
         -ConfigPath $configPath `
         -TargetName $targetName `
         -TargetDir $targetDir
 
-    if (-not $fixResult.Success -or -not $fixResult.CodeBlock) {
-        Write-Warning '  Fix agent failed to generate code — skipping experiment'
-        $staleCount++
-        if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
-            -Experiment $experiment -StartedAt $experimentStartedAt `
-            -Outcome 'fix_failed' -BranchName $branchName `
-            -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
-            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-        continue
+    $targetFile = $iterativeResult.TargetFile
+    $branchName = if ($iterativeResult.BranchName) { $iterativeResult.BranchName } else { $branchName }
+    $iterationSummary = Get-FixPhaseIterationSummary -IterativeResult $iterativeResult
+    $iterativeMetadataProperties = Get-FixPhaseMetadataPropertyMap -IterativeResult $iterativeResult
+
+    if ($iterationSummary -and $rcaResult -and $rcaResult.Success) {
+        Add-FixPhaseSummaryToRca -RcaPath $rcaResult.Path -IterationSummary $iterationSummary
     }
 
-    # Normalise file path: resolve relative to target directory
-    $targetFile = $analysisResult.FilePath.Trim()
-    # Strip leading target name prefix if present (agent may include it)
-    if ($targetFile -match "^$([regex]::Escape($targetName))[\\/]") {
-        $targetFile = $targetFile.Substring($targetName.Length + 1)
-    }
+    if (-not $iterativeResult.Success) {
+        $iterativeExitReason = $iterativeResult.ExitReason
 
-    $fullTargetPath = Join-Path $targetDir $targetFile
-    if (-not (Test-Path (Split-Path $fullTargetPath -Parent))) {
-        # Fallback: search for the file under the project directory
-        $projectDir = Join-Path $targetDir $config.Api.ProjectPath
-        $fileName = Split-Path $targetFile -Leaf
-        $candidates = @(Get-ChildItem -Path $projectDir -Filter $fileName -Recurse -File -ErrorAction SilentlyContinue)
-        if ($candidates.Count -eq 1) {
-            $correctedPath = $candidates[0].FullName.Substring($targetDir.Length + 1).Replace('\', '/')
-            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                -Phase 'experiment' -Level 'warning' `
-                -Message "Path corrected: '$targetFile' → '$correctedPath'" `
-                -Experiment $experiment
-            $targetFile = $correctedPath
-            $fullTargetPath = $candidates[0].FullName
-        } else {
+        if ($iterativeExitReason -eq 'fix_failed') {
+            Write-Warning '  Fix agent failed to generate code — skipping experiment'
+            $staleCount++
+            if ($stackedDiffs) { $consecutiveFailures++ }
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'fix_failed' -BranchName $branchName `
+                -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+                -AdditionalProperties $iterativeMetadataProperties
+            continue
+        }
+
+        if ($iterativeExitReason -eq 'invalid_target') {
             Write-Warning "  Cannot apply fix — target directory does not exist: $targetFile"
             $staleCount++
             if ($stackedDiffs) { $consecutiveFailures++ }
@@ -708,169 +859,112 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -Experiment $experiment -StartedAt $experimentStartedAt `
                 -Outcome 'invalid_target' -BranchName $branchName `
                 -BaseBranch $(if ($stackedDiffs) { $currentBranch } else { $defaultBranch }) `
-                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+                -AdditionalProperties $iterativeMetadataProperties
             continue
         }
-    }
 
-    Write-Status "  Applying fix to: $targetFile"
+        if ($iterativeExitReason -eq 'apply_failed') {
+            Write-Warning "  Fix application failed: $($iterativeResult.FailureDetail)"
+            $staleCount++
+            if ($stackedDiffs) { $consecutiveFailures++ }
+            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
+                -Experiment $experiment -StartedAt $experimentStartedAt `
+                -Outcome 'apply_failed' -BranchName $branchName `
+                -BaseBranch $baseBranch `
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+                -AdditionalProperties $iterativeMetadataProperties
+            continue
+        }
 
-    # Determine the base branch for this experiment
-    $baseBranch = if ($stackedDiffs) { $currentBranch } else { $defaultBranch }
+        $fixPhaseFailure = Get-FixPhaseFailurePresentation -IterativeResult $iterativeResult
 
-    $applyResult = & (Join-Path $PSScriptRoot 'Apply-Suggestion.ps1') `
-        -FilePath $targetFile `
-        -NewContent $fixResult.CodeBlock `
-        -Description (Limit-String $analysisResult.Explanation 120) `
-        -Experiment $experiment `
-        -BaseBranch $baseBranch `
-        -ConfigPath $configPath `
-        -TargetDir $targetDir
-
-    if (-not $applyResult.Success) {
-        Write-Warning "  Fix application failed: $($applyResult.Description)"
-        $staleCount++
-        if ($stackedDiffs) { $consecutiveFailures++ }
-        Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
-            -Experiment $experiment -StartedAt $experimentStartedAt `
-            -Outcome 'apply_failed' -BranchName $branchName `
-            -BaseBranch $baseBranch `
-            -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-        continue
-    }
-
-    Write-Status "  ✓ Fix committed locally on branch: $($applyResult.BranchName)"
-
-    # Build the project with the fix applied
-    Write-Status '  Building...'
-    $buildResult = & (Join-Path $PSScriptRoot 'Invoke-Build.ps1') -ConfigPath $configPath -TargetDir $targetDir -Experiment $experiment
-
-    if (-not $buildResult.Success) {
         if ($stackedDiffs) {
-            Write-Warning "Build failed at experiment $experiment — reverting and continuing"
+            Write-Warning "$($fixPhaseFailure.RevertDescription) at experiment $experiment — reverting and continuing"
 
             $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
-                -Experiment $experiment -Outcome 'regressed' `
-                -RevertDescription 'Build failure' `
-                -MetadataSummary "Build failure: $($analysisResult.Explanation)" `
+                -Experiment $experiment -Outcome $iterativeExitReason `
+                -RevertDescription $fixPhaseFailure.RevertDescription `
+                -MetadataSummary "$($fixPhaseFailure.MetadataPrefix): $($analysisResult.Explanation)" `
                 -MetadataFilePath $analysisResult.FilePath `
                 -QueueItemId $queueItemId `
                 -ConfigPath $configPath `
                 -TargetDir $targetDir
 
             $branchChain += $branchName
-            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'build_failure' }
+            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = $iterativeExitReason }
             $consecutiveFailures++
             $staleCount++
 
-            # Create rejected PR for the record
             $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
                 -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
             $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode.`n" } else { '' }
+            $rejRcaSection = ''
+            if ($rcaDocument) {
+                $rejRcaSection = @(
+                    ''
+                    '### Root Cause Analysis'
+                    ''
+                    '<details>'
+                    '<summary>Click to expand full analysis</summary>'
+                    ''
+                    $rcaDocument
+                    ''
+                    '</details>'
+                    ''
+                ) -join "`n"
+            }
+
             $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
                 -Type 'Rejected' -Experiment $experiment `
                 -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-                -OutcomeLabel '❌ **Build failure**' `
-                -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+                -OutcomeLabel $fixPhaseFailure.Label `
+                -OutcomeDetail $fixPhaseFailure.Detail `
+                -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
+                -RcaSection $rejRcaSection -IterationSummary $iterationSummary
+
             Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome 'regressed' -Description $analysisResult.Explanation `
+                -Outcome $iterativeExitReason -Description $analysisResult.Explanation `
                 -Body $rejBody -IsDryRun:$DryRun
             if ($rejPrResult.Success) {
                 $prNumber = $rejPrResult.PrNumber
                 $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'build_failure' }
+                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $iterativeExitReason }
             }
             Pop-Location
 
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
-                -Outcome 'build_failure' -BranchName $branchName `
+                -Outcome $iterativeExitReason -BranchName $branchName `
                 -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
                 -PrNumber $prNumber -PrUrl $prUrl `
-                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+                -AdditionalProperties $iterativeMetadataProperties
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
                 Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
                 break
             }
+
             continue
-        } else {
-            $exitReason = 'build_failure'
-            Write-Error "Build failed at experiment $experiment — rolling back"
-            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
-            break
         }
+
+        $exitReason = $iterativeExitReason
+        Write-Warning "$($fixPhaseFailure.RevertDescription) at experiment $experiment — rolling back"
+        Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
+        break
+    }
+
+    if ($iterativeResult.AttemptCount -gt 1) {
+        Write-Status "  ✓ Fix passed build + tests after $($iterativeResult.AttemptCount) attempts"
     }
 
     # ── Phase 4: Verify (tests + measure + compare) ──────────────────────
     Write-Status '[4/5] ✅ Verifying...'
-    $testResult = & (Join-Path $PSScriptRoot 'Invoke-E2ETests.ps1') `
-        -ConfigPath $configPath -TargetDir $targetDir -Experiment $experiment
-
-    if (-not $testResult.Success) {
-        if ($stackedDiffs) {
-            Write-Warning "E2E tests failed at experiment $experiment — reverting and continuing"
-
-            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
-                -BranchName $branchName -FilePath $targetFile `
-                -Experiment $experiment -Outcome 'regressed' `
-                -RevertDescription 'E2E test failure' `
-                -MetadataSummary "Test failure: $($analysisResult.Explanation)" `
-                -MetadataFilePath $analysisResult.FilePath `
-                -QueueItemId $queueItemId `
-                -ConfigPath $configPath `
-                -TargetDir $targetDir
-
-            $branchChain += $branchName
-            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'test_failure' }
-            $consecutiveFailures++
-            $staleCount++
-
-            # Create rejected PR for the record
-            $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
-                -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
-            $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode.`n" } else { '' }
-            $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
-                -Type 'Rejected' -Experiment $experiment `
-                -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-                -OutcomeLabel '❌ **E2E test failure**' `
-                -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
-            Push-Location $targetDir
-            $rejPrResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome 'regressed' -Description $analysisResult.Explanation `
-                -Body $rejBody -IsDryRun:$DryRun
-            if ($rejPrResult.Success) {
-                $prNumber = $rejPrResult.PrNumber
-                $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'test_failure' }
-            }
-            Pop-Location
-
-            Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
-                -Experiment $experiment -StartedAt $experimentStartedAt `
-                -Outcome 'test_failure' -BranchName $branchName `
-                -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
-                -PrNumber $prNumber -PrUrl $prUrl `
-                -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
-
-            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
-                $exitReason = 'max_consecutive_failures'
-                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
-                break
-            }
-            continue
-        } else {
-            $exitReason = 'test_failure'
-            Write-Warning "E2E tests failed at experiment $experiment — rolling back"
-            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
-            break
-        }
-    }
 
     # Stress-test the optimized API (or generate synthetic metrics in dry-run)
     if ($DryRun) {
@@ -1002,7 +1096,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
                     -OutcomeLabel "❌ **$measurementFailureLabel**" `
                     -OutcomeDetail $failureDetail `
-                    -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice
+                    -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
+                    -IterationSummary $iterationSummary
                 Push-Location $targetDir
                 $rejPrResult = New-ExperimentPR `
                     -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
@@ -1020,7 +1115,8 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     -Outcome $measurementFailureReason -BranchName $branchName `
                     -BaseBranch $(if ($stackedDiffs) { $baseBranch } else { $defaultBranch }) `
                     -PrNumber $prNumber -PrUrl $prUrl `
-                    -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+                    -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+                    -AdditionalProperties $iterativeMetadataProperties
 
                 if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                     $exitReason = 'max_consecutive_failures'
@@ -1169,7 +1265,8 @@ $rcaDocument
                 -OutcomeLabel "🔴 **Regression detected**" `
                 -OutcomeDetail $comparison.RegressionDetail `
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
-                -MetricsSection $rejMetrics -RcaSection $rejRcaSection
+                -MetricsSection $rejMetrics -RcaSection $rejRcaSection `
+                -IterationSummary $iterationSummary
             Push-Location $targetDir
             $rejPrResult = New-ExperimentPR `
                 -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
@@ -1193,93 +1290,94 @@ $rcaDocument
             Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
             break
         }
-    } elseif ($comparison.Improved -or $comparison.TiebreakerUsed) {
-        $experimentOutcome = 'improved'
-        $staleCount = 0
-        $consecutiveFailures = 0
-        $successCount++
+    } else {
+        if ($comparison.Improved -or $comparison.TiebreakerUsed) {
+            $experimentOutcome = 'improved'
+            $staleCount = 0
+            $consecutiveFailures = 0
+            $successCount++
 
-        if ($comparison.TiebreakerUsed) {
-            Write-Status '  ↑ Efficiency improvement (tiebreaker) — publishing'
-        } else {
-            Write-Status '  ↑ Improvement detected — publishing'
-        }
-
-        Write-Status '[5/5] 📦 Publishing (push + PR)...'
-
-        # Update metadata BEFORE the amend so entries appear in the commit
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddTried' `
-            -Experiment $experiment `
-            -Summary $analysisResult.Explanation `
-            -FilePath $analysisResult.FilePath `
-            -Outcome 'improved' `
-            -ConfigPath $configPath -TargetDir $targetDir
-
-        # Mark queue item as done
-        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-            -Action 'MarkDone' -ItemId $queueItemId `
-            -Experiment $experiment -Outcome 'improved' `
-            -ConfigPath $configPath -TargetDir $targetDir
-
-        # Amend the commit to include post-fix artifacts
-        Push-Location $targetDir
-        & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
-            -Experiment $experiment -SubmoduleDir $targetDir
-        git commit --amend --no-gpg-sign --no-edit 2>&1 | Out-Null
-
-        # Push and create PR
-        git push -u origin $branchName 2>&1 | Out-Null
-
-        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-            -Phase 'publish' -Level 'info' `
-            -Message "Branch pushed to origin: $branchName" `
-            -Experiment $experiment
-
-        # Determine PR base: stacked mode uses baseBranch (previous experiment); legacy uses default branch
-        $prBaseBranch = if ($stackedDiffs) { $baseBranch } else { $defaultBranch }
-
-        # Build PR body with stack context
-        $stackNote = ''
-        if ($stackedDiffs -and $prChain.Count -gt 0) {
-            $stackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
-                -Experiment $experiment -OutcomeTag '[ACCEPTED]' -BaseBranch $prBaseBranch
-        }
-
-        # Build per-scenario breakdown table from diagnostic scenario results
-        $scenarioBreakdown = ''
-        if ($scenarioResults -and $scenarioResults.Count -gt 0) {
-            $scenarioRows = @()
-            foreach ($sr in $scenarioResults) {
-                if (-not $sr.Metrics) { continue }
-
-                # Use previous experiment's scenario results if available, otherwise fall back to baseline
-                $scenarioRef = $null
-                $scenarioRefLabel = 'Baseline'
-                if ($previousScenarioResults -and $previousScenarioResults.ContainsKey($sr.ScenarioName)) {
-                    $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
-                    $scenarioRefLabel = $referenceLabel
-                } else {
-                    $scenarioBaselinePath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
-                    if (-not (Test-Path $scenarioBaselinePath)) { continue }
-                    $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
-                }
-
-                $sbP95 = $scenarioRef.HttpReqDuration.P95
-                $scP95 = $sr.Metrics.HttpReqDuration.P95
-
-                $scenarioDelta = if ($sbP95 -gt 0) {
-                    [math]::Round((($scP95 - $sbP95) / $sbP95) * 100, 1)
-                } else { 0 }
-                $deltaSign = if ($scenarioDelta -gt 0) { '+' } else { '' }
-                $indicator = if ($scenarioDelta -le -5) { '🟢' } elseif ($scenarioDelta -ge 10) { '🔴' } else { '⚪' }
-
-                $scenarioRows += "| $indicator $($sr.ScenarioName) | $([math]::Round($sbP95, 1))ms | $([math]::Round($scP95, 1))ms | ${deltaSign}${scenarioDelta}% |"
+            if ($comparison.TiebreakerUsed) {
+                Write-Status '  ↑ Efficiency improvement (tiebreaker) — publishing'
+            } else {
+                Write-Status '  ↑ Improvement detected — publishing'
             }
 
-            if ($scenarioRows.Count -gt 0) {
-                $scenarioTable = ($scenarioRows -join "`n")
-                $scenarioBreakdown = @"
+            Write-Status '[5/5] 📦 Publishing (push + PR)...'
+
+            # Update metadata BEFORE the amend so entries appear in the commit
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Experiment $experiment `
+                -Summary $analysisResult.Explanation `
+                -FilePath $analysisResult.FilePath `
+                -Outcome 'improved' `
+                -ConfigPath $configPath -TargetDir $targetDir
+
+            # Mark queue item as done
+            & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                -Action 'MarkDone' -ItemId $queueItemId `
+                -Experiment $experiment -Outcome 'improved' `
+                -ConfigPath $configPath -TargetDir $targetDir
+
+            # Amend the commit to include post-fix artifacts
+            Push-Location $targetDir
+            & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
+                -Experiment $experiment -SubmoduleDir $targetDir
+            git commit --amend --no-gpg-sign --no-edit 2>&1 | Out-Null
+
+            # Push and create PR
+            git push -u origin $branchName 2>&1 | Out-Null
+
+            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                -Phase 'publish' -Level 'info' `
+                -Message "Branch pushed to origin: $branchName" `
+                -Experiment $experiment
+
+            # Determine PR base: stacked mode uses baseBranch (previous experiment); legacy uses default branch
+            $prBaseBranch = if ($stackedDiffs) { $baseBranch } else { $defaultBranch }
+
+            # Build PR body with stack context
+            $stackNote = ''
+            if ($stackedDiffs -and $prChain.Count -gt 0) {
+                $stackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
+                    -Experiment $experiment -OutcomeTag '[ACCEPTED]' -BaseBranch $prBaseBranch
+            }
+
+            # Build per-scenario breakdown table from diagnostic scenario results
+            $scenarioBreakdown = ''
+            if ($scenarioResults -and $scenarioResults.Count -gt 0) {
+                $scenarioRows = @()
+                foreach ($sr in $scenarioResults) {
+                    if (-not $sr.Metrics) { continue }
+
+                    # Use previous experiment's scenario results if available, otherwise fall back to baseline
+                    $scenarioRef = $null
+                    $scenarioRefLabel = 'Baseline'
+                    if ($previousScenarioResults -and $previousScenarioResults.ContainsKey($sr.ScenarioName)) {
+                        $scenarioRef = $previousScenarioResults[$sr.ScenarioName]
+                        $scenarioRefLabel = $referenceLabel
+                    } else {
+                        $scenarioBaselinePath = Join-Path -Path $targetDir -ChildPath $config.Api.ResultsPath "baseline-$($sr.ScenarioName).json"
+                        if (-not (Test-Path $scenarioBaselinePath)) { continue }
+                        $scenarioRef = Get-Content $scenarioBaselinePath -Raw | ConvertFrom-Json
+                    }
+
+                    $sbP95 = $scenarioRef.HttpReqDuration.P95
+                    $scP95 = $sr.Metrics.HttpReqDuration.P95
+
+                    $scenarioDelta = if ($sbP95 -gt 0) {
+                        [math]::Round((($scP95 - $sbP95) / $sbP95) * 100, 1)
+                    } else { 0 }
+                    $deltaSign = if ($scenarioDelta -gt 0) { '+' } else { '' }
+                    $indicator = if ($scenarioDelta -le -5) { '🟢' } elseif ($scenarioDelta -ge 10) { '🔴' } else { '⚪' }
+
+                    $scenarioRows += "| $indicator $($sr.ScenarioName) | $([math]::Round($sbP95, 1))ms | $([math]::Round($scP95, 1))ms | ${deltaSign}${scenarioDelta}% |"
+                }
+
+                if ($scenarioRows.Count -gt 0) {
+                    $scenarioTable = ($scenarioRows -join "`n")
+                    $scenarioBreakdown = @"
 
 ### Per-Scenario Breakdown (vs $scenarioRefLabel)
 | Scenario | $scenarioRefLabel p95 | Current p95 | Delta |
@@ -1287,22 +1385,22 @@ $rcaDocument
 $scenarioTable
 
 "@
+                }
             }
-        }
 
-        $dryRunNotice = ''
-        if ($DryRun) {
-            $dryRunNotice = @"
+            $dryRunNotice = ''
+            if ($DryRun) {
+                $dryRunNotice = @"
 
 > ⚡ **DRY RUN** — This PR was created in dry-run mode. Performance metrics are synthetic (not from real k6 tests). The code change is real but has not been stress-tested.
 
 "@
-        }
+            }
 
-        # Include root-cause analysis in PR body if available
-        $rcaSection = ''
-        if ($rcaDocument) {
-            $rcaSection = @"
+            # Include root-cause analysis in PR body if available
+            $rcaSection = ''
+            if ($rcaDocument) {
+                $rcaSection = @"
 
 ### Root Cause Analysis
 
@@ -1314,9 +1412,9 @@ $rcaDocument
 </details>
 
 "@
-        }
+            }
 
-        $accMetrics = @"
+            $accMetrics = @"
 
 ### Performance Results (vs $referenceLabel)
 | Metric | $referenceLabel | After Fix | Delta |
@@ -1326,132 +1424,133 @@ $rcaDocument
 | Error Rate | $([math]::Round($referenceMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
 
 "@
-        $prBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
-            -Type 'Accepted' -Experiment $experiment `
-            -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-            -StackNote $stackNote -DryRunNotice $dryRunNotice `
-            -MetricsSection $accMetrics -RcaSection $rcaSection `
-            -ImprovementPct "$($comparison.ImprovementPct)" `
-            -ScenarioBreakdown $scenarioBreakdown
+            $prBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
+                -Type 'Accepted' -Experiment $experiment `
+                -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
+                -StackNote $stackNote -DryRunNotice $dryRunNotice `
+                -MetricsSection $accMetrics -RcaSection $rcaSection `
+                -ImprovementPct "$($comparison.ImprovementPct)" `
+                -ScenarioBreakdown $scenarioBreakdown `
+                -IterationSummary $iterationSummary
 
-        $prResult = New-ExperimentPR `
-            -Experiment $experiment -BranchName $branchName -BaseBranch $prBaseBranch `
-            -Outcome 'improved' -Description $analysisResult.Explanation `
-            -Body $prBody -IsDryRun:$DryRun
+            $prResult = New-ExperimentPR `
+                -Experiment $experiment -BranchName $branchName -BaseBranch $prBaseBranch `
+                -Outcome 'improved' -Description $analysisResult.Explanation `
+                -Body $prBody -IsDryRun:$DryRun
 
-        $prNumber = $null
-        $prUrl = $null
-        if ($prResult.Success) {
-            $prNumber = $prResult.PrNumber
-            $prUrl = $prResult.PrUrl
-        }
+            $prNumber = $null
+            $prUrl = $null
+            if ($prResult.Success) {
+                $prNumber = $prResult.PrNumber
+                $prUrl = $prResult.PrUrl
+            }
 
-        # Update stacked-diffs state
-        $currentBranch = $branchName
-        $branchChain += $branchName
-        if ($prNumber) {
-            $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'improved' }
-        }
+            # Update stacked-diffs state
+            $currentBranch = $branchName
+            $branchChain += $branchName
+            if ($prNumber) {
+                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'improved' }
+            }
 
-        # Wait for PR merge if configured (legacy mode or explicit opt-in)
-        $shouldWait = $waitForMerge -and $prNumber -and ($experiment -lt $loopEnd)
-        if ($shouldWait) {
-            Write-Status ''
-            Write-Status '  ⏳ Waiting for PR to be reviewed and merged...'
-            Write-Status '     Merge the PR in GitHub to continue the optimization loop.'
+            # Wait for PR merge if configured (legacy mode or explicit opt-in)
+            $shouldWait = $waitForMerge -and $prNumber -and ($experiment -lt $loopEnd)
+            if ($shouldWait) {
+                Write-Status ''
+                Write-Status '  ⏳ Waiting for PR to be reviewed and merged...'
+                Write-Status '     Merge the PR in GitHub to continue the optimization loop.'
 
-            $pollInterval = 30
-            $lastLog = [datetime]::MinValue
-            $logEvery = [timespan]::FromMinutes(5)
+                $pollInterval = 30
+                $lastLog = [datetime]::MinValue
+                $logEvery = [timespan]::FromMinutes(5)
 
-            while ($true) {
-                Start-Sleep -Seconds $pollInterval
-                $prState = gh pr view $prNumber --json state, mergedAt 2>$null | ConvertFrom-Json
-                if ($prState.state -eq 'MERGED') {
-                    Write-Status "  ✓ PR #$prNumber merged — continuing loop"
+                while ($true) {
+                    Start-Sleep -Seconds $pollInterval
+                    $prState = gh pr view $prNumber --json state, mergedAt 2>$null | ConvertFrom-Json
+                    if ($prState.state -eq 'MERGED') {
+                        Write-Status "  ✓ PR #$prNumber merged — continuing loop"
 
-                    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                        -Phase 'publish' -Level 'info' `
-                        -Message "PR #$prNumber merged at $($prState.mergedAt)" `
-                        -Experiment $experiment
+                        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                            -Phase 'publish' -Level 'info' `
+                            -Message "PR #$prNumber merged at $($prState.mergedAt)" `
+                            -Experiment $experiment
 
-                    if (-not $stackedDiffs) {
-                        # Legacy mode: update local default branch
-                        git fetch origin $defaultBranch 2>&1 | Out-Null
-                        git checkout $defaultBranch 2>&1 | Out-Null
-                        git merge "origin/$defaultBranch" --ff-only 2>&1 | Out-Null
-                        $currentBranch = $defaultBranch
+                        if (-not $stackedDiffs) {
+                            # Legacy mode: update local default branch
+                            git fetch origin $defaultBranch 2>&1 | Out-Null
+                            git checkout $defaultBranch 2>&1 | Out-Null
+                            git merge "origin/$defaultBranch" --ff-only 2>&1 | Out-Null
+                            $currentBranch = $defaultBranch
+                        }
+                        break
+                    } elseif ($prState.state -eq 'CLOSED') {
+                        Write-Warning "  PR #$prNumber was closed without merging — stopping loop"
+
+                        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                            -Phase 'publish' -Level 'warning' `
+                            -Message "PR #$prNumber closed without merge" `
+                            -Experiment $experiment
+
+                        if (-not $stackedDiffs) {
+                            git checkout $defaultBranch 2>&1 | Out-Null
+                            $currentBranch = $defaultBranch
+                        }
+                        $exitReason = 'pr_rejected'
+                        break
+                    } else {
+                        if (([datetime]::Now - $lastLog) -ge $logEvery) {
+                            Write-Status "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))"
+                            $lastLog = [datetime]::Now
+                        }
                     }
+                }
+
+                # If PR was rejected, break out of the main loop
+                if ($exitReason -eq 'pr_rejected') {
+                    Pop-Location
                     break
-                } elseif ($prState.state -eq 'CLOSED') {
-                    Write-Warning "  PR #$prNumber was closed without merging — stopping loop"
-
-                    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                        -Phase 'publish' -Level 'warning' `
-                        -Message "PR #$prNumber closed without merge" `
-                        -Experiment $experiment
-
-                    if (-not $stackedDiffs) {
-                        git checkout $defaultBranch 2>&1 | Out-Null
-                        $currentBranch = $defaultBranch
-                    }
-                    $exitReason = 'pr_rejected'
-                    break
-                } else {
-                    if (([datetime]::Now - $lastLog) -ge $logEvery) {
-                        Write-Status "  … Still waiting for PR #$prNumber to be merged ($(Get-Date -Format 'HH:mm'))"
-                        $lastLog = [datetime]::Now
-                    }
                 }
             }
 
-            # If PR was rejected, break out of the main loop
-            if ($exitReason -eq 'pr_rejected') {
-                Pop-Location
-                break
-            }
-        }
+            Pop-Location
+        } else {
+            # No improvement and no regression — stale
+            $staleCount++
+            $consecutiveFailures++
 
-        Pop-Location
-    } else {
-        # No improvement and no regression — stale
-        $staleCount++
-        $consecutiveFailures++
+            & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
+                -Action 'AddTried' `
+                -Experiment $experiment `
+                -Summary $analysisResult.Explanation `
+                -FilePath $analysisResult.FilePath `
+                -Outcome 'stale' `
+                -ConfigPath $configPath -TargetDir $targetDir
 
-        & (Join-Path $PSScriptRoot 'Update-OptimizationMetadata.ps1') `
-            -Action 'AddTried' `
-            -Experiment $experiment `
-            -Summary $analysisResult.Explanation `
-            -FilePath $analysisResult.FilePath `
-            -Outcome 'stale' `
-            -ConfigPath $configPath -TargetDir $targetDir
-
-        # Mark queue item as done
-        & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
-            -Action 'MarkDone' -ItemId $queueItemId `
-            -Experiment $experiment -Outcome 'stale' `
-            -ConfigPath $configPath -TargetDir $targetDir
-
-        if ($stackedDiffs) {
-            Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
-
-            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
-                -BranchName $branchName -FilePath $targetFile `
+            # Mark queue item as done
+            & (Join-Path $PSScriptRoot 'Manage-OptimizationQueue.ps1') `
+                -Action 'MarkDone' -ItemId $queueItemId `
                 -Experiment $experiment -Outcome 'stale' `
-                -RevertDescription (Limit-String $analysisResult.Explanation 120) `
-                -SkipMetadataUpdate -SkipQueueMarkDone `
-                -ConfigPath $configPath `
-                -TargetDir $targetDir
+                -ConfigPath $configPath -TargetDir $targetDir
 
-            $branchChain += $branchName
-            $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'stale' }
+            if ($stackedDiffs) {
+                Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
 
-            # Create rejected PR for the record (with metrics)
-            $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
-                -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
-            $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode. Metrics are synthetic.`n" } else { '' }
-            $d = $comparison.Deltas
-            $rejMetrics = @"
+                $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+                    -BranchName $branchName -FilePath $targetFile `
+                    -Experiment $experiment -Outcome 'stale' `
+                    -RevertDescription (Limit-String $analysisResult.Explanation 120) `
+                    -SkipMetadataUpdate -SkipQueueMarkDone `
+                    -ConfigPath $configPath `
+                    -TargetDir $targetDir
+
+                $branchChain += $branchName
+                $failedExperiments += [PSCustomObject]@{ Experiment = $experiment; Reason = 'stale' }
+
+                # Create rejected PR for the record (with metrics)
+                $rejStackNote = Build-StackNote -PrChain $prChain -FailedExperiments $failedExperiments `
+                    -Experiment $experiment -OutcomeTag '[REJECTED]' -BaseBranch $baseBranch
+                $rejDryRunNotice = if ($DryRun) { "`n> ⚡ **DRY RUN** — Created in dry-run mode. Metrics are synthetic.`n" } else { '' }
+                $d = $comparison.Deltas
+                $rejMetrics = @"
 
 ### Performance Results (vs $referenceLabel)
 | Metric | $referenceLabel | After Fix | Delta |
@@ -1461,9 +1560,9 @@ $rcaDocument
 | Error Rate | $([math]::Round($referenceMetrics.HttpReqFailed.Rate * 100, 2))% | $([math]::Round($currentMetrics.HttpReqFailed.Rate * 100, 2))% | $($d.ErrorRate.ChangePct)% |
 
 "@
-            $rejRcaSection = ''
-            if ($rcaDocument) {
-                $rejRcaSection = @"
+                $rejRcaSection = ''
+                if ($rcaDocument) {
+                    $rejRcaSection = @"
 
 ### Root Cause Analysis
 
@@ -1475,39 +1574,41 @@ $rcaDocument
 </details>
 
 "@
-            }
-            $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
-                -Type 'Rejected' -Experiment $experiment `
-                -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
-                -OutcomeLabel "⚪ **No improvement detected**" `
-                -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
-                -MetricsSection $rejMetrics -RcaSection $rejRcaSection
-            Push-Location $targetDir
-            $rejPrResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome 'stale' -Description $analysisResult.Explanation `
-                -Body $rejBody -IsDryRun:$DryRun
-            if ($rejPrResult.Success) {
-                $prNumber = $rejPrResult.PrNumber
-                $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'stale' }
-            }
-            Pop-Location
+                }
+                $rejBody = & (Join-Path $PSScriptRoot 'Build-PRBody.ps1') `
+                    -Type 'Rejected' -Experiment $experiment `
+                    -Description $analysisResult.Explanation -FilePath $analysisResult.FilePath `
+                    -OutcomeLabel "⚪ **No improvement detected**" `
+                    -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
+                    -MetricsSection $rejMetrics -RcaSection $rejRcaSection `
+                    -IterationSummary $iterationSummary
+                Push-Location $targetDir
+                $rejPrResult = New-ExperimentPR `
+                    -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
+                    -Outcome 'stale' -Description $analysisResult.Explanation `
+                    -Body $rejBody -IsDryRun:$DryRun
+                if ($rejPrResult.Success) {
+                    $prNumber = $rejPrResult.PrNumber
+                    $prUrl = $rejPrResult.PrUrl
+                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'stale' }
+                }
+                Pop-Location
 
-            if ($consecutiveFailures -ge $maxConsecutiveFailures) {
-                $exitReason = 'max_consecutive_failures'
-                Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
-                break
-            }
-        } else {
-            Write-Status "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))"
+                if ($consecutiveFailures -ge $maxConsecutiveFailures) {
+                    $exitReason = 'max_consecutive_failures'
+                    Write-Status "  Stopping: $consecutiveFailures consecutive failures reached limit"
+                    break
+                }
+            } else {
+                Write-Status "  ─ No improvement (stale $staleCount / $($tolerances.StaleExperimentsBeforeStop))"
 
-            Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
+                Undo-ExperimentBranch -BranchName $branchName -RestoreBranch $currentBranch -TargetDir $targetDir
 
-            if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop) {
-                $exitReason = 'no_improvement'
-                Write-Status '  Stopping: no improvement for consecutive experiments'
-                break
+                if ($staleCount -ge $tolerances.StaleExperimentsBeforeStop) {
+                    $exitReason = 'no_improvement'
+                    Write-Status '  Stopping: no improvement for consecutive experiments'
+                    break
+                }
             }
         }
     }
@@ -1539,7 +1640,8 @@ $rcaDocument
         -Metrics $currentMetrics `
         -Improved $comparison.Improved -Regression $comparison.Regression `
         -PrNumber $experimentPrNumber -PrUrl $experimentPrUrl `
-        -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures
+        -StaleCount $staleCount -ConsecutiveFailures $consecutiveFailures `
+        -AdditionalProperties $iterativeMetadataProperties
 }
 
 # ── Summary ─────────────────────────────────────────────────────────────────

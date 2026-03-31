@@ -66,4 +66,51 @@ Describe 'Test-HoneConfig target validation' {
                 -TargetPath $tempTarget
         } | Should -Throw '*HarnessTesting manifest not found*'
     }
+
+    It 'rejects engine Fixer.MaxAttempts below 1' {
+        $tempConfigPath = Join-Path -Path $TestDrive -ChildPath 'invalid-max-attempts.psd1'
+        $content = Get-Content -Path $configPath -Raw
+        $content = $content -replace 'MaxAttempts = 3', 'MaxAttempts = 0'
+        Set-Content -Path $tempConfigPath -Value $content -Encoding utf8
+
+        {
+            & (Join-Path -Path $harnessRoot -ChildPath 'Test-HoneConfig.ps1') `
+                -ConfigPath $tempConfigPath `
+                -TargetPath $fixtureDir
+        } | Should -Throw '*Fixer.MaxAttempts*'
+    }
+
+    It 'rejects engine Fixer.MaxDiffGrowthFactor below 1' {
+        $tempConfigPath = Join-Path -Path $TestDrive -ChildPath 'invalid-diff-growth.psd1'
+        $content = Get-Content -Path $configPath -Raw
+        $content = $content -replace 'MaxDiffGrowthFactor = 3.0', 'MaxDiffGrowthFactor = 0.5'
+        Set-Content -Path $tempConfigPath -Value $content -Encoding utf8
+
+        {
+            & (Join-Path -Path $harnessRoot -ChildPath 'Test-HoneConfig.ps1') `
+                -ConfigPath $tempConfigPath `
+                -TargetPath $fixtureDir
+        } | Should -Throw '*Fixer.MaxDiffGrowthFactor*'
+    }
+
+    It 'rejects target Fixer.TestFileGuard values that are not boolean' {
+        $tempTarget = Join-Path -Path $TestDrive -ChildPath 'invalid-target-fixer-guard'
+        Copy-Item -Path $fixtureDir -Destination $tempTarget -Recurse
+        $cfgPath = Join-Path -Path $tempTarget -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+        $content = Get-Content -Path $cfgPath -Raw
+        $content = $content -replace "\r?\n\}\s*$", @"
+
+    Fixer = @{
+        TestFileGuard = 'sometimes'
+    }
+}
+"@
+        Set-Content -Path $cfgPath -Value $content -Encoding utf8
+
+        {
+            & (Join-Path -Path $harnessRoot -ChildPath 'Test-HoneConfig.ps1') `
+                -ConfigPath $configPath `
+                -TargetPath $tempTarget
+        } | Should -Throw '*Fixer.TestFileGuard*'
+    }
 }

@@ -37,6 +37,13 @@
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
+
+.PARAMETER TargetDir
+    Root directory of the target project. When provided, target config is merged
+    and RCA output paths are resolved relative to that directory.
+
+.PARAMETER IterationSummarySection
+    Optional markdown section describing retry history for iterative fixer runs.
 #>
 [CmdletBinding()]
 param(
@@ -66,13 +73,26 @@ param(
 
     [int]$Experiment = 0,
 
-    [string]$ConfigPath
+    [string]$ConfigPath,
+
+    [string]$TargetDir,
+
+    [string]$IterationSummarySection
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
 $config = Get-HoneConfig -ConfigPath $ConfigPath
+if ($TargetDir) {
+    $targetConfigPath = Join-Path -Path $TargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (Test-Path $targetConfigPath) {
+        $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+        $config = Merge-HoneConfig -Engine $config -Target $targetCfg
+    }
+}
+
+$pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
 
 & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
     -Phase 'analyze' -Level 'info' -Message "Generating root cause analysis for experiment $Experiment" `
@@ -164,6 +184,10 @@ $(if ($filePath) { "**Target file:** ``$filePath```n" })
 **Scope:** ``$changeScope``$(if ($scopeReasoning) { " — $scopeReasoning" })
 $explanation
 
+$(if ($IterationSummarySection) {
+    "`n$IterationSummarySection"
+})
+
 ## Proposed Fix
 
 $(if ($codeBlock) {
@@ -174,7 +198,7 @@ $(if ($codeBlock) {
 "@
 
 # ── Write the RCA file ──────────────────────────────────────────────────────
-$iterDir = Join-Path -Path $repoRoot -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
+$iterDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "experiment-$Experiment"
 if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }

@@ -48,12 +48,22 @@ try {
     if (Test-Path $experimentDir) {
         # Analysis artifacts
         foreach ($pattern in @('analysis-prompt.md', 'analysis-response.json',
-                'classification-response.json', 'fix-response.md', 'root-cause.md',
+                'classification-response.json', 'fix-prompt.md', 'fix-response.md', 'root-cause.md',
                 'build.log', 'e2e-tests.log', 'e2e-results.trx', 'k6.log')) {
             $f = Join-Path $experimentDir $pattern
             if (Test-Path $f) {
                 git add "$resultsRoot/experiment-$Experiment/$pattern" 2>&1 | Out-Null
             }
+        }
+
+        $iterationLogFile = Join-Path -Path $experimentDir -ChildPath 'iteration-log.json'
+        if (Test-Path $iterationLogFile) {
+            git add "$resultsRoot/experiment-$Experiment/iteration-log.json" 2>&1 | Out-Null
+        }
+
+        $iterationsDir = Join-Path -Path $experimentDir -ChildPath 'iterations'
+        if (Test-Path $iterationsDir) {
+            git add "$resultsRoot/experiment-$Experiment/iterations/" 2>&1 | Out-Null
         }
 
         Get-ChildItem -Path $experimentDir -Filter 'k6-*.log' -ErrorAction SilentlyContinue |

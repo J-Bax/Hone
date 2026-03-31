@@ -26,6 +26,11 @@ BeforeAll {
                 Default = @{
                     MockResponsePath = '__HARNESS_ROOT__\test-fixtures\mock-fix-response.md'
                 }
+                ByAttempt = @{
+                    '2' = @{
+                        MockResponsePath = '__HARNESS_ROOT__\test-fixtures\mock-fix-response.md'
+                    }
+                }
             }
         }
 
@@ -125,10 +130,12 @@ Describe 'Harness-testing fixture helpers' {
         $buildDefault = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Build') -Experiment 1
         $buildFailure = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Build') -Experiment 2
         $analysisMock = Get-HarnessTestingMockResponsePath -Config $mergedConfig -TargetDir $targetDir -Agent Analysis -Experiment 1
+        $retryFixMock = Get-HarnessTestingMockResponsePath -Config $mergedConfig -TargetDir $targetDir -Agent Fix -Experiment 1 -Attempt 2
 
         $fixture.Scenario.Name | Should -Be 'happy-path'
         $buildDefault.ExitCode | Should -Be 0
         $buildFailure.ExitCode | Should -Be 1
         Test-Path -Path $analysisMock | Should -BeTrue
+        Test-Path -Path $retryFixMock | Should -BeTrue
     }
 }

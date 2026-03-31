@@ -68,7 +68,9 @@ param(
 
     [string]$WorkingDirectory,
 
-    [int]$Experiment = 0
+    [int]$Experiment = 0,
+
+    [int]$Attempt = -1
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -92,7 +94,7 @@ if (-not $MockResponsePath -and $WorkingDirectory) {
     }
 
     if ($fixtureAgent) {
-        $MockResponsePath = Get-HarnessTestingMockResponsePath -Config $config -TargetDir $WorkingDirectory -Agent $fixtureAgent -Experiment $Experiment
+        $MockResponsePath = Get-HarnessTestingMockResponsePath -Config $config -TargetDir $WorkingDirectory -Agent $fixtureAgent -Experiment $Experiment -Attempt $Attempt
     }
 }
 

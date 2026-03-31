@@ -20,7 +20,9 @@
     Brief description of the optimization (used by AddTried and MarkTried).
 
 .PARAMETER Outcome
-    Result of the optimization: 'improved', 'regressed', 'stale' (used by AddTried and MarkTried).
+    Result of the optimization: 'improved', 'regressed', 'stale',
+    'build_failure', 'test_failure', or 'retry_budget_exhausted'
+    (used by AddTried and MarkTried).
 
 .PARAMETER FilePath
     Target file that was modified (used by AddTried).
@@ -45,7 +47,7 @@ param(
 
     [string]$Summary,
 
-    [ValidateSet('improved', 'regressed', 'stale', 'pending', 'queued', '')]
+    [ValidateSet('improved', 'regressed', 'stale', 'build_failure', 'test_failure', 'retry_budget_exhausted', 'pending', 'queued', '')]
     [string]$Outcome = 'pending',
 
     [string]$FilePath,

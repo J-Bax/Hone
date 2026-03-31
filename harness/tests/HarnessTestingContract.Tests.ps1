@@ -9,6 +9,7 @@ Describe 'Harness-testing contract data' {
 
         $contract.ExperimentOutcomes | Should -Contain 'improved'
         $contract.ExperimentOutcomes | Should -Contain 'build_failure'
+        $contract.ExperimentOutcomes | Should -Contain 'retry_budget_exhausted'
         $contract.ExperimentOutcomes | Should -Contain 'analysis_failed'
         $contract.ArtifactCategories | Should -Contain 'analysis_prompt'
         $contract.ArtifactCategories | Should -Contain 'k6_summary'

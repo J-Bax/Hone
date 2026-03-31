@@ -108,6 +108,7 @@ try {
         BranchName = $branchName
         FilePath = $FilePath
         Description = $Description
+        CommitSha = (& git rev-parse HEAD 2>$null | Out-String).Trim()
     }
 } catch {
     $result = [ordered]@{
