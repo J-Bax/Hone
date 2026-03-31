@@ -16,12 +16,20 @@
 
 .PARAMETER Experiment
     Current experiment number for optional build-log output.
+
+.PARAMETER Attempt
+    Iteration number for iterative fixer flows.
+
+.PARAMETER AdditionalLogPath
+    Optional second log file path used for per-attempt artifacts.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
     [string]$TargetDir,
-    [int]$Experiment = 0
+    [int]$Experiment = 0,
+    [int]$Attempt = -1,
+    [string]$AdditionalLogPath
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -40,7 +48,7 @@ $pathBase = if ($TargetDir) { $TargetDir } else { $repoRoot }
 $solutionPath = Join-Path $pathBase $config.Api.SolutionPath
 $fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
 $fixtureBuild = if ($fixture) {
-    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Build') -Experiment $Experiment
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Build') -Experiment $Experiment -Attempt $Attempt
 } else {
     $null
 }
@@ -73,7 +81,20 @@ if ($Experiment -gt 0) {
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
-    $buildOutputString | Out-File -FilePath (Join-Path $logDir 'build.log') -Encoding utf8
+    $primaryLogPath = Join-Path $logDir 'build.log'
+    $buildOutputString | Out-File -FilePath $primaryLogPath -Encoding utf8
+}
+
+if ($AdditionalLogPath) {
+    $additionalLogDir = Split-Path -Path $AdditionalLogPath -Parent
+    if ($additionalLogDir -and -not (Test-Path -Path $additionalLogDir)) {
+        New-Item -ItemType Directory -Path $additionalLogDir -Force | Out-Null
+    }
+
+    if (-not $primaryLogPath -or
+        -not [string]::Equals($primaryLogPath, $AdditionalLogPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $buildOutputString | Out-File -FilePath $AdditionalLogPath -Encoding utf8
+    }
 }
 
 $result = [ordered]@{

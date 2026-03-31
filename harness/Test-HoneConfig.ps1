@@ -32,6 +32,44 @@ $errors = @()
 $warnings = @()
 $harnessRoot = $PSScriptRoot
 
+function Test-FixerConfigSection {
+    param(
+        [System.Collections.IDictionary]$FixerConfig,
+        [string]$ConfigLabel
+    )
+
+    if (-not $FixerConfig) {
+        return @()
+    }
+
+    $sectionErrors = @()
+
+    if ($FixerConfig.ContainsKey('MaxAttempts')) {
+        $maxAttempts = $FixerConfig.MaxAttempts
+        if ($maxAttempts -isnot [int] -and $maxAttempts -isnot [long]) {
+            $sectionErrors += "$ConfigLabel Fixer.MaxAttempts must be an integer"
+        } elseif ($maxAttempts -lt 1) {
+            $sectionErrors += "$ConfigLabel Fixer.MaxAttempts ($maxAttempts) must be >= 1"
+        }
+    }
+
+    if ($FixerConfig.ContainsKey('MaxDiffGrowthFactor')) {
+        $growthFactor = $FixerConfig.MaxDiffGrowthFactor
+        if ($growthFactor -isnot [double] -and $growthFactor -isnot [float] -and $growthFactor -isnot [decimal] -and
+            $growthFactor -isnot [int] -and $growthFactor -isnot [long]) {
+            $sectionErrors += "$ConfigLabel Fixer.MaxDiffGrowthFactor must be numeric"
+        } elseif ([double]$growthFactor -lt 1) {
+            $sectionErrors += "$ConfigLabel Fixer.MaxDiffGrowthFactor ($growthFactor) must be >= 1"
+        }
+    }
+
+    if ($FixerConfig.ContainsKey('TestFileGuard') -and $FixerConfig.TestFileGuard -isnot [bool]) {
+        $sectionErrors += "$ConfigLabel Fixer.TestFileGuard must be a boolean"
+    }
+
+    return $sectionErrors
+}
+
 # ── Tolerance validation ────────────────────────────────────────────────────
 if ($config.Tolerances) {
     $t = $config.Tolerances
@@ -94,6 +132,7 @@ if ($config.Api -and $null -ne $config.Api.StartupTimeout -and $config.Api.Start
 if ($config.ScaleTest -and $null -ne $config.ScaleTest.MeasuredRuns -and $config.ScaleTest.MeasuredRuns -lt 1) {
     $errors += "ScaleTest.MeasuredRuns ($($config.ScaleTest.MeasuredRuns)) must be >= 1"
 }
+$errors += @(Test-FixerConfigSection -FixerConfig $config.Fixer -ConfigLabel 'Engine config')
 
 # ── Tool availability ──────────────────────────────────────────────────────
 foreach ($tool in @('dotnet', 'k6', 'git')) {
@@ -109,7 +148,7 @@ if (-not (Get-Command 'gh' -ErrorAction SilentlyContinue)) {
 }
 
 # ── Config interaction warnings ─────────────────────────────────────────────
-if ($config.StackedDiffs -and $config.WaitForMerge) {
+if ($config.Loop -and $config.Loop.StackedDiffs -and $config.Loop.WaitForMerge) {
     $warnings += "StackedDiffs + WaitForMerge: works but defeats the purpose of stacked diffs"
 }
 if ($config.Diagnostics -and $config.Diagnostics.Enabled -and
@@ -128,6 +167,7 @@ if ($TargetPath) {
         $errors += "Target config not found: $honeConfigPath"
     } else {
         $targetCfg = Import-PowerShellDataFile -Path $honeConfigPath
+        $errors += @(Test-FixerConfigSection -FixerConfig $targetCfg.Fixer -ConfigLabel 'Target config')
 
         # Required top-level keys
         foreach ($requiredKey in @('Name', 'BaseBranch', 'Api', 'Hooks', 'ScaleTest')) {

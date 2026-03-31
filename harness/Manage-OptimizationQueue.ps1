@@ -29,7 +29,8 @@
     Queue item ID to update (used by MarkDone).
 
 .PARAMETER Outcome
-    Result of the optimization: improved, regressed, stale, skipped (used by MarkDone).
+    Result of the optimization: improved, regressed, stale, build_failure,
+    test_failure, retry_budget_exhausted, or skipped (used by MarkDone).
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
@@ -50,7 +51,7 @@ param(
 
     [int]$ItemId = -1,
 
-    [ValidateSet('improved', 'regressed', 'stale', 'skipped', '')]
+    [ValidateSet('improved', 'regressed', 'stale', 'build_failure', 'test_failure', 'retry_budget_exhausted', 'skipped', '')]
     [string]$Outcome,
 
     [string]$ConfigPath,

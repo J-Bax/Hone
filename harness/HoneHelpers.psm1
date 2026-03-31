@@ -222,7 +222,8 @@ function Add-ExperimentMetadatum {
         [int]$PrNumber,
         [string]$PrUrl,
         [int]$StaleCount = 0,
-        [int]$ConsecutiveFailures = 0
+        [int]$ConsecutiveFailures = 0,
+        [System.Collections.IDictionary]$AdditionalProperties
     )
 
     $p95 = if ($Metrics -and $Metrics.HttpReqDuration) { $Metrics.HttpReqDuration.P95 } else { $null }
@@ -243,6 +244,12 @@ function Add-ExperimentMetadatum {
         PrUrl = if ($PrUrl) { "$PrUrl" } else { $null }
         StaleCount = $StaleCount
         ConsecutiveFailures = $ConsecutiveFailures
+    }
+
+    if ($AdditionalProperties) {
+        foreach ($key in $AdditionalProperties.Keys) {
+            $experimentMeta[$key] = $AdditionalProperties[$key]
+        }
     }
 
     if ($RunMetadata.Experiments -is [System.Collections.IList]) {
@@ -777,7 +784,9 @@ function Resolve-HarnessTestingFixtureDefinition {
         [Parameter(Mandatory)]
         [System.Collections.IDictionary]$Definition,
 
-        [int]$Experiment = -1
+        [int]$Experiment = -1,
+
+        [int]$Attempt = -1
     )
 
     $hasDefault = $Definition.Contains('Default')
@@ -816,6 +825,29 @@ function Resolve-HarnessTestingFixtureDefinition {
         }
     }
 
+    if ($Definition.Contains('ByAttempt') -and $Attempt -ge 0 -and $Definition['ByAttempt'] -is [System.Collections.IDictionary]) {
+        $byAttempt = $Definition['ByAttempt']
+        $attemptKey = "$Attempt"
+
+        if ($byAttempt.Contains($attemptKey) -and $byAttempt[$attemptKey] -is [System.Collections.IDictionary]) {
+            foreach ($key in $byAttempt[$attemptKey].Keys) {
+                if ($byAttempt[$attemptKey][$key] -is [System.Collections.IDictionary]) {
+                    $resolved[$key] = Copy-HoneHashtable -Dictionary $byAttempt[$attemptKey][$key]
+                } else {
+                    $resolved[$key] = $byAttempt[$attemptKey][$key]
+                }
+            }
+        } elseif ($byAttempt.Contains('*') -and $byAttempt['*'] -is [System.Collections.IDictionary]) {
+            foreach ($key in $byAttempt['*'].Keys) {
+                if ($byAttempt['*'][$key] -is [System.Collections.IDictionary]) {
+                    $resolved[$key] = Copy-HoneHashtable -Dictionary $byAttempt['*'][$key]
+                } else {
+                    $resolved[$key] = $byAttempt['*'][$key]
+                }
+            }
+        }
+    }
+
     if ($resolved.Count -eq 0) {
         return $null
     }
@@ -837,7 +869,9 @@ function Get-HarnessTestingRuntimeDefinition {
         [Parameter(Mandatory)]
         [string[]]$Path,
 
-        [int]$Experiment = -1
+        [int]$Experiment = -1,
+
+        [int]$Attempt = -1
     )
 
     if (-not $Fixture.ContainsKey('Runtime')) {
@@ -854,7 +888,7 @@ function Get-HarnessTestingRuntimeDefinition {
     }
 
     if ($cursor -is [System.Collections.IDictionary]) {
-        return (Resolve-HarnessTestingFixtureDefinition -Definition $cursor -Experiment $Experiment)
+        return (Resolve-HarnessTestingFixtureDefinition -Definition $cursor -Experiment $Experiment -Attempt $Attempt)
     }
 
     return $null
@@ -912,7 +946,9 @@ function Get-HarnessTestingMockResponsePath {
         [ValidateSet('Analysis', 'Classification', 'Fix')]
         [string]$Agent,
 
-        [int]$Experiment = 0
+        [int]$Experiment = 0,
+
+        [int]$Attempt = -1
     )
 
     $fixture = Get-HarnessTestingFixture -Config $Config -TargetDir $TargetDir
@@ -920,7 +956,7 @@ function Get-HarnessTestingMockResponsePath {
         return $null
     }
 
-    $definition = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Agents', $Agent) -Experiment $Experiment
+    $definition = Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Agents', $Agent) -Experiment $Experiment -Attempt $Attempt
     if (-not $definition -or -not $definition.ContainsKey('MockResponsePath') -or -not $definition.MockResponsePath) {
         return $null
     }

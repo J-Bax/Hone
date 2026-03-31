@@ -15,12 +15,24 @@
 
 .PARAMETER Experiment
     Current experiment number for logging.
+
+.PARAMETER Attempt
+    Iteration number for iterative fixer flows.
+
+.PARAMETER AdditionalLogPath
+    Optional second log file path used for per-attempt artifacts.
+
+.PARAMETER AdditionalTrxPath
+    Optional second TRX file path used for per-attempt artifacts.
 #>
 [CmdletBinding()]
 param(
     [string]$ConfigPath,
     [string]$TargetDir,
-    [int]$Experiment = 0
+    [int]$Experiment = 0,
+    [int]$Attempt = -1,
+    [string]$AdditionalLogPath,
+    [string]$AdditionalTrxPath
 )
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -41,7 +53,7 @@ $resultsDir = Join-Path -Path $pathBase -ChildPath $config.Api.ResultsPath "expe
 $trxPath = Join-Path $resultsDir "e2e-results.trx"
 $fixture = Get-HarnessTestingFixture -Config $config -TargetDir $TargetDir
 $fixtureTests = if ($fixture) {
-    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Tests') -Experiment $Experiment
+    Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Tests') -Experiment $Experiment -Attempt $Attempt
 } else {
     $null
 }
@@ -76,6 +88,13 @@ Failed: $(if ($fixtureTests.ContainsKey('Failed')) { $fixtureTests.Failed } else
 
         if ($fixtureTests.ContainsKey('TrxContent')) {
             $fixtureTests.TrxContent | Out-File -FilePath $trxPath -Encoding utf8
+            if ($AdditionalTrxPath) {
+                $additionalTrxDir = Split-Path -Path $AdditionalTrxPath -Parent
+                if ($additionalTrxDir -and -not (Test-Path -Path $additionalTrxDir)) {
+                    New-Item -ItemType Directory -Path $additionalTrxDir -Force | Out-Null
+                }
+                $fixtureTests.TrxContent | Out-File -FilePath $AdditionalTrxPath -Encoding utf8
+            }
         }
     } else {
         $testOutput = dotnet test $testProjectPath `
@@ -111,7 +130,28 @@ $result = [ordered]@{
 }
 
 # Save test log to experiment directory
-$testOutputString | Out-File -FilePath (Join-Path $resultsDir 'e2e-tests.log') -Encoding utf8
+$primaryLogPath = Join-Path $resultsDir 'e2e-tests.log'
+$testOutputString | Out-File -FilePath $primaryLogPath -Encoding utf8
+
+if ($AdditionalLogPath) {
+    $additionalLogDir = Split-Path -Path $AdditionalLogPath -Parent
+    if ($additionalLogDir -and -not (Test-Path -Path $additionalLogDir)) {
+        New-Item -ItemType Directory -Path $additionalLogDir -Force | Out-Null
+    }
+
+    if (-not [string]::Equals($primaryLogPath, $AdditionalLogPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $testOutputString | Out-File -FilePath $AdditionalLogPath -Encoding utf8
+    }
+}
+
+if ($AdditionalTrxPath -and (Test-Path -Path $trxPath) -and
+    -not [string]::Equals($trxPath, $AdditionalTrxPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $additionalTrxDir = Split-Path -Path $AdditionalTrxPath -Parent
+    if ($additionalTrxDir -and -not (Test-Path -Path $additionalTrxDir)) {
+        New-Item -ItemType Directory -Path $additionalTrxDir -Force | Out-Null
+    }
+    Copy-Item -Path $trxPath -Destination $AdditionalTrxPath -Force
+}
 
 $logData = @{
     total = $result.TotalTests

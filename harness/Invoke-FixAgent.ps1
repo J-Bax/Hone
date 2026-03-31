@@ -33,6 +33,15 @@
 
 .PARAMETER MockResponsePath
     Optional path to a canned agent response for deterministic testing.
+
+.PARAMETER Attempt
+    Iteration number for iterative fixer flows.
+
+.PARAMETER PreviousErrors
+    Build/test/guard failures from the previous attempt, if any.
+
+.PARAMETER CurrentFileContent
+    Current file contents from the failed attempt, used to guide retries.
 #>
 [CmdletBinding()]
 param(
@@ -52,7 +61,13 @@ param(
 
     [int]$Experiment = 0,
 
-    [string]$MockResponsePath
+    [string]$MockResponsePath,
+
+    [int]$Attempt = 1,
+
+    [string]$PreviousErrors,
+
+    [string]$CurrentFileContent
 )
 
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
@@ -87,6 +102,34 @@ $RootCauseDocument
 "@
 }
 
+$retrySection = ''
+if ($Attempt -gt 1 -or $PreviousErrors -or $CurrentFileContent) {
+    $currentFileSection = ''
+    if ($CurrentFileContent) {
+        $currentFileSection = @"
+
+### Current File Content (failed attempt)
+```text
+$CurrentFileContent
+```
+"@
+    }
+
+    $errorText = if ($PreviousErrors) { $PreviousErrors } else { 'Previous attempt failed without a captured error payload.' }
+    $retrySection = @"
+
+## Retry Context
+This is attempt $Attempt for the same optimization. The previous attempt failed.
+
+### Error Output
+```text
+$errorText
+```
+$currentFileSection
+Fix the failure above while still achieving the original optimization goal.
+"@
+}
+
 $prompt = @"
 Apply this specific optimization to the file and return the complete new file content.
 
@@ -96,6 +139,7 @@ $FilePath
 ## Optimization to Apply
 $Explanation
 $rcaSection
+$retrySection
 Read the file at the path above (relative to sample-api/), apply ONLY the
 optimization described, and return the COMPLETE new file in a fenced code block.
 No explanation, no commentary — just the code block.
@@ -107,20 +151,36 @@ if (-not (Test-Path $iterDir)) {
     New-Item -ItemType Directory -Path $iterDir -Force | Out-Null
 }
 
+$attemptDir = Join-Path -Path $iterDir -ChildPath "iterations\attempt-$Attempt"
+if (-not (Test-Path $attemptDir)) {
+    New-Item -ItemType Directory -Path $attemptDir -Force | Out-Null
+}
+
+$promptPath = Join-Path $iterDir 'fix-prompt.md'
+$attemptPromptPath = Join-Path $attemptDir 'fix-prompt.md'
+$responsePath = Join-Path $iterDir 'fix-response.md'
+$attemptResponsePath = Join-Path $attemptDir 'fix-response.md'
+
+$prompt | Out-File -FilePath $promptPath -Encoding utf8
+$prompt | Out-File -FilePath $attemptPromptPath -Encoding utf8
+
 $agentResult = & (Join-Path $PSScriptRoot 'Invoke-CopilotAgent.ps1') `
     -AgentName 'hone-fixer' `
     -Prompt $prompt `
     -ModelConfigKey 'FixModel' `
     -DefaultModel 'claude-opus-4.6' `
-    -SpinnerMessage "Generating optimized code for $FilePath" `
+    -SpinnerMessage "Generating optimized code for $FilePath (attempt $Attempt)" `
     -CompletionMessage 'Code generation complete' `
-    -ResponsePath (Join-Path $iterDir 'fix-response.md') `
+    -ResponsePath $attemptResponsePath `
     -ConfigPath $ConfigPath `
     -MockResponsePath $MockResponsePath `
     -WorkingDirectory $TargetDir `
-    -Experiment $Experiment
+    -Experiment $Experiment `
+    -Attempt $Attempt
 
-$responsePath = Join-Path $iterDir 'fix-response.md'
+if (Test-Path -Path $attemptResponsePath) {
+    Copy-Item -Path $attemptResponsePath -Destination $responsePath -Force
+}
 
 # Extract code block content
 $codeBlock = $null
@@ -133,6 +193,10 @@ $result = [ordered]@{
     CodeBlock = $codeBlock
     Response = $agentResult.ResponseText
     ResponsePath = $responsePath
+    PromptPath = $promptPath
+    Attempt = $Attempt
+    AttemptPromptPath = $attemptPromptPath
+    AttemptResponsePath = $attemptResponsePath
 }
 
 if ($codeBlock) {

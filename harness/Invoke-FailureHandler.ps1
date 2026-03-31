@@ -23,7 +23,8 @@
     Current experiment number.
 
 .PARAMETER Outcome
-    Why the experiment failed: 'regressed' or 'stale'.
+    Why the experiment failed: 'regressed', 'stale', 'build_failure',
+    'test_failure', or 'retry_budget_exhausted'.
 
 .PARAMETER RevertDescription
     Brief description passed to Revert-ExperimentCode -Description.
@@ -62,7 +63,7 @@ param(
     [Parameter(Mandatory)][string]$BranchName,
     [Parameter(Mandatory)][string]$FilePath,
     [Parameter(Mandatory)][int]$Experiment,
-    [Parameter(Mandatory)][ValidateSet('regressed', 'stale')][string]$Outcome,
+    [Parameter(Mandatory)][ValidateSet('regressed', 'stale', 'build_failure', 'test_failure', 'retry_budget_exhausted')][string]$Outcome,
     [Parameter(Mandatory)][string]$RevertDescription,
     [string]$ConfigPath,
     [Parameter(Mandatory)][string]$TargetDir,

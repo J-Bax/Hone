@@ -5,6 +5,7 @@
         'regressed'
         'build_failure'
         'test_failure'
+        'retry_budget_exhausted'
         'prepare_failure'
         'api_start_failure'
         'scale_test_failure'

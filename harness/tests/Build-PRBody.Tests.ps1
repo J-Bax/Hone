@@ -15,11 +15,13 @@ Describe 'Build-PRBody templates' {
             -DryRunNotice "> Dry run`n" `
             -MetricsSection "`n## Metrics`n" `
             -RcaSection "`n## RCA`n" `
+            -IterationSummary "`n### Iterative Fix Summary`nRecovered on attempt 2.`n" `
             -ImprovementPct '18.4' `
             -ScenarioBreakdown "`n## Scenarios`n"
 
         $body | Should -Match '## Hone Experiment 7'
         $body | Should -Match '\*\*Optimization:\*\* Optimize database projection'
+        $body | Should -Match '### Iterative Fix Summary'
         $body | Should -Match '\*\*vs baseline improvement:\*\* 18\.4%'
         $body | Should -Match '## RCA'
         $body | Should -Match '## Metrics'
@@ -36,10 +38,12 @@ Describe 'Build-PRBody templates' {
             -OutcomeLabel '**Regression**' `
             -OutcomeDetail 'p95 regressed by 12%' `
             -MetricsSection "`n## Metrics`n" `
-            -RcaSection "`n## RCA`n"
+            -RcaSection "`n## RCA`n" `
+            -IterationSummary "`n### Iterative Fix Summary`nFailed after 3 attempts.`n"
 
         $body | Should -Match '## Hone Experiment 8 \[REJECTED\]'
         $body | Should -Match '\*\*Outcome:\*\* \*\*Regression\*\*'
+        $body | Should -Match 'Failed after 3 attempts'
         $body | Should -Match 'p95 regressed by 12%'
         $body | Should -Match 'This experiment was rejected\. The code change has been reverted\.'
         $body | Should -Match 'This PR contains only the experiment artifacts for the record\.'

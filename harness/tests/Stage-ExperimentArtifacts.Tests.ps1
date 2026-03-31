@@ -49,9 +49,13 @@ Describe 'Stage-ExperimentArtifacts' {
 
         $artifactsDir = Join-Path -Path $targetDir -ChildPath 'artifacts' -AdditionalChildPath 'experiment-2'
         $metadataDir = Join-Path -Path $targetDir -ChildPath 'artifacts' -AdditionalChildPath 'metadata'
+        $iterationsDir = Join-Path -Path $artifactsDir -ChildPath 'iterations\attempt-1'
         New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
         New-Item -ItemType Directory -Path $metadataDir -Force | Out-Null
+        New-Item -ItemType Directory -Path $iterationsDir -Force | Out-Null
         '{}' | Set-Content -Path (Join-Path -Path $artifactsDir -ChildPath 'analysis-response.json') -Encoding utf8
+        '{}' | Set-Content -Path (Join-Path -Path $artifactsDir -ChildPath 'iteration-log.json') -Encoding utf8
+        'retry prompt' | Set-Content -Path (Join-Path -Path $iterationsDir -ChildPath 'fix-prompt.md') -Encoding utf8
         '{}' | Set-Content -Path (Join-Path -Path $targetDir -ChildPath 'artifacts' -AdditionalChildPath 'run-metadata.json') -Encoding utf8
 
         Mock git {}
@@ -59,6 +63,8 @@ Describe 'Stage-ExperimentArtifacts' {
         & $scriptPath -Experiment 2 -TargetDir $targetDir -ConfigPath $configPath
 
         Should -Invoke git -Times 1 -ParameterFilter { $args[0] -eq 'add' -and $args[1] -eq 'artifacts/experiment-2/analysis-response.json' }
+        Should -Invoke git -Times 1 -ParameterFilter { $args[0] -eq 'add' -and $args[1] -eq 'artifacts/experiment-2/iteration-log.json' }
+        Should -Invoke git -Times 1 -ParameterFilter { $args[0] -eq 'add' -and $args[1] -eq 'artifacts/experiment-2/iterations/' }
         Should -Invoke git -Times 1 -ParameterFilter { $args[0] -eq 'add' -and $args[1] -eq 'artifacts/metadata/' }
         Should -Invoke git -Times 1 -ParameterFilter { $args[0] -eq 'add' -and $args[1] -eq 'artifacts/run-metadata.json' }
     }
