@@ -3,7 +3,7 @@
     Runs every registered k6 scenario and returns per-scenario results.
 
 .DESCRIPTION
-    Reads the scenario registry (sample-api/scale-tests/thresholds.json), iterates through
+    Reads the configured scenario registry, iterates through
     each scenario, and calls Invoke-ScaleTests.ps1 for each one.  The primary
     optimization scenario (use_for_optimization = true) is identified separately
     so callers can decide whether to skip it (it is usually run first by the

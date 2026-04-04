@@ -6,8 +6,8 @@
         SolutionPath = 'SampleApi.sln'
         ProjectPath = 'SampleApi'
         TestProjectPath = 'SampleApi.sln'
-        MetadataPath = 'results\metadata'
-        ResultsPath = 'results'
+        MetadataPath = '.hone\results\metadata'
+        ResultsPath = '.hone\results'
         BaseUrl = 'http://localhost:0'
         HealthEndpoint = '/health'
         GcEndpoint = '/diag/gc'
@@ -40,3 +40,4 @@
         ManifestPath = '.hone\fixtures\fixture.psd1'
     }
 }
+

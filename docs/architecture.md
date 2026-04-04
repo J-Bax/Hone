@@ -402,7 +402,7 @@ To point Hone at a different API, update these settings in `harness/config.psd1`
 | `Api.TestProjectPath` | Test project directory | `my-api/MyApi.Tests/` |
 | `Api.BaseUrl` | API base URL when running | `http://localhost:5000` |
 | `Api.HealthEndpoint` | Health check path for readiness | `/health` |
-| `Api.ResultsPath` | Where to store measurement results | `my-api/results/` |
+| `Api.ResultsPath` | Where to store measurement results | `my-api/.hone/results/` |
 | `ScaleTest.ScenarioPath` | Primary k6 scenario | `my-api/scale-tests/scenarios/baseline.js` |
 
 The harness scripts, agent definitions, and decision logic remain unchanged.
@@ -441,3 +441,4 @@ To modify the decision logic:
 - **Add new metrics**: Extend `Compare-Results.ps1` to compare additional metrics (e.g., p99 latency, custom k6 counters)
 - **Modify the efficiency tiebreaker**: Tune `Tolerances.Efficiency` settings to control when flat-performance experiments are accepted based on reduced resource usage (CPU, working set)
 - **Change exit conditions**: Adjust `Loop.MaxConsecutiveFailures` and `Loop.MaxExperiments` in config
+

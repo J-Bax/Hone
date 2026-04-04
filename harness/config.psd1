@@ -31,10 +31,12 @@
         StartupTimeout = 90
 
         # Directory for all performance results (relative to repo root)
-        ResultsPath = 'sample-api/results'
+        # Targets should override this in .hone\config.psd1.
+        ResultsPath = 'sample-api\.hone\results'
 
         # Directory for optimization metadata (log + queue) (relative to repo root)
-        MetadataPath = 'sample-api/results/metadata'
+        # Targets should override this in .hone\config.psd1.
+        MetadataPath = 'sample-api\.hone\results\metadata'
     }
 
     # ── Performance Tolerances ───────────────────────────────────

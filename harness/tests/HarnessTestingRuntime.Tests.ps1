@@ -73,7 +73,7 @@ Describe 'Harness-testing runtime fixtures' {
         $targetDir = New-HoneTestTarget -TargetDir (Join-Path -Path $TestDrive -ChildPath 'runtime-target')
         Enable-HarnessTestingFixture -TargetDir $targetDir -FixtureManifestContent $fixtureManifest
         Set-HoneFixtureBaseline -TargetDir $targetDir | Out-Null
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         $buildResult = & $buildScript -ConfigPath $configPath -TargetDir $targetDir -Experiment 1
         $testResult = & $testsScript -ConfigPath $configPath -TargetDir $targetDir -Experiment 1

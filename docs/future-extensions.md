@@ -147,7 +147,7 @@ Each experiment — accepted or rejected — contributes a structured entry:
 
 #### Accumulation
 
-A **knowledge base agent** (or a deterministic post-experiment step) distills each experiment's artifacts into a knowledge entry. Entries are appended to a persistent store (`sample-api/results/knowledge-base.json` or a structured Markdown file). Over many runs, this builds a corpus of what works, what doesn't, and why — specific to the target codebase.
+A **knowledge base agent** (or a deterministic post-experiment step) distills each experiment's artifacts into a knowledge entry. Entries are appended to a persistent store (`sample-api/.hone/results/knowledge-base.json` or a structured Markdown file). Over many runs, this builds a corpus of what works, what doesn't, and why — specific to the target codebase.
 
 ```mermaid
 flowchart LR
@@ -178,3 +178,4 @@ This enables the analyst to make more informed decisions about which optimizatio
 - **Target-specific vs. general knowledge.** Knowledge entries are tied to the specific target API. However, some insights may be generalizable (e.g., "N+1 queries in EF Core are almost always worth fixing"). A future refinement could separate target-specific knowledge from transferable optimization knowledge.
 - **Retrieval strategy.** For small knowledge bases, full-text injection into the prompt works. At scale, a vector search or relevance-ranking step could select the most pertinent entries based on the current experiment's targets and categories.
 - **Composability.** The knowledge base composes naturally with the COE extension — rejected experiments produce COEs, which feed high-quality lessons into the knowledge base. Accepted experiments contribute positive evidence via their metrics. Together, they build a richer model than either would alone.
+

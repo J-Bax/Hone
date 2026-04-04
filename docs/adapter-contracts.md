@@ -80,8 +80,8 @@ built-in prompts only.
         SolutionPath     = 'eShopOnWeb.sln'           # path to .sln (relative to target root)
         ProjectPath      = 'src\PublicApi'             # runnable project directory
         TestProjectPath  = 'tests\FunctionalTests'    # E2E / regression test project
-        ResultsPath      = 'results'                  # harness output directory
-        MetadataPath     = 'results\metadata'          # experiment metadata
+        ResultsPath      = '.hone\results'                  # harness output directory
+        MetadataPath     = '.hone\results\metadata'   # experiment metadata
         BaseUrl          = 'http://localhost:0'        # port 0 = ephemeral
         HealthEndpoint   = '/health'                   # readiness probe path
         GcEndpoint       = '/diag/gc'                  # GC trigger endpoint
@@ -358,25 +358,25 @@ Add these rules to your target's `.gitignore`:
 # Commit analysis artifacts (compact, useful for PR reviews)
 # Ignore raw profiling data (large, transient)
 
-results/*
-!results/.gitkeep
-!results/baseline.json
-!results/baseline-*.json
-!results/run-metadata.json
-!results/hone.jsonl
-!results/metadata/
+.hone/results/*
+!.hone/results/.gitkeep
+!.hone/results/baseline.json
+!.hone/results/baseline-*.json
+!.hone/results/run-metadata.json
+!.hone/results/hone.jsonl
+!.hone/results/metadata/
 
 # Experiment directories: commit structure, ignore raw data
-!results/experiment-*/
-results/experiment-*/*.log
-results/experiment-*/*.trx
-results/experiment-*/diagnostics/perfview-cpu/
-results/experiment-*/diagnostics/perfview/
-results/experiment-*/diagnostics/perfview-gc/*
-!results/experiment-*/diagnostics/perfview-gc/gc-report.json
-results/experiment-*/diagnostics/dotnet-counters/*
-!results/experiment-*/diagnostics/dotnet-counters/dotnet-counters.json
-results/experiment-*/diagnostics/k6-*.json
+!.hone/results/experiment-*/
+.hone/results/experiment-*/*.log
+.hone/results/experiment-*/*.trx
+.hone/results/experiment-*/diagnostics/perfview-cpu/
+.hone/results/experiment-*/diagnostics/perfview/
+.hone/results/experiment-*/diagnostics/perfview-gc/*
+!.hone/results/experiment-*/diagnostics/perfview-gc/gc-report.json
+.hone/results/experiment-*/diagnostics/dotnet-counters/*
+!.hone/results/experiment-*/diagnostics/dotnet-counters/dotnet-counters.json
+.hone/results/experiment-*/diagnostics/k6-*.json
 ```
 
 ### What's Committed vs Ignored
@@ -420,8 +420,8 @@ New-Item -ItemType Directory -Path .hone/hooks, .hone/scenarios -Force
         SolutionPath     = 'MyApi.sln'
         ProjectPath      = 'src\MyApi'
         TestProjectPath  = 'tests\MyApi.Tests'
-        ResultsPath      = 'results'
-        MetadataPath     = 'results\metadata'
+        ResultsPath      = '.hone\results'
+        MetadataPath     = '.hone\results\metadata'
         BaseUrl          = 'http://localhost:0'
         HealthEndpoint   = '/health'
         GcEndpoint       = '/diag/gc'
@@ -567,3 +567,4 @@ After running the assessment:
 3. Use `implementationPlan.configTemplate` as a starting point for the config file
 4. Follow the phased `onboardingPlan` to set up hooks and k6 scenarios
 5. Run `Test-HoneConfig.ps1 -TargetPath <target>` to validate the final setup
+

@@ -73,11 +73,12 @@ tools/
 #
 # Gitignored (raw profiling data):
 #   - PerfView ETL/CSV/logs, dotnet-counters, k6 JSON summaries
-sample-api/results/*
-!sample-api/results/.gitkeep
-!sample-api/results/baseline.json
-!sample-api/results/baseline-*.json
-!sample-api/results/run-metadata.json
-!sample-api/results/hone.jsonl
-!sample-api/results/metadata/
-!sample-api/results/experiment-*/
+sample-api/.hone/results/*
+!sample-api/.hone/results/.gitkeep
+!sample-api/.hone/results/baseline.json
+!sample-api/.hone/results/baseline-*.json
+!sample-api/.hone/results/run-metadata.json
+!sample-api/.hone/results/hone.jsonl
+!sample-api/.hone/results/metadata/
+!sample-api/.hone/results/experiment-*/
+

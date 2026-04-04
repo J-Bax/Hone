@@ -6,11 +6,11 @@
         SolutionPath = 'MockApi.sln'
         ProjectPath = 'MockApi'
         TestProjectPath = 'MockApi.sln'
-        MetadataPath = 'results\metadata'
+        MetadataPath = '.hone\results\metadata'
         BaseUrl = 'http://localhost:0'
         HealthEndpoint = '/health'
         StartupTimeout = 10
-        ResultsPath = 'results'
+        ResultsPath = '.hone\results'
     }
 
     Hooks = @{
@@ -31,3 +31,4 @@
         WarmupEnabled = $false
     }
 }
+

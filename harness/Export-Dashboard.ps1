@@ -8,13 +8,13 @@
     opens it in the default browser.
 
 .PARAMETER ResultsPath
-    Path to the results directory. Defaults to 'sample-api/results' at the repo root.
+    Path to the results directory. Defaults to the configured Api.ResultsPath at the repo root.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
 
 .PARAMETER OutputPath
-    Where to write the HTML file. Defaults to sample-api/results/dashboard.html.
+    Where to write the HTML file. Defaults to dashboard.html under the resolved results directory.
 
 .PARAMETER Open
     Open the dashboard in the default browser after generation.

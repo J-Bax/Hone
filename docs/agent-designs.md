@@ -415,8 +415,9 @@ Every agent invocation saves artifacts for debugging, auditing, and history trac
 | CPU analysis prompt | hone-cpu-profiler | `experiment-N/diagnostics/cpu-hotspots/cpu-hotspots-prompt.md` |
 | Memory analysis prompt | hone-memory-profiler | `experiment-N/diagnostics/memory-gc/memory-gc-prompt.md` |
 
-All paths are relative to `sample-api/results/`. These artifacts serve multiple purposes:
+All paths are relative to `sample-api/.hone/results/`. These artifacts serve multiple purposes:
 
 - **Debugging** — inspect what the agent saw (prompt) and what it produced (response) when an experiment fails
 - **History tracking** — the optimization history context fed to the analyst is built from these artifacts
 - **Audit trail** — reviewers can trace the reasoning chain from profiling data through analysis to code change
+
