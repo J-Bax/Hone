@@ -23,7 +23,7 @@
     Current experiment number.
 
 .PARAMETER LogPath
-    Path to the log file. Defaults to sample-api/results/hone.jsonl.
+    Path to the log file. Defaults to the configured Api.ResultsPath hone.jsonl location.
 #>
 [CmdletBinding()]
 param(

@@ -5,9 +5,9 @@ function New-HoneTestTarget {
         [Parameter(Mandatory)]
         [string]$TargetDir,
 
-        [string]$MetadataPath = 'results\metadata',
+        [string]$MetadataPath = '.hone\results\metadata',
 
-        [string]$ResultsPath = 'results'
+        [string]$ResultsPath = '.hone\results'
     )
 
     if (-not $PSCmdlet.ShouldProcess($TargetDir, 'Create Hone test target fixture')) {
@@ -173,8 +173,8 @@ function Get-HoneTargetLayout {
         [string]$TargetDir
     )
 
-    $resultsPath = 'results'
-    $metadataPath = 'results\metadata'
+    $resultsPath = '.hone\results'
+    $metadataPath = '.hone\results\metadata'
     $configPath = Join-Path -Path (Join-Path -Path $TargetDir -ChildPath '.hone') -ChildPath 'config.psd1'
 
     if (Test-Path -Path $configPath) {
@@ -352,7 +352,7 @@ function Set-HoneFixtureBaseline {
         [Parameter(Mandatory)]
         [string]$TargetDir,
 
-        [string]$ResultsPath = 'results',
+        [string]$ResultsPath = '.hone\results',
 
         [string]$BaselineSummaryAsset = 'k6-results\baseline-summary.json',
 

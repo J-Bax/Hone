@@ -69,7 +69,7 @@ Describe 'Invoke-HoneLoop stacked-diffs branch ancestry' {
         $targetDir = Copy-HoneTargetFixture -Name 'stacked-diffs' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'loop-stacked-diffs')
         Set-LoopTestOverride -TargetDir $targetDir
         Initialize-HoneTargetRepository -TargetDir $targetDir | Out-Null
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         $result = & $script:loopScript -TargetPath $targetDir -MaxExperiments 3
 
@@ -86,7 +86,7 @@ Describe 'Invoke-HoneLoop stacked-diffs branch ancestry' {
         $result.PrChain | Should -Contain 5300
         $result.PrChain | Should -Contain 5303
 
-        $runMetadataPath = Join-Path -Path $targetDir -ChildPath 'results\run-metadata.json'
+        $runMetadataPath = Join-Path -Path $targetDir -ChildPath '.hone\results\run-metadata.json'
         $runMetadata = Get-Content -Path $runMetadataPath -Raw | ConvertFrom-Json
         $experiment1 = $runMetadata.Experiments | Where-Object { $_.Experiment -eq 1 }
         $experiment2 = $runMetadata.Experiments | Where-Object { $_.Experiment -eq 2 }
@@ -106,7 +106,7 @@ Describe 'Invoke-HoneLoop stacked-diffs branch ancestry' {
         $runMetadata.PrChain | Should -Be @(5301, 5300, 5303)
         $runMetadata.FullBranchChain | Should -Be @('main', $branch1, $branch2, $branch3)
 
-        Test-Path (Join-Path -Path $targetDir -ChildPath 'results\experiment-2\build.log') | Should -BeTrue
+        Test-Path (Join-Path -Path $targetDir -ChildPath '.hone\results\experiment-2\build.log') | Should -BeTrue
 
     }
 }
@@ -268,10 +268,10 @@ Describe 'Invoke-HoneLoop iterative fixer integration' {
 
         Set-LoopFixtureManifest -TargetDir $targetDir -ManifestContent $manifestContent
         Initialize-HoneTargetRepository -TargetDir $targetDir | Out-Null
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         $result = & $script:loopScript -TargetPath $targetDir -MaxExperiments 1
-        $runMetadata = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\run-metadata.json') -Raw | ConvertFrom-Json
+        $runMetadata = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\run-metadata.json') -Raw | ConvertFrom-Json
         $experiment1 = $runMetadata.Experiments | Where-Object { $_.Experiment -eq 1 }
 
         $result.Experiments | Should -Be 1
@@ -279,22 +279,22 @@ Describe 'Invoke-HoneLoop iterative fixer integration' {
         $experiment1.Outcome | Should -Be 'improved'
         $experiment1.FixAttemptCount | Should -Be 2
         $experiment1.FixRetried | Should -BeTrue
-        $experiment1.FixIterationLogPath | Should -Be 'results/experiment-1/iteration-log.json'
-        Test-Path -Path (Join-Path -Path $targetDir -ChildPath 'results\experiment-1\iteration-log.json') | Should -BeTrue
-        (Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\experiment-1\root-cause.md') -Raw) | Should -Match 'Iterative Fix Summary'
+        $experiment1.FixIterationLogPath | Should -Be '.hone/results/experiment-1/iteration-log.json'
+        Test-Path -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\experiment-1\iteration-log.json') | Should -BeTrue
+        (Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\experiment-1\root-cause.md') -Raw) | Should -Match 'Iterative Fix Summary'
     }
 
     It 'records retry budget exhaustion as a rejected stacked-diff experiment' {
         $targetDir = Copy-HoneTargetFixture -Name 'build-failure' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'loop-iterative-exhausted')
         Set-LoopTestOverride -TargetDir $targetDir -MaxAttempts 2
         Initialize-HoneTargetRepository -TargetDir $targetDir | Out-Null
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         $result = & $script:loopScript -TargetPath $targetDir -MaxExperiments 1
-        $runMetadata = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\run-metadata.json') -Raw | ConvertFrom-Json
+        $runMetadata = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\run-metadata.json') -Raw | ConvertFrom-Json
         $experiment1 = $runMetadata.Experiments | Where-Object { $_.Experiment -eq 1 }
-        $queue = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\metadata\experiment-queue.json') -Raw | ConvertFrom-Json
-        $iterationLog = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\experiment-1\iteration-log.json') -Raw | ConvertFrom-Json
+        $queue = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\metadata\experiment-queue.json') -Raw | ConvertFrom-Json
+        $iterationLog = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\experiment-1\iteration-log.json') -Raw | ConvertFrom-Json
 
         $result.Experiments | Should -Be 1
         $result.SuccessCount | Should -Be 0
@@ -309,3 +309,4 @@ Describe 'Invoke-HoneLoop iterative fixer integration' {
         $iterationLog.totalAttempts | Should -Be 2
     }
 }
+

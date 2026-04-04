@@ -70,14 +70,14 @@ Describe 'Harness-testing checked-in target fixtures' {
 
     It 'runs the happy-path fixture target through the real harness entry points' {
         $targetDir = Copy-HoneTargetFixture -Name 'happy-path' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'happy-path-runtime')
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
         $targetConfig = Import-PowerShellDataFile -Path (Join-Path -Path $targetDir -ChildPath '.hone\config.psd1')
 
         & $script:baselineScript -ConfigPath $script:configPath -TargetDir $targetDir -TargetConfig $targetConfig
 
-        $baselineMetrics = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\baseline.json') -Raw | ConvertFrom-Json
-        $baselineCounters = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\baseline-counters.json') -Raw | ConvertFrom-Json
-        $secondaryBaselineMetrics = Get-Content -Path (Join-Path -Path $targetDir -ChildPath 'results\baseline-secondary.json') -Raw | ConvertFrom-Json
+        $baselineMetrics = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\baseline.json') -Raw | ConvertFrom-Json
+        $baselineCounters = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\baseline-counters.json') -Raw | ConvertFrom-Json
+        $secondaryBaselineMetrics = Get-Content -Path (Join-Path -Path $targetDir -ChildPath '.hone\results\baseline-secondary.json') -Raw | ConvertFrom-Json
 
         $buildResult = & $script:buildScript -ConfigPath $script:configPath -TargetDir $targetDir -Experiment 1
         $testResult = & $script:testsScript -ConfigPath $script:configPath -TargetDir $targetDir -Experiment 1
@@ -121,7 +121,7 @@ Describe 'Harness-testing checked-in target fixtures' {
 
     It 'replays failure and regression fixture targets through the real runtime seams' {
         $buildFailureDir = Copy-HoneTargetFixture -Name 'build-failure' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'build-failure-runtime')
-        $env:HONE_LOG_PATH = Join-Path -Path $buildFailureDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $buildFailureDir -ChildPath '.hone\results\hone.jsonl'
         $buildFailureResult = & $script:buildScript -ConfigPath $script:configPath -TargetDir $buildFailureDir -Experiment 1
 
         $buildFailureResult.Success | Should -BeFalse
@@ -130,7 +130,7 @@ Describe 'Harness-testing checked-in target fixtures' {
         Assert-HoneArtifactCategory -TargetDir $buildFailureDir -Experiment 1 -Categories @('build_output', 'hone_log')
 
         $testFailureDir = Copy-HoneTargetFixture -Name 'test-failure' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'test-failure-runtime')
-        $env:HONE_LOG_PATH = Join-Path -Path $testFailureDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $testFailureDir -ChildPath '.hone\results\hone.jsonl'
         $testFailureBuild = & $script:buildScript -ConfigPath $script:configPath -TargetDir $testFailureDir -Experiment 1
         $testFailureResult = & $script:testsScript -ConfigPath $script:configPath -TargetDir $testFailureDir -Experiment 1
 
@@ -140,13 +140,13 @@ Describe 'Harness-testing checked-in target fixtures' {
         Assert-HoneArtifactCategory -TargetDir $testFailureDir -Experiment 1 -Categories @('build_output', 'e2e_output', 'e2e_trx', 'hone_log')
 
         $regressionDir = Copy-HoneTargetFixture -Name 'regression' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'regression-runtime')
-        $env:HONE_LOG_PATH = Join-Path -Path $regressionDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $regressionDir -ChildPath '.hone\results\hone.jsonl'
         $regressionTargetConfig = Import-PowerShellDataFile -Path (Join-Path -Path $regressionDir -ChildPath '.hone\config.psd1')
 
         & $script:baselineScript -ConfigPath $script:configPath -TargetDir $regressionDir -TargetConfig $regressionTargetConfig
 
-        $regressionBaselineMetrics = Get-Content -Path (Join-Path -Path $regressionDir -ChildPath 'results\baseline.json') -Raw | ConvertFrom-Json
-        $regressionBaselineCounters = Get-Content -Path (Join-Path -Path $regressionDir -ChildPath 'results\baseline-counters.json') -Raw | ConvertFrom-Json
+        $regressionBaselineMetrics = Get-Content -Path (Join-Path -Path $regressionDir -ChildPath '.hone\results\baseline.json') -Raw | ConvertFrom-Json
+        $regressionBaselineCounters = Get-Content -Path (Join-Path -Path $regressionDir -ChildPath '.hone\results\baseline-counters.json') -Raw | ConvertFrom-Json
         $regressionBuild = & $script:buildScript -ConfigPath $script:configPath -TargetDir $regressionDir -Experiment 1
         $regressionTests = & $script:testsScript -ConfigPath $script:configPath -TargetDir $regressionDir -Experiment 1
         $regressionScale = & $script:scaleScript -ConfigPath $script:configPath -TargetDir $regressionDir -Experiment 1
@@ -181,7 +181,7 @@ Describe 'Harness-testing checked-in target fixtures' {
 
     It 'surfaces stacked-diffs publish metadata from the checked-in fixture target' {
         $targetDir = Copy-HoneTargetFixture -Name 'stacked-diffs' -DestinationPath (Join-Path -Path $TestDrive -ChildPath 'stacked-diffs-runtime')
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
         $previousFixtureTarget = $env:HONE_HARNESS_TEST_TARGET_DIR
 
         try {

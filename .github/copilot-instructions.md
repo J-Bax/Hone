@@ -21,7 +21,7 @@ Hone is an **agentic performance optimization harness** that automatically impro
 | `sample-api/SampleApi/` | .NET 6 Web API — the optimization target |
 | `sample-api/SampleApi.Tests/` | xUnit E2E tests — the regression gate |
 | `sample-api/scale-tests/` | k6 load test scenarios and thresholds |
-| `sample-api/results/` | Generated output (gitignored) |
+| `sample-api/.hone/results/` | Generated output (gitignored) |
 | `docs/` | Architecture and usage documentation |
 
 ## Coding Conventions
@@ -61,5 +61,6 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 - The sample API is the optimization target — the agentic loop discovers performance issues through measurement, not hints
 - E2E tests use `WebApplicationFactory` so they don't require a running server
-- Performance results are stored as JSON in `sample-api/results/` for comparison across experiments
+- Performance results are stored as JSON in `sample-api/.hone/results/` for comparison across experiments
 - Each optimization attempt is made on a separate git branch for easy rollback
+

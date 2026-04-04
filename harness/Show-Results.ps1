@@ -8,7 +8,7 @@
     between experiments.
 
 .PARAMETER ResultsPath
-    Path to the results directory. Defaults to 'sample-api/results' at the repo root.
+    Path to the results directory. Defaults to the configured Api.ResultsPath at the repo root.
 
 .PARAMETER ConfigPath
     Path to the harness config.psd1 file.
@@ -17,7 +17,7 @@
     .\harness\Show-Results.ps1
 
 .EXAMPLE
-    .\harness\Show-Results.ps1 -ResultsPath .\sample-api\results
+    .\harness\Show-Results.ps1 -ResultsPath .\sample-api\.hone\results
 #>
 [CmdletBinding()]
 param(

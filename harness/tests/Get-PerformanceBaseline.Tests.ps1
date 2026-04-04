@@ -152,8 +152,8 @@ Add-Content -Path '$traceLiteral' -Value '$titleCaseHook'
         SolutionPath = 'MockApi.sln'
         ProjectPath = 'MockApi'
         TestProjectPath = 'MockApi.sln'
-        MetadataPath = 'results\metadata'
-        ResultsPath = 'results'
+        MetadataPath = '.hone\results\metadata'
+        ResultsPath = '.hone\results'
         BaseUrl = 'http://localhost:0'
         HealthEndpoint = '/health'
         GcEndpoint = '/diag/gc'
@@ -217,7 +217,7 @@ Describe 'Get-PerformanceBaseline lifecycle orchestration' {
     It 'executes lifecycle hooks in the expected baseline order' {
         $targetDir = New-HoneTestTarget -TargetDir (Join-Path -Path $TestDrive -ChildPath 'baseline-lifecycle-order')
         $tracePath = Join-Path -Path $TestDrive -ChildPath 'baseline-lifecycle-order.log'
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         Set-BaselineLifecycleTarget -TargetDir $targetDir -TracePath $tracePath
 
@@ -235,14 +235,14 @@ Describe 'Get-PerformanceBaseline lifecycle orchestration' {
             'Cleanup'
         )
 
-        Test-Path (Join-Path -Path $targetDir -ChildPath 'results\baseline.json') | Should -BeTrue
-        Test-Path (Join-Path -Path $targetDir -ChildPath 'results\run-metadata.json') | Should -BeTrue
+        Test-Path (Join-Path -Path $targetDir -ChildPath '.hone\results\baseline.json') | Should -BeTrue
+        Test-Path (Join-Path -Path $targetDir -ChildPath '.hone\results\run-metadata.json') | Should -BeTrue
     }
 
     It 'surfaces hook failures clearly and stops at the failing hook' {
         $targetDir = New-HoneTestTarget -TargetDir (Join-Path -Path $TestDrive -ChildPath 'baseline-lifecycle-failure')
         $tracePath = Join-Path -Path $TestDrive -ChildPath 'baseline-lifecycle-failure.log'
-        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath 'results\hone.jsonl'
+        $env:HONE_LOG_PATH = Join-Path -Path $targetDir -ChildPath '.hone\results\hone.jsonl'
 
         Set-BaselineLifecycleTarget -TargetDir $targetDir -TracePath $tracePath -FailHook 'Ready'
 

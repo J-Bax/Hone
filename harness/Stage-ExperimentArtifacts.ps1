@@ -30,7 +30,7 @@ param(
 
 Push-Location $TargetDir
 try {
-    $resultsRoot = 'results'
+    $resultsRoot = '.hone\results'
     if ($ConfigPath) {
         Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
         $config = Get-HoneConfig -ConfigPath $ConfigPath

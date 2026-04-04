@@ -123,7 +123,7 @@ k6 run --env BASE_URL=http://localhost:5000 sample-api/scale-tests/scenarios/bas
 .\harness\Get-PerformanceBaseline.ps1
 ```
 
-This starts the API, runs the baseline k6 scenario, saves results to `sample-api/results/baseline.json`, and stops the API.
+This starts the API, runs the baseline k6 scenario, saves results to `sample-api/.hone/results/baseline.json`, and stops the API.
 
 ### 8. Run the Full Hone Loop
 
@@ -180,3 +180,4 @@ copilot --version
 # Re-authenticate (copilot CLI uses GH_TOKEN)
 gh auth refresh
 ```
+
