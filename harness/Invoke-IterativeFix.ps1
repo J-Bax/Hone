@@ -540,6 +540,12 @@ for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
     }
 
     $attemptBuildLogPath = Join-Path -Path $attemptDir -ChildPath 'build.log'
+    if ($targetCfg) {
+        $null = Invoke-LifecycleHook -Name 'Stop' -TargetConfig $targetCfg `
+            -TargetDir $TargetDir -HarnessRoot $PSScriptRoot `
+            -Config $config -Experiment $Experiment
+    }
+
     $lastBuildResult = & (Join-Path $PSScriptRoot 'Invoke-Build.ps1') `
         -ConfigPath $ConfigPath `
         -TargetDir $TargetDir `

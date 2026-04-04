@@ -40,6 +40,52 @@ param(
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path $PSScriptRoot 'HoneHelpers.psm1') -Force
 
+$startSpinnerImpl = $null
+$stopSpinnerImpl = $null
+$progressScriptPath = Join-Path $PSScriptRoot 'Show-Progress.ps1'
+
+try {
+    . $progressScriptPath
+
+    $startSpinnerCmd = Get-Command 'Start-Spinner' -CommandType Function -ErrorAction Stop
+    $stopSpinnerCmd = Get-Command 'Stop-Spinner' -CommandType Function -ErrorAction Stop
+
+    $startSpinnerImpl = $startSpinnerCmd.ScriptBlock
+    $stopSpinnerImpl = $stopSpinnerCmd.ScriptBlock
+} catch {
+    Write-Warning "Progress helpers were unavailable in Invoke-ScaleTests: $_. Falling back to informational progress output."
+}
+
+$startScaleProgress = {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Message
+    )
+
+    if ($startSpinnerImpl) {
+        return & $startSpinnerImpl -Message $Message
+    }
+
+    Write-Information "  ... $Message" -InformationAction Continue
+    return $null
+}
+
+$stopScaleProgress = {
+    param(
+        $Spinner,
+        [string]$CompletionMessage
+    )
+
+    if ($stopSpinnerImpl) {
+        & $stopSpinnerImpl -Spinner $Spinner -CompletionMessage $CompletionMessage
+        return
+    }
+
+    if ($CompletionMessage) {
+        Write-Information "  OK $CompletionMessage" -InformationAction Continue
+    }
+}
+
 $config = Get-HoneConfig -ConfigPath $ConfigPath
 
 # Merge target config when an external target directory is provided
@@ -90,8 +136,6 @@ if (-not (Test-Path $outputDir)) {
     -Message "Running k6 scenario: $ScenarioPath against $baseUrl" `
     -Experiment $Experiment
 
-. (Join-Path $PSScriptRoot 'Show-Progress.ps1')
-
 # ── Pre-flight: verify k6 is available ──────────────────────────────────────
 if (-not $fixtureScale -and -not (Get-Command 'k6' -ErrorAction SilentlyContinue)) {
     $msg = 'k6 is not on PATH — cannot run scale tests'
@@ -128,11 +172,11 @@ if (-not $fixtureScale -and $warmupEnabled) {
             -Experiment $Experiment
 
         $warmupArgs = @('run', '--env', "BASE_URL=$baseUrl", '--quiet', $warmupPath)
-        $warmupSpinner = Start-Spinner -Message 'Warming up API'
+        $warmupSpinner = & $startScaleProgress -Message 'Warming up API'
         try {
             & k6 @warmupArgs 2>&1 | Out-Null
         } finally {
-            Stop-Spinner -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
+            & $stopScaleProgress -Spinner $warmupSpinner -CompletionMessage 'Warmup complete'
         }
 
         # Cooldown after warmup — let GC, thread pool, and TCP connections settle
@@ -371,12 +415,12 @@ try {
 
         # Run k6
         $runLabel = if ($measuredRuns -gt 1) { "k6 run $run/$measuredRuns" } else { 'k6 scale test' }
-        $runSpinner = Start-Spinner -Message $runLabel
+        $runSpinner = & $startScaleProgress -Message $runLabel
         try {
             $k6Output = & k6 @runArgs 2>&1
             $k6ExitCode = $LASTEXITCODE
         } catch {
-            Stop-Spinner -Spinner $runSpinner -CompletionMessage $null
+            & $stopScaleProgress -Spinner $runSpinner -CompletionMessage $null
             throw
         }
 
@@ -415,7 +459,7 @@ try {
 
             $runP95 = [math]::Round($runMetrics.HttpReqDuration.P95, 1)
             $runRps = [math]::Round($runMetrics.HttpReqs.Rate, 1)
-            Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
+            & $stopScaleProgress -Spinner $runSpinner -CompletionMessage "$runLabel — p95: ${runP95}ms, RPS: $runRps"
 
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'measure' -Level 'info' `
@@ -428,7 +472,7 @@ try {
                 errorRate = $runMetrics.HttpReqFailed.Rate
             }
         } else {
-            Stop-Spinner -Spinner $runSpinner -CompletionMessage "$runLabel — no summary file"
+            & $stopScaleProgress -Spinner $runSpinner -CompletionMessage "$runLabel — no summary file"
             & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
                 -Phase 'measure' -Level 'error' `
                 -Message "k6 summary file not found at: $runSummaryPath (run $run)" `
