@@ -281,37 +281,25 @@ function New-ExperimentPR {
     $dryRunPrefix = if ($IsDryRun) { '[DRY RUN] ' } else { '' }
     $prTitle = "${dryRunPrefix}hone(experiment-${Experiment})[${outcomeTag}]: $(Limit-String $Description 120)"
 
-    $fixtureTargetDir = $env:HONE_HARNESS_TEST_TARGET_DIR
-    if ($fixtureTargetDir -and (Test-Path -Path (Join-Path -Path $fixtureTargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'))) {
-        $engineConfig = Get-HoneConfig
-        $targetCfg = Import-PowerShellDataFile -Path (Join-Path -Path $fixtureTargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1')
-        $mergedConfig = Merge-HoneConfig -Engine $engineConfig -Target $targetCfg
-        $fixture = Get-HarnessTestingFixture -Config $mergedConfig -TargetDir $fixtureTargetDir
-        $fixturePublish = if ($fixture) {
-            Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Publish') -Experiment $Experiment
+    $fixturePublish = Get-HarnessTestingPublishDefinition -Experiment $Experiment
+    if ($fixturePublish -and $fixturePublish.ContainsKey('SkipPRCreation') -and $fixturePublish.SkipPRCreation) {
+        $fakeNumber = if ($fixturePublish.ContainsKey('PrNumber') -and $fixturePublish.PrNumber) { $fixturePublish.PrNumber } else { (1000 + $Experiment) }
+        $fakeUrl = if ($fixturePublish.ContainsKey('PrUrl') -and $fixturePublish.PrUrl) {
+            $fixturePublish.PrUrl
         } else {
-            $null
+            "https://example.invalid/hone/fixture/pull/$fakeNumber"
         }
 
-        if ($fixturePublish -and $fixturePublish.ContainsKey('SkipPRCreation') -and $fixturePublish.SkipPRCreation) {
-            $fakeNumber = if ($fixturePublish.ContainsKey('PrNumber') -and $fixturePublish.PrNumber) { $fixturePublish.PrNumber } else { (1000 + $Experiment) }
-            $fakeUrl = if ($fixturePublish.ContainsKey('PrUrl') -and $fixturePublish.PrUrl) {
-                $fixturePublish.PrUrl
-            } else {
-                "https://example.invalid/hone/fixture/pull/$fakeNumber"
-            }
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'publish' -Level 'info' `
+            -Message "Fixture PR created: $fakeUrl" `
+            -Experiment $Experiment `
+            -Data @{ prUrl = "$fakeUrl"; prNumber = $fakeNumber; baseBranch = $BaseBranch; outcome = $outcomeTag; fixture = $true }
 
-            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                -Phase 'publish' -Level 'info' `
-                -Message "Fixture PR created: $fakeUrl" `
-                -Experiment $Experiment `
-                -Data @{ prUrl = "$fakeUrl"; prNumber = $fakeNumber; baseBranch = $BaseBranch; outcome = $outcomeTag; fixture = $true }
-
-            return [PSCustomObject]@{
-                Success = $true
-                PrUrl = "$fakeUrl"
-                PrNumber = $fakeNumber
-            }
+        return [PSCustomObject]@{
+            Success = $true
+            PrUrl = "$fakeUrl"
+            PrNumber = $fakeNumber
         }
     }
 
@@ -359,6 +347,84 @@ function New-ExperimentPR {
             PrUrl = $null
             PrNumber = $null
         }
+    }
+}
+
+function Get-HarnessTestingPublishDefinition {
+    <#
+    .SYNOPSIS
+        Resolves the publish fixture definition for the current experiment, if any.
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [int]$Experiment = 0,
+        [string]$TargetDir
+    )
+
+    $fixtureTargetDir = if ($TargetDir) { $TargetDir } else { $env:HONE_HARNESS_TEST_TARGET_DIR }
+    if (-not $fixtureTargetDir) {
+        return $null
+    }
+
+    $targetConfigPath = Join-Path -Path $fixtureTargetDir -ChildPath '.hone' -AdditionalChildPath 'config.psd1'
+    if (-not (Test-Path -Path $targetConfigPath)) {
+        return $null
+    }
+
+    $engineConfig = Get-HoneConfig
+    $targetCfg = Import-PowerShellDataFile -Path $targetConfigPath
+    $mergedConfig = Merge-HoneConfig -Engine $engineConfig -Target $targetCfg
+    $fixture = Get-HarnessTestingFixture -Config $mergedConfig -TargetDir $fixtureTargetDir
+    if (-not $fixture) {
+        return $null
+    }
+
+    return (Get-HarnessTestingRuntimeDefinition -Fixture $fixture -Path @('Publish') -Experiment $Experiment)
+}
+
+function Invoke-ExperimentBranchPush {
+    <#
+    .SYNOPSIS
+        Pushes an experiment branch to origin, or simulates the push for fixtures.
+    #>
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$BranchName,
+
+        [int]$Experiment = 0,
+
+        [string]$TargetDir
+    )
+
+    $fixturePublish = Get-HarnessTestingPublishDefinition -Experiment $Experiment -TargetDir $TargetDir
+    if ($fixturePublish) {
+        $pushSucceeded = if ($fixturePublish.ContainsKey('PushSuccess')) { [bool]$fixturePublish.PushSuccess } else { $true }
+        $pushExitCode = if ($fixturePublish.ContainsKey('PushExitCode')) { [int]$fixturePublish.PushExitCode } else { $(if ($pushSucceeded) { 0 } else { 1 }) }
+        $pushOutput = if ($fixturePublish.ContainsKey('PushOutput') -and $fixturePublish.PushOutput) {
+            "$($fixturePublish.PushOutput)"
+        } else {
+            "Fixture branch push simulated for $BranchName"
+        }
+
+        return [PSCustomObject]@{
+            Success = $pushSucceeded
+            Output = $pushOutput
+            ExitCode = $pushExitCode
+            UsedFixture = $true
+        }
+    }
+
+    $pushOutput = @(git push -u origin $BranchName 2>&1)
+    $pushExitCode = $LASTEXITCODE
+
+    return [PSCustomObject]@{
+        Success = ($pushExitCode -eq 0)
+        Output = ($pushOutput | Out-String).Trim()
+        ExitCode = $pushExitCode
+        UsedFixture = $false
     }
 }
 
@@ -964,4 +1030,4 @@ function Get-HarnessTestingMockResponsePath {
     return (Resolve-HarnessTestingFixturePath -Fixture $fixture -Path $definition.MockResponsePath)
 }
 
-Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Build-StackNote, Resolve-Hook, Invoke-LifecycleHook, Assert-LifecycleHookSucceeded, Merge-HoneConfig, Convert-HoneK6SummaryToMetricSet, Get-HarnessTestingContract, Get-HarnessTestingFixture, Get-HarnessTestingRuntimeDefinition, Resolve-HarnessTestingFixturePath, Get-HarnessTestingMockResponsePath
+Export-ModuleMember -Function Write-Status, Get-HoneConfig, Wait-ApiHealthy, Limit-String, Invoke-CopilotWithTimeout, Undo-ExperimentBranch, Add-ExperimentMetadatum, New-ExperimentPR, Invoke-ExperimentBranchPush, Build-StackNote, Resolve-Hook, Invoke-LifecycleHook, Assert-LifecycleHookSucceeded, Merge-HoneConfig, Convert-HoneK6SummaryToMetricSet, Get-HarnessTestingContract, Get-HarnessTestingFixture, Get-HarnessTestingRuntimeDefinition, Resolve-HarnessTestingFixturePath, Get-HarnessTestingMockResponsePath
