@@ -77,6 +77,15 @@ $submoduleRelPath = $FilePath -replace "^$([regex]::Escape($targetLeaf))[\\/]", 
 try {
     Push-Location $submoduleDir
 
+    $currentBranch = (& git rev-parse --abbrev-ref HEAD 2>$null | Out-String).Trim()
+    if (-not $currentBranch) {
+        throw 'Unable to determine the current git branch before revert.'
+    }
+
+    if ($currentBranch -ne $BranchName) {
+        throw "Expected current branch '$BranchName' before revert, but found '$currentBranch'."
+    }
+
     if ($SoftReset) {
         git reset --soft HEAD~1 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) {
@@ -108,9 +117,15 @@ try {
 
     # Restore the modified file to its state before the fix commit
     git checkout HEAD~1 -- $submoduleRelPath 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git checkout HEAD~1 -- $submoduleRelPath failed with exit code $LASTEXITCODE"
+    }
 
     # Stage the reverted file
     git add $submoduleRelPath 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git add $submoduleRelPath failed with exit code $LASTEXITCODE"
+    }
 
     # Stage experiment artifacts
     & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
@@ -125,29 +140,43 @@ try {
         }
     } else { $Outcome }
 
-    git commit --no-gpg-sign -m "hone(experiment-$Experiment): revert — $Outcome`n`nReverted: $shortDesc" 2>&1 | Out-Null
+    $commitOutput = @(git commit --no-gpg-sign -m "hone(experiment-$Experiment): revert — $Outcome`n`nReverted: $shortDesc" 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "git commit failed for revert on '$BranchName': $(($commitOutput | Out-String).Trim())"
+    }
 
     # Push the branch so the failed attempt is preserved remotely
-    git push -u origin $BranchName 2>&1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Failed to push branch '$BranchName' to origin (exit code $LASTEXITCODE) — revert is local only"
+    $pushResult = Invoke-ExperimentBranchPush -BranchName $BranchName -Experiment $Experiment -TargetDir $TargetDir
+    $pushSucceeded = $pushResult.Success
+    $pushMessage = if ($pushResult.Output) { "$($pushResult.Output)" } else { $null }
+    if (-not $pushSucceeded) {
+        Write-Warning "Failed to push branch '$BranchName' to origin (exit code $($pushResult.ExitCode)) — revert is local only"
 
         & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
             -Phase 'publish' -Level 'warning' `
-            -Message "git push failed for revert branch: $BranchName (exit code $LASTEXITCODE)" `
+            -Message "git push failed for revert branch: $BranchName (exit code $($pushResult.ExitCode))" `
+            -Experiment $Experiment
+    } else {
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'publish' -Level 'info' `
+            -Message "Revert committed and pushed on branch: $BranchName" `
             -Experiment $Experiment
     }
 
-    & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-        -Phase 'publish' -Level 'info' `
-        -Message "Revert committed and pushed on branch: $BranchName" `
-        -Experiment $Experiment
+    if (-not $pushSucceeded) {
+        & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+            -Phase 'publish' -Level 'info' `
+            -Message "Revert committed locally on branch: $BranchName" `
+            -Experiment $Experiment
+    }
 
     $result = [ordered]@{
         Success = $true
         BranchName = $BranchName
         FilePath = $FilePath
         Outcome = $Outcome
+        Pushed = $pushSucceeded
+        PushOutput = if ($pushMessage) { $pushMessage } else { $null }
     }
 } catch {
     $result = [ordered]@{

@@ -882,7 +882,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) {
             Write-Warning "$($fixPhaseFailure.RevertDescription) at experiment $experiment — reverting and continuing"
 
-            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $failureHandlerResult = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome $iterativeExitReason `
                 -RevertDescription $fixPhaseFailure.RevertDescription `
@@ -924,17 +924,19 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -RcaSection $rejRcaSection -IterationSummary $iterationSummary
 
-            Push-Location $targetDir
-            $rejPrResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome $iterativeExitReason -Description $analysisResult.Explanation `
-                -Body $rejBody -IsDryRun:$DryRun
-            if ($rejPrResult.Success) {
-                $prNumber = $rejPrResult.PrNumber
-                $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $iterativeExitReason }
+            if ($failureHandlerResult.RevertResult.Pushed) {
+                Push-Location $targetDir
+                $rejPrResult = New-ExperimentPR `
+                    -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
+                    -Outcome $iterativeExitReason -Description $analysisResult.Explanation `
+                    -Body $rejBody -IsDryRun:$DryRun
+                if ($rejPrResult.Success) {
+                    $prNumber = $rejPrResult.PrNumber
+                    $prUrl = $rejPrResult.PrUrl
+                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $iterativeExitReason }
+                }
+                Pop-Location
             }
-            Pop-Location
 
             Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                 -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -1073,7 +1075,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
             if ($stackedDiffs) {
                 Write-Warning "$measurementFailureLabel at experiment $experiment — reverting and continuing"
 
-                $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+                $failureHandlerResult = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                     -BranchName $branchName -FilePath $targetFile `
                     -Experiment $experiment -Outcome 'regressed' `
                     -RevertDescription $measurementFailureLabel `
@@ -1098,17 +1100,19 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
                     -OutcomeDetail $failureDetail `
                     -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                     -IterationSummary $iterationSummary
-                Push-Location $targetDir
-                $rejPrResult = New-ExperimentPR `
-                    -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                    -Outcome 'regressed' -Description $analysisResult.Explanation `
-                    -Body $rejBody -IsDryRun:$DryRun
-                if ($rejPrResult.Success) {
-                    $prNumber = $rejPrResult.PrNumber
-                    $prUrl = $rejPrResult.PrUrl
-                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $measurementFailureReason }
+                if ($failureHandlerResult.RevertResult.Pushed) {
+                    Push-Location $targetDir
+                    $rejPrResult = New-ExperimentPR `
+                        -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
+                        -Outcome 'regressed' -Description $analysisResult.Explanation `
+                        -Body $rejBody -IsDryRun:$DryRun
+                    if ($rejPrResult.Success) {
+                        $prNumber = $rejPrResult.PrNumber
+                        $prUrl = $rejPrResult.PrUrl
+                        $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = $measurementFailureReason }
+                    }
+                    Pop-Location
                 }
-                Pop-Location
 
                 Add-ExperimentMetadatum -RunMetadata $runMetadata -MetadataPath $runMetadataPath `
                     -Experiment $experiment -StartedAt $experimentStartedAt `
@@ -1216,7 +1220,7 @@ for ($experiment = $startExperiment; $experiment -le $loopEnd; $experiment++) {
         if ($stackedDiffs) {
             Write-Warning "  Reverting code change, preserving artifacts"
 
-            $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+            $failureHandlerResult = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                 -BranchName $branchName -FilePath $targetFile `
                 -Experiment $experiment -Outcome 'regressed' `
                 -RevertDescription (Limit-String $analysisResult.Explanation 120) `
@@ -1267,17 +1271,19 @@ $rcaDocument
                 -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                 -MetricsSection $rejMetrics -RcaSection $rejRcaSection `
                 -IterationSummary $iterationSummary
-            Push-Location $targetDir
-            $rejPrResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                -Outcome 'regressed' -Description $analysisResult.Explanation `
-                -Body $rejBody -IsDryRun:$DryRun
-            if ($rejPrResult.Success) {
-                $prNumber = $rejPrResult.PrNumber
-                $prUrl = $rejPrResult.PrUrl
-                $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'regressed' }
+            if ($failureHandlerResult.RevertResult.Pushed) {
+                Push-Location $targetDir
+                $rejPrResult = New-ExperimentPR `
+                    -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
+                    -Outcome 'regressed' -Description $analysisResult.Explanation `
+                    -Body $rejBody -IsDryRun:$DryRun
+                if ($rejPrResult.Success) {
+                    $prNumber = $rejPrResult.PrNumber
+                    $prUrl = $rejPrResult.PrUrl
+                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'regressed' }
+                }
+                Pop-Location
             }
-            Pop-Location
 
             if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                 $exitReason = 'max_consecutive_failures'
@@ -1324,15 +1330,29 @@ $rcaDocument
             Push-Location $targetDir
             & (Join-Path $PSScriptRoot 'Stage-ExperimentArtifacts.ps1') `
                 -Experiment $experiment -SubmoduleDir $targetDir
-            git commit --amend --no-gpg-sign --no-edit 2>&1 | Out-Null
+            $amendOutput = @(git commit --amend --no-gpg-sign --no-edit 2>&1)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Failed to amend experiment commit with artifacts: $(($amendOutput | Out-String).Trim())"
+            }
 
             # Push and create PR
-            git push -u origin $branchName 2>&1 | Out-Null
+            $pushResult = Invoke-ExperimentBranchPush -BranchName $branchName -Experiment $experiment -TargetDir $targetDir
+            $branchPushed = $pushResult.Success
+            if ($branchPushed) {
+                & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                    -Phase 'publish' -Level 'info' `
+                    -Message "Branch pushed to origin: $branchName" `
+                    -Experiment $experiment
+            } else {
+                $pushMessage = if ($pushResult.Output) { "$($pushResult.Output)" } else { 'git push failed with no output' }
+                Write-Warning "  Failed to push branch '$branchName' to origin — skipping PR creation"
 
-            & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
-                -Phase 'publish' -Level 'info' `
-                -Message "Branch pushed to origin: $branchName" `
-                -Experiment $experiment
+                & (Join-Path $PSScriptRoot 'Write-HoneLog.ps1') `
+                    -Phase 'publish' -Level 'error' `
+                    -Message ("Failed to push branch for experiment {0}: {1}" -f $experiment, $pushMessage) `
+                    -Experiment $experiment `
+                    -Data @{ branch = $branchName; baseBranch = $baseBranch; error = $pushMessage }
+            }
 
             # Determine PR base: stacked mode uses baseBranch (previous experiment); legacy uses default branch
             $prBaseBranch = if ($stackedDiffs) { $baseBranch } else { $defaultBranch }
@@ -1433,16 +1453,17 @@ $rcaDocument
                 -ScenarioBreakdown $scenarioBreakdown `
                 -IterationSummary $iterationSummary
 
-            $prResult = New-ExperimentPR `
-                -Experiment $experiment -BranchName $branchName -BaseBranch $prBaseBranch `
-                -Outcome 'improved' -Description $analysisResult.Explanation `
-                -Body $prBody -IsDryRun:$DryRun
-
             $prNumber = $null
             $prUrl = $null
-            if ($prResult.Success) {
-                $prNumber = $prResult.PrNumber
-                $prUrl = $prResult.PrUrl
+            if ($branchPushed) {
+                $prResult = New-ExperimentPR `
+                    -Experiment $experiment -BranchName $branchName -BaseBranch $prBaseBranch `
+                    -Outcome 'improved' -Description $analysisResult.Explanation `
+                    -Body $prBody -IsDryRun:$DryRun
+                if ($prResult.Success) {
+                    $prNumber = $prResult.PrNumber
+                    $prUrl = $prResult.PrUrl
+                }
             }
 
             # Update stacked-diffs state
@@ -1534,7 +1555,7 @@ $rcaDocument
             if ($stackedDiffs) {
                 Write-Status "  ─ No improvement (stale — failure $consecutiveFailures / $maxConsecutiveFailures)"
 
-                $null = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
+                $failureHandlerResult = & (Join-Path $PSScriptRoot 'Invoke-FailureHandler.ps1') `
                     -BranchName $branchName -FilePath $targetFile `
                     -Experiment $experiment -Outcome 'stale' `
                     -RevertDescription (Limit-String $analysisResult.Explanation 120) `
@@ -1582,17 +1603,19 @@ $rcaDocument
                     -StackNote $rejStackNote -DryRunNotice $rejDryRunNotice `
                     -MetricsSection $rejMetrics -RcaSection $rejRcaSection `
                     -IterationSummary $iterationSummary
-                Push-Location $targetDir
-                $rejPrResult = New-ExperimentPR `
-                    -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
-                    -Outcome 'stale' -Description $analysisResult.Explanation `
-                    -Body $rejBody -IsDryRun:$DryRun
-                if ($rejPrResult.Success) {
-                    $prNumber = $rejPrResult.PrNumber
-                    $prUrl = $rejPrResult.PrUrl
-                    $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'stale' }
+                if ($failureHandlerResult.RevertResult.Pushed) {
+                    Push-Location $targetDir
+                    $rejPrResult = New-ExperimentPR `
+                        -Experiment $experiment -BranchName $branchName -BaseBranch $baseBranch `
+                        -Outcome 'stale' -Description $analysisResult.Explanation `
+                        -Body $rejBody -IsDryRun:$DryRun
+                    if ($rejPrResult.Success) {
+                        $prNumber = $rejPrResult.PrNumber
+                        $prUrl = $rejPrResult.PrUrl
+                        $prChain += [PSCustomObject]@{ Number = $prNumber; Experiment = $experiment; Url = "$prUrl"; Outcome = 'stale' }
+                    }
+                    Pop-Location
                 }
-                Pop-Location
 
                 if ($consecutiveFailures -ge $maxConsecutiveFailures) {
                     $exitReason = 'max_consecutive_failures'

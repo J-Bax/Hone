@@ -75,6 +75,7 @@ public class ProductsController
             -TargetDir $targetDir
 
         $result.Success | Should -BeTrue
+        $result.RevertResult.Pushed | Should -BeFalse
         (Get-Content -Path $targetFilePath -Raw).Trim() | Should -Be $originalContent
 
         $queueJsonPath = Join-Path -Path $targetDir -ChildPath 'artifacts\metadata\experiment-queue.json'
