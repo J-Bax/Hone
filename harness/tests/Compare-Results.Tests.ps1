@@ -86,6 +86,25 @@ Describe 'Compare-Results acceptance policy' {
         $result.RegressionDetail | Should -Match 'p95 regressed'
     }
 
+    It 'flags non-zero error rates as regressions when the reference error rate is zero' {
+        $env:HONE_LOG_PATH = Join-Path -Path $TestDrive -ChildPath 'compare-zero-error-reference.jsonl'
+        $baseline = Get-TestMetric -P95 100 -Rps 50 -ErrorRate 0
+        $current = Get-TestMetric -P95 100 -Rps 50 -ErrorRate 0.2857
+
+        $result = & $scriptPath `
+            -CurrentMetrics $current `
+            -BaselineMetrics $baseline `
+            -PreviousMetrics $baseline `
+            -ConfigPath $configPath `
+            -Experiment 8
+
+        $result.Improved | Should -BeFalse
+        $result.Regression | Should -BeTrue
+        $result.Deltas.ErrorRate.Regressed | Should -BeTrue
+        $result.Deltas.ErrorRate.ChangePct | Should -Be 1000
+        $result.RegressionDetail | Should -Match 'Error rate regressed'
+    }
+
     It 'uses the efficiency tiebreaker when metrics are flat but resource use drops' {
         $env:HONE_LOG_PATH = Join-Path -Path $TestDrive -ChildPath 'compare-efficiency.jsonl'
         $baseline = Get-TestMetric -P95 100 -Rps 50 -ErrorRate 0.01

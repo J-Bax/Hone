@@ -111,7 +111,12 @@ function Compare-Metric {
 
     # ── Per-metric helper ───────────────────────────────────────────────────
     function Get-PctChange([double]$Cur, [double]$Prev) {
-        if ($Prev -eq 0) { return 0 }
+        if ($Prev -eq 0) {
+            if ($Cur -gt 0) { return 10.0 }
+            if ($Cur -lt 0) { return -10.0 }
+            return 0
+        }
+
         $r = ($Cur - $Prev) / $Prev
         return [Math]::Max(-10.0, [Math]::Min(10.0, $r))
     }
