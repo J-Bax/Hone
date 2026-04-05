@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
+  </ItemGroup>
+
+</Project>
