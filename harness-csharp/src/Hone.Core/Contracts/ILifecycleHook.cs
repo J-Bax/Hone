@@ -1,11 +1,15 @@
+using Hone.Core.Models;
+
 namespace Hone.Core.Contracts;
 
 /// <summary>
-/// Contract for experiment lifecycle hooks (e.g., start/stop target application).
-/// Full definition provided in Phase 3 (Orchestration Skeleton).
+/// Contract for experiment lifecycle hooks (e.g., build, start, stop, test).
+/// Each built-in hook implements this interface.
 /// </summary>
-#pragma warning disable CA1040 // Avoid empty interfaces — placeholder for Phase 3
 public interface ILifecycleHook
 {
+    /// <summary>
+    /// Executes the hook and returns the result.
+    /// </summary>
+    public Task<HookResult> ExecuteAsync(HookContext context, CancellationToken ct = default);
 }
-#pragma warning restore CA1040
