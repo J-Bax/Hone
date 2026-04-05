@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\..\src\Hone.Orchestration\Hone.Orchestration.csproj" />
+    <ProjectReference Include="..\..\src\Hone.Cli\Hone.Cli.csproj" />
     <ProjectReference Include="..\Hone.TestInfrastructure\Hone.TestInfrastructure.csproj" />
   </ItemGroup>
 

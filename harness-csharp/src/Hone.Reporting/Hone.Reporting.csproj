@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Hone.Reporting.Tests" />
+    <InternalsVisibleTo Include="Hone.Cli" />
   </ItemGroup>
 
   <ItemGroup>
