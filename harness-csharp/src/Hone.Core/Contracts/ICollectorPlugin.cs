@@ -1,11 +1,41 @@
+using Hone.Core.Models;
+
 namespace Hone.Core.Contracts;
 
 /// <summary>
 /// Contract for diagnostic data collector plugins.
-/// Full definition provided in Phase 6 (Diagnostic Profiling).
+/// Mirrors the PowerShell collector lifecycle: Start → Stop → Export.
 /// </summary>
-#pragma warning disable CA1040 // Avoid empty interfaces — placeholder for Phase 6
 public interface ICollectorPlugin
 {
+    /// <summary>
+    /// Gets the display name of this collector.
+    /// </summary>
+    public string Name { get; }
+
+    /// <summary>
+    /// Starts data collection for the given process.
+    /// </summary>
+    public Task<CollectorStartResult> StartAsync(
+        int processId,
+        string outputDir,
+        CollectorSettings settings,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Stops a running collection session and returns artifacts.
+    /// </summary>
+    public Task<CollectorArtifacts> StopAsync(
+        object handle,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Exports collected artifacts into analysis-ready output.
+    /// </summary>
+    public Task<CollectorExportResult> ExportAsync(
+        IReadOnlyList<string> artifactPaths,
+        string outputDir,
+        string processName,
+        CollectorSettings settings,
+        CancellationToken ct = default);
 }
-#pragma warning restore CA1040
