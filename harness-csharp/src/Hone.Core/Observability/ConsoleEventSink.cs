@@ -1,4 +1,4 @@
-﻿namespace Hone.Core.Observability;
+namespace Hone.Core.Observability;
 
 /// <summary>
 /// Writes harness events to a <see cref="TextWriter"/> with timestamped formatting.
