@@ -630,7 +630,7 @@ public class HookResolver
 }
 
 public record ResolvedHook(HookType Type, string? Command, 
-    string? Url, string? Method);
+    Uri? Url, string? HttpMethod);
 
 public enum HookType { BuiltIn, Command, Http, Skip }
 ```
@@ -654,7 +654,7 @@ public enum HookType { BuiltIn, Command, Http, Skip }
 public class LifecycleHookDispatcher
 {
     public Task<HookResult> DispatchAsync(string hookName, ResolvedHook hook,
-        string targetPath, HoneConfig config, string? baseUrl, int experiment);
+        HookContext context);
 }
 ```
 
