@@ -44,6 +44,9 @@ public static class ConfigLoader
             IDeserializer deserializer = new DeserializerBuilder()
                 .WithNamingConvention(PascalCaseNamingConvention.Instance)
                 .WithObjectFactory(new RecordAwareObjectFactory())
+                .WithTypeMapping<IReadOnlyList<string>, List<string>>()
+                .WithTypeMapping<IReadOnlyDictionary<string, CollectorSettingsEntry>, Dictionary<string, CollectorSettingsEntry>>()
+                .WithTypeMapping<IReadOnlyDictionary<string, AnalyzerSettingsEntry>, Dictionary<string, AnalyzerSettingsEntry>>()
                 .IgnoreUnmatchedProperties()
                 .Build();
 

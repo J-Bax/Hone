@@ -8,8 +8,8 @@ Ensure the following tools are installed and available on your `PATH`:
 
 | Tool | Minimum Version | Verify | Install |
 |------|----------------|--------|---------|
-| PowerShell | 7.2 | `$PSVersionTable.PSVersion` | `winget install Microsoft.PowerShell` |
-| .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` |
+| .NET SDK | 10.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.10` |
+| .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` (for sample-api) |
 | SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` ¹ |
 | k6 | 0.47+ | `k6 version` | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `gh --version` | `winget install GitHub.cli` |
@@ -20,7 +20,7 @@ Ensure the following tools are installed and available on your `PATH`:
 
 The standalone GitHub Copilot CLI must be installed separately:
 
-```powershell
+```sh
 # Verify it's installed
 copilot --version
 ```
@@ -31,13 +31,13 @@ See https://docs.github.com/copilot/how-tos/copilot-cli for installation instruc
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| PerfView | Deep CPU/GC/memory diagnostic profiling | Auto-downloaded by `Setup-DevEnvironment.ps1` |
+| PerfView | Deep CPU/GC/memory diagnostic profiling | Download from [Microsoft/perfview releases](https://github.com/microsoft/perfview/releases) |
 
-PerfView is downloaded automatically during setup. It requires **Administrator privileges** at runtime for kernel-level ETW tracing. If you don't need diagnostic profiling, set `Diagnostics.Enabled = $false` in `harness/config.psd1`.
+PerfView requires **Administrator privileges** at runtime for kernel-level ETW tracing. If you don't need diagnostic profiling, set `Diagnostics.Enabled: false` in `harness-csharp/config.yaml` or `.hone/config.yaml`.
 
 ### Verify Authentication
 
-```powershell
+```sh
 # You must be authenticated with GitHub CLI
 gh auth status
 
@@ -47,17 +47,23 @@ gh auth login
 
 ## Quick Setup (Recommended)
 
-After cloning the repo, run the setup script to install and verify all dependencies in one step:
+After cloning the repo, install prerequisites via winget, then build and publish the harness:
 
-```powershell
+```sh
 git clone https://github.com/J-Bax/Hone.git
 cd Hone
+git submodule update --init --recursive
 
-# Install everything via winget
-.\Setup-DevEnvironment.ps1
+# Install .NET 10 SDK, k6, GitHub CLI
+winget install Microsoft.DotNet.SDK.10 GrafanaLabs.k6 GitHub.cli
+
+# Build the C# harness
+dotnet build harness-csharp/Hone.slnx
+
+# (Optional) Publish hone as a global tool or to a local path
+dotnet publish harness-csharp/src/Hone.Cli/Hone.Cli.csproj -o ./out
+# Then add ./out to your PATH, or invoke directly: ./out/hone
 ```
-
-The script installs: .NET SDK 6, SQL Server LocalDB, k6, GitHub CLI, PerfView, and the `dotnet-counters` global tool. It also verifies the standalone `copilot` CLI is on PATH, starts LocalDB, and restores NuGet packages.
 
 > **Note:** Run in an elevated (Administrator) terminal for winget installs and PerfView ETW support. Restart your terminal afterwards to pick up new `PATH` entries.
 
@@ -67,7 +73,7 @@ If you prefer to install dependencies individually, follow the steps below.
 
 ### 1. Clone the Repository
 
-```powershell
+```sh
 git clone https://github.com/J-Bax/Hone.git
 cd Hone
 git submodule update --init --recursive
@@ -75,7 +81,7 @@ git submodule update --init --recursive
 
 ### 2. Verify LocalDB
 
-```powershell
+```sh
 # Start the LocalDB instance
 sqllocaldb start MSSQLLocalDB
 
@@ -83,75 +89,95 @@ sqllocaldb start MSSQLLocalDB
 sqlcmd -S "(localdb)\MSSQLLocalDB" -Q "SELECT @@VERSION"
 ```
 
-### 3. Build the Sample API
+### 3. Build the C# Harness
 
-```powershell
+```sh
+dotnet build harness-csharp/Hone.slnx
+```
+
+All 629+ tests should be green:
+
+```sh
+dotnet test harness-csharp/Hone.slnx --verbosity quiet
+```
+
+### 4. Build the Sample API
+
+```sh
 dotnet build sample-api/SampleApi.sln
 ```
 
-### 4. Run E2E Tests
+### 5. Run E2E Tests
 
 The E2E tests use `WebApplicationFactory` so they start their own in-memory test server — no need to manually run the API first.
 
-```powershell
+```sh
 dotnet test sample-api/SampleApi.Tests/ --verbosity normal
 ```
 
 All tests should pass. If any fail, check your LocalDB connection.
 
-### 5. Start the API Manually (Optional)
+### 6. Start the API Manually (Optional)
 
 If you want to explore the API interactively:
 
-```powershell
+```sh
 dotnet run --project sample-api/SampleApi/
 
 # In another terminal:
-Invoke-RestMethod http://localhost:5000/api/products | ConvertTo-Json
+curl http://localhost:5000/api/products
 ```
 
-### 6. Run a Load Test Manually (Optional)
+### 7. Run a Load Test Manually (Optional)
 
-```powershell
-# API must be running first (step 5 above)
+```sh
+# API must be running first (step 6 above)
 k6 run --env BASE_URL=http://localhost:5000 sample-api/scale-tests/scenarios/baseline.js
 ```
 
-### 7. Establish a Performance Baseline
+### 8. Establish a Performance Baseline
 
-```powershell
-.\harness\Get-PerformanceBaseline.ps1
+```sh
+hone baseline --target sample-api
 ```
 
 This starts the API, runs the baseline k6 scenario, saves results to `sample-api/.hone/results/baseline.json`, and stops the API.
 
-### 8. Run the Full Hone Loop
+### 9. Validate the Target Configuration
 
-```powershell
-.\harness\Invoke-HoneLoop.ps1
+```sh
+hone validate --target sample-api
+```
+
+This loads and validates `sample-api/.hone/config.yaml` against the engine schema without running any experiments.
+
+### 10. Run the Full Hone Loop
+
+```sh
+hone run --target sample-api
 ```
 
 This kicks off the agentic optimization cycle. Watch the console output for build results, test outcomes, performance metrics, Copilot suggestions, and experiment summaries.
 
 ## What to Expect
 
-On the first run, the Hone loop will analyze the sample API's performance characteristics through k6 metrics and use Copilot to suggest fixes. Each fix is applied on a separate git branch and validated before proceeding.
+On the first run, the Hone loop will analyze the sample API's performance characteristics through k6 metrics and use Copilot to suggest optimizations. Each optimization is applied on a separate git branch and validated before proceeding.
 
 After the loop completes (or between experiments), you can inspect results:
 
-```powershell
+```sh
 # View results in terminal
-.\harness\Show-Results.ps1
+hone results --target sample-api
 
 # Generate HTML dashboard
-.\harness\Export-Dashboard.ps1 -Open
+hone dashboard --target sample-api
 ```
 
 ## Troubleshooting
 
 ### LocalDB Connection Failures
 
-```powershell
+```sh
 # Reset LocalDB if it's in a bad state
 sqllocaldb stop MSSQLLocalDB
 sqllocaldb delete MSSQLLocalDB
@@ -161,16 +187,17 @@ sqllocaldb start MSSQLLocalDB
 
 ### k6 Not Found
 
-```powershell
+```sh
 # Verify k6 is on PATH
-Get-Command k6
+k6 version
 
 # If installed via winget but not on PATH, restart your terminal
+winget install GrafanaLabs.k6
 ```
 
 ### GitHub Copilot CLI Issues
 
-```powershell
+```sh
 # Verify the standalone copilot CLI is installed and on PATH
 copilot --version
 
@@ -180,4 +207,24 @@ copilot --version
 # Re-authenticate (copilot CLI uses GH_TOKEN)
 gh auth refresh
 ```
+
+### Harness Build Failures
+
+```sh
+# Ensure .NET 10 SDK is installed
+dotnet --version   # should show 10.x.x
+
+# Clean and rebuild
+dotnet clean harness-csharp/Hone.slnx
+dotnet build harness-csharp/Hone.slnx
+```
+
+### Config Validation Errors
+
+Run `hone validate --target sample-api` to see detailed validation output. Common issues:
+
+- Missing required fields in `.hone/config.yaml`
+- Hook types referencing missing built-in hooks
+- File paths that don't exist relative to the target root
+- Tool availability checks (dotnet, k6, git, copilot, gh)
 

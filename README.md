@@ -6,7 +6,7 @@
 
 **Agentic performance optimization for web APIs.**
 
-Hone is an experimental harness that automatically optimizes API performance through an iterative agentic loop. It measures with k6 load tests, analyzes bottlenecks with GitHub Copilot CLI, applies fixes, validates correctness, and repeats — producing a stack of reviewable PRs with measurable improvements.
+Hone is an experimental harness that automatically optimizes API performance through an iterative agentic loop. It measures with k6 load tests, analyzes bottlenecks with GitHub Copilot CLI, applies fixes, validates correctness, and repeats — producing a stack of reviewable PRs with measurable improvements. The harness is implemented in C# / .NET 10.
 
 ```mermaid
 graph LR
@@ -28,12 +28,12 @@ graph LR
 - A **five-agent AI pipeline** drives each experiment:
   - **CPU Profiler** — analyzes PerfView CPU sampling stacks to pinpoint hot methods and call paths
   - **Memory Profiler** — analyzes PerfView GC statistics and allocation data to identify memory pressure sources
-  - **Top-level Analyst** — examines upleveled profiling data, and source code to identify the highest-impact optimization
+  - **Top-level Analyst** — examines upleveled profiling data and source code to identify the highest-impact optimization
   - **Classifier** — determines whether the proposed change is narrow or architectural (deferred — requiring expert sign-off)
-  - **Fixer** — generates the optimized code for narrow-scope changes
+  - **Implementer** — generates the optimized code for narrow-scope changes
 - Each experiment runs **multi-run load tests**: tracking latency, throughput and efficiency metrics (CPU, Memory)
 - Results are compared against the previous baseline to compute **performance deltas**
-- Fixes must pass two gates: **E2E functional tests**, and **improve load test metrics**
+- Changes must pass two gates: **E2E functional tests**, and **improve load test metrics**
 - Passing experiments are published as **stacked PRs** — a linear branch chain, each reviewable independently
 - Failed experiments (test failures or performance regressions) are **automatically reverted**
 - An **optimization history** tracks what has been tried so agents don't repeat failed approaches
@@ -76,50 +76,54 @@ All diffs include a detailed root-cause analysis and explanation of fix — see 
 
 | Tool | Version | Install |
 |------|---------|---------|
-| PowerShell | 7.2+ | `winget install Microsoft.PowerShell` |
-| .NET SDK | 6.0 | `winget install Microsoft.DotNet.SDK.6` |
+| .NET SDK | 10.0 | `winget install Microsoft.DotNet.SDK.10` |
+| .NET SDK | 6.0 | `winget install Microsoft.DotNet.SDK.6` (for sample-api) |
 | SQL Server LocalDB | 2019+ | Included with Visual Studio or `winget install Microsoft.SQLServer.2019.LocalDB` |
 | k6 | Latest | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `winget install GitHub.cli` |
 | GitHub Copilot CLI | Latest | [Install standalone `copilot` CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — separate from `gh` |
-| PerfView | Latest | Auto-downloaded by `Setup-DevEnvironment.ps1` |
+| PerfView | Latest | Download from [Microsoft/perfview](https://github.com/microsoft/perfview/releases) |
 
 > **Note:** PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal when diagnostic profiling is enabled.
 
 ## Quick Start
 
-```powershell
+```sh
 # 1. Clone the repo
 git clone https://github.com/J-Bax/Hone.git
 cd Hone
 git submodule update --init --recursive
 
-# 2. Build the sample API
-dotnet build sample-api/SampleApi.sln
+# 2. Build the harness
+dotnet build harness-csharp/Hone.slnx
 
-# 3. Run E2E tests (uses WebApplicationFactory, no running server needed)
+# 3. Build the sample API and run E2E tests (uses WebApplicationFactory)
+dotnet build sample-api/SampleApi.sln
 dotnet test sample-api/SampleApi.Tests/
 
 # 4. Establish a performance baseline
-.\harness\Get-PerformanceBaseline.ps1
+hone baseline --target sample-api
 
 # 5. Run the full agentic optimization loop
-.\harness\Invoke-HoneLoop.ps1
+hone run --target sample-api
 ```
 
 ## Configuration
 
-Edit `harness/config.psd1` to customize thresholds, experiment limits, API paths, and k6 scenarios. The config file is self-documented with inline comments for every setting.
+Edit `sample-api/.hone/config.yaml` to customize thresholds, experiment limits, API paths, and k6 scenarios. Engine-wide defaults live in `harness-csharp/config.yaml`. Both files are YAML with PascalCase keys.
 
-See [docs/configuration.md](docs/configuration.md) for runtime override syntax.
+See [docs/configuration.md](docs/configuration.md) for the full schema and runtime override flags.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — Design principles, loop flow, and decision logic
+- [Architecture](docs/architecture.md) — Design principles, loop flow, C# module structure, and decision logic
 - [Agent Designs](docs/agent-designs.md) — Five-agent AI pipeline: roles, inputs, outputs, and model configuration
 - [Getting Started](docs/getting-started.md) — Detailed setup guide
-- [Configuration](docs/configuration.md) — Config overview and runtime overrides
-- [Future Extensions](docs/future-extensions.md) — Design ideas: actor-critic fixer, correction of error, optimization knowledge base
+- [Configuration](docs/configuration.md) — YAML config schema and runtime override flags
+- [Adapter Contracts](docs/adapter-contracts.md) — `.hone/` directory specification for target projects
+- [Plugin Contracts](docs/plugin-contracts.md) — C# interfaces for collector and analyzer plugins
+- [Future Extensions](docs/future-extensions.md) — Design ideas: actor-critic implementer, correction of error, optimization knowledge base
+- [C# Migration Summary](docs/features/csharp-migration/migration-summary.md) — Overview of the PowerShell → C# migration
 
 ## License
 
