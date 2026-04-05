@@ -1,6 +1,6 @@
 # C# Migration Delivery Agent Team
 
-> **Status:** Draft  
+> **Status:** Approved  
 > **Date:** 2026-04-04  
 > **Companion Documents:** [proposal.md](proposal.md) - migration rationale and target architecture; [phased-plan.md](phased-plan.md) - phase-by-phase implementation plan
 

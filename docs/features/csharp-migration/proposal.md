@@ -1,6 +1,6 @@
 # Proposal: Migrate Hone Harness from PowerShell to C#
 
-> **Status:** Draft  
+> **Status:** Approved  
 > **Author:** Copilot  
 > **Date:** 2026-04-04  
 > **Companion Documents:** [phased-plan.md](phased-plan.md) — detailed phase-by-phase implementation plan; [agent-team.md](agent-team.md) — migration delivery agent model and MVP team
@@ -48,7 +48,7 @@ This proposal recommends migrating the harness to a C# .NET 10 console applicati
 ### 3.1 Solution Structure
 
 ```
-Hone.sln
+Hone.slnx                          # .NET 10 XML-based solution format (SDK default)
 ├── src/
 │   ├── Hone.Core/                  # Domain models, contracts, config, observability, shared utilities
 │   ├── Hone.Orchestration/         # Main loop, phase orchestration, queue management
@@ -466,7 +466,7 @@ The `.editorconfig` at the solution root defines project-wide style rules with s
 
 ##### CI Enforcement
 
-- `dotnet build Hone.sln` — fails on any warning (via `TreatWarningsAsErrors` in `Directory.Build.props`, no CLI flags needed)
+- `dotnet build Hone.slnx` — fails on any warning (via `TreatWarningsAsErrors` in `Directory.Build.props`, no CLI flags needed)
 - `dotnet format --verify-no-changes` — catches formatting and style drift that local builds may miss
 - `dotnet test` — all test projects with Coverlet code coverage reporting
 - NuGet audit — automatically fails on vulnerable dependencies (via `NuGetAudit` in `Directory.Build.props`)

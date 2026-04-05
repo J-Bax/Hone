@@ -45,7 +45,6 @@ public sealed class GitTestRepo
     /// </summary>
     public void Checkout(string name) => RunGit($"checkout {name}");
 
-#pragma warning disable RS0030 // Sync I/O is intentional in test infrastructure
     private void RunGit(string arguments)
     {
         using var process = new Process();
@@ -70,5 +69,4 @@ public sealed class GitTestRepo
                 $"git {arguments} failed with exit code {process.ExitCode}: {error}");
         }
     }
-#pragma warning restore RS0030
 }

@@ -1,6 +1,6 @@
 # Phased Migration Plan: PowerShell → C# Harness
 
-> **Status:** Draft  
+> **Status:** Approved  
 > **Date:** 2026-04-04  
 > **Companion Documents:** [proposal.md](proposal.md) — high-level architecture and rationale; [agent-team.md](agent-team.md) — migration delivery agent model and MVP team
 
@@ -47,7 +47,7 @@ Create the .NET solution structure, CI pipeline, shared test infrastructure, and
 #### Solution file and projects
 ```
 harness-csharp/
-├── Hone.sln
+├── Hone.slnx                      # .NET 10 XML-based solution format (SDK default)
 ├── .editorconfig                  # Code style, naming conventions, analyzer severity tuning
 ├── Directory.Build.props          # Shared properties (TFM, nullable, analyzers, NuGet audit)
 ├── Directory.Build.targets        # Wires BannedSymbols.txt to all projects via AdditionalFiles
@@ -173,7 +173,7 @@ The banned list is enforced in `src/` projects. Test projects may use `#pragma w
 All style rules use severity `warning`, which `TreatWarningsAsErrors` promotes to build errors. No warning suppressions without a documented `#pragma` justification.
 
 #### CI pipeline
-- `dotnet build Hone.sln` — fails on any warning (TreatWarningsAsErrors in Directory.Build.props), any vulnerable dependency (NuGetAudit), and any banned API usage (BannedApiAnalyzers)
+- `dotnet build Hone.slnx` — fails on any warning (TreatWarningsAsErrors in Directory.Build.props), any vulnerable dependency (NuGetAudit), and any banned API usage (BannedApiAnalyzers)
 - `dotnet format --verify-no-changes` — catches formatting and style drift that local builds may miss
 - `dotnet test` all test projects
 - Code coverage reporting (Coverlet)
@@ -195,7 +195,7 @@ public abstract class HoneTestBase : IDisposable
 ```
 
 ### Tests
-- `dotnet build Hone.sln` succeeds with **zero warnings** (TreatWarningsAsErrors enforced)
+- `dotnet build Hone.slnx` succeeds with **zero warnings** (TreatWarningsAsErrors enforced)
 - `dotnet test` discovers and runs a placeholder test per project
 - CI pipeline passes (warnings-as-errors enforced via Directory.Build.props, no CLI flags needed)
 - `.editorconfig` style rules are enforced at build time

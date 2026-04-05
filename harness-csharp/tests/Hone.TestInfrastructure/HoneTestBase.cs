@@ -87,15 +87,11 @@ public abstract class HoneTestBase : IDisposable
         };
 
         _ = process.Start();
-#pragma warning disable RS0030 // Sync I/O is intentional in test infrastructure
         process.WaitForExit();
-#pragma warning restore RS0030
 
         if (process.ExitCode != 0)
         {
-#pragma warning disable RS0030 // Sync I/O is intentional in test infrastructure
             string error = process.StandardError.ReadToEnd();
-#pragma warning restore RS0030
             throw new InvalidOperationException(
                 $"git init failed with exit code {process.ExitCode}: {error}");
         }
@@ -175,9 +171,7 @@ public abstract class HoneTestBase : IDisposable
         foreach (string file in Directory.GetFiles(sourceDir))
         {
             string destFile = Path.Combine(destDir, Path.GetFileName(file));
-#pragma warning disable RS0030 // Sync I/O is intentional in test infrastructure — File.Copy is not banned but keeping pattern consistent
             File.Copy(file, destFile, overwrite: true);
-#pragma warning restore RS0030
         }
 
         foreach (string subDir in Directory.GetDirectories(sourceDir))
