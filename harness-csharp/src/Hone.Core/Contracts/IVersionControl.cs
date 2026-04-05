@@ -13,6 +13,12 @@ public interface IVersionControl
     /// <summary>
     /// Checks out the specified branch, optionally creating it.
     /// </summary>
+    /// <remarks>
+    /// When <paramref name="create"/> is <see langword="true"/>, the new branch is created
+    /// from the current HEAD.  The caller is responsible for positioning to the desired base
+    /// branch before calling this method.  There is no start-point parameter because the
+    /// abstraction intentionally avoids exposing VCS-specific branching semantics.
+    /// </remarks>
     public Task CheckoutAsync(string workingDir, string branch, bool create = false, CancellationToken ct = default);
 
     /// <summary>
