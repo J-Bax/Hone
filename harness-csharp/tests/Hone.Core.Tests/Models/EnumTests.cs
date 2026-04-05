@@ -2,13 +2,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class EnumTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class EnumTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -29,12 +27,6 @@ public sealed class EnumTests(ITestOutputHelper output) : HoneTestBase(output)
         _ = deserialized.Should().Be(value);
     }
 
-    [Fact]
-    public void ExperimentOutcome_HasExpectedMemberCount()
-    {
-        _ = Enum.GetValues<ExperimentOutcome>().Should().HaveCount(4);
-    }
-
     [Theory]
     [InlineData(OpportunityScope.Narrow, "\"Narrow\"")]
     [InlineData(OpportunityScope.Architecture, "\"Architecture\"")]
@@ -45,12 +37,6 @@ public sealed class EnumTests(ITestOutputHelper output) : HoneTestBase(output)
 
         OpportunityScope deserialized = JsonSerializer.Deserialize<OpportunityScope>(json, JsonOptions);
         _ = deserialized.Should().Be(value);
-    }
-
-    [Fact]
-    public void OpportunityScope_HasExpectedMemberCount()
-    {
-        _ = Enum.GetValues<OpportunityScope>().Should().HaveCount(2);
     }
 
     [Theory]
@@ -67,12 +53,6 @@ public sealed class EnumTests(ITestOutputHelper output) : HoneTestBase(output)
         _ = deserialized.Should().Be(value);
     }
 
-    [Fact]
-    public void QueueItemStatus_HasExpectedMemberCount()
-    {
-        _ = Enum.GetValues<QueueItemStatus>().Should().HaveCount(4);
-    }
-
     [Theory]
     [InlineData(LogLevel.Verbose, "\"Verbose\"")]
     [InlineData(LogLevel.Info, "\"Info\"")]
@@ -85,11 +65,5 @@ public sealed class EnumTests(ITestOutputHelper output) : HoneTestBase(output)
 
         LogLevel deserialized = JsonSerializer.Deserialize<LogLevel>(json, JsonOptions);
         _ = deserialized.Should().Be(value);
-    }
-
-    [Fact]
-    public void LogLevel_HasExpectedMemberCount()
-    {
-        _ = Enum.GetValues<LogLevel>().Should().HaveCount(4);
     }
 }

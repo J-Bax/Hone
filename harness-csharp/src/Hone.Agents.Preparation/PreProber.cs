@@ -73,8 +73,6 @@ internal static class PreProber
         IProcessRunner processRunner,
         CancellationToken ct)
     {
-        var info = new GitInfo();
-
         ProcessResult revParseResult = await processRunner.RunAsync(
             "git",
             ["rev-parse", "--git-dir"],
@@ -84,11 +82,10 @@ internal static class PreProber
 
         if (!revParseResult.Success || revParseResult.ExitCode != 0)
         {
-            return info;
+            return new GitInfo();
         }
 
-        info.IsGitRepo = true;
-
+        string? remoteUrl = null;
         ProcessResult remoteResult = await processRunner.RunAsync(
             "git",
             ["remote", "-v"],
@@ -104,13 +101,14 @@ internal static class PreProber
             string[] parts = firstLine.Split('\t', StringSplitOptions.TrimEntries);
             if (parts.Length >= 2)
             {
-                info.RemoteUrl = parts[1]
+                remoteUrl = parts[1]
                     .Replace("(fetch)", "", StringComparison.Ordinal)
                     .Replace("(push)", "", StringComparison.Ordinal)
                     .Trim();
             }
         }
 
+        string? defaultBranch = null;
         ProcessResult headResult = await processRunner.RunAsync(
             "git",
             ["symbolic-ref", "refs/remotes/origin/HEAD"],
@@ -124,11 +122,16 @@ internal static class PreProber
             const string Prefix = "refs/remotes/origin/";
             if (headRef.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
             {
-                info.DefaultBranch = headRef[Prefix.Length..];
+                defaultBranch = headRef[Prefix.Length..];
             }
         }
 
-        return info;
+        return new GitInfo
+        {
+            IsGitRepo = true,
+            RemoteUrl = remoteUrl,
+            DefaultBranch = defaultBranch,
+        };
     }
 
     private static Dictionary<string, List<string>> ScanProjectFiles(string targetPath)

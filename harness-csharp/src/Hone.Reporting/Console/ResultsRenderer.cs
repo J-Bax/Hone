@@ -218,11 +218,7 @@ internal static class ResultsRenderer
 
         writer.WriteLine();
         writer.WriteLine(
-            "  \u2500\u2500 Scenario Breakdown " +
-            "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500" +
-            "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500" +
-            "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500" +
-            "\u2500\u2500\u2500\u2500\u2500\u2500",
+            "  " + new string('\u2500', 2) + " Scenario Breakdown " + new string('\u2500', 54),
             ConsoleColor.DarkCyan);
         writer.WriteLine();
 
@@ -543,19 +539,8 @@ internal static class ResultsRenderer
         return current.Value > baseline.Value ? ConsoleColor.Red : ConsoleColor.White;
     }
 
-    private static ExperimentRow? FindLatestExperiment(IReadOnlyList<ExperimentRow> experiments)
-    {
-        ExperimentRow? latest = null;
-        foreach (ExperimentRow exp in experiments)
-        {
-            if (exp.Experiment > 0 && (latest is null || exp.Experiment > latest.Experiment))
-            {
-                latest = exp;
-            }
-        }
-
-        return latest;
-    }
+    private static ExperimentRow? FindLatestExperiment(IReadOnlyList<ExperimentRow> experiments) =>
+        experiments.Where(e => e.Experiment > 0).MaxBy(e => e.Experiment);
 
     private static double MaxOf(double a, double b, double c, double d) =>
         Math.Max(Math.Max(a, b), Math.Max(c, d));

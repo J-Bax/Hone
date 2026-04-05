@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class RunMetadataTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class RunMetadataTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -54,15 +52,4 @@ public sealed class RunMetadataTests(ITestOutputHelper output) : HoneTestBase(ou
         _ = deserialized.Experiments.Should().BeEmpty();
     }
 
-    [Fact]
-    public void Experiments_DefaultsToEmptyList()
-    {
-        RunMetadata metadata = new(
-            TargetName: "MyApp",
-            StartedAt: "2024-01-15T10:00:00Z",
-            MachineInfo: null,
-            Experiments: null!);
-
-        _ = metadata.Experiments.Should().BeEmpty();
-    }
 }

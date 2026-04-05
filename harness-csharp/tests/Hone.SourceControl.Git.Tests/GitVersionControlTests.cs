@@ -11,12 +11,12 @@ namespace Hone.SourceControl.Git.Tests;
 public sealed class GitVersionControlTests(ITestOutputHelper output) : HoneTestBase(output)
 {
     private static readonly string[] RevParseArgs = ["rev-parse", "--abbrev-ref", "HEAD"];
-    private static readonly string[] CheckoutFeatureArgs = ["checkout", "feature"];
-    private static readonly string[] CheckoutCreateFeatureArgs = ["checkout", "-b", "feature"];
-    private static readonly string[] AddFilesArgs = ["add", "file1.cs", "file2.cs"];
+    private static readonly string[] CheckoutFeatureArgs = ["checkout", "--", "feature"];
+    private static readonly string[] CheckoutCreateFeatureArgs = ["checkout", "-b", "--", "feature"];
+    private static readonly string[] AddFilesArgs = ["add", "--", "file1.cs", "file2.cs"];
     private static readonly string[] CommitArgs = ["commit", "--no-gpg-sign", "-m", "fix bug"];
     private static readonly string[] DiffArgs = ["diff"];
-    private static readonly string[] DiffThreeDotArgs = ["diff", "main...HEAD"];
+    private static readonly string[] DiffThreeDotArgs = ["diff", "--", "main...HEAD"];
     private static readonly string[] ResetSoftArgs = ["reset", "--soft", "HEAD~1"];
 
     private readonly IProcessRunner _processRunner = Substitute.For<IProcessRunner>();

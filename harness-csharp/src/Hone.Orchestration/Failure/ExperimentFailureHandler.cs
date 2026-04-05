@@ -27,10 +27,6 @@ internal sealed class ExperimentFailureHandler
         OptimizationQueueManager queueManager,
         IHoneEventSink eventSink)
     {
-        ArgumentNullException.ThrowIfNull(versionControl);
-        ArgumentNullException.ThrowIfNull(queueManager);
-        ArgumentNullException.ThrowIfNull(eventSink);
-
         _versionControl = versionControl;
         _queueManager = queueManager;
         _eventSink = eventSink;

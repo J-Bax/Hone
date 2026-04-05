@@ -36,7 +36,7 @@ public sealed class ClassificationAgent(AgentInvoker agentInvoker)
             AgentName: "hone-classifier",
             Prompt: prompt,
             ModelConfigKey: "ClassificationModel",
-            DefaultModel: "claude-haiku-4.5",
+            DefaultModel: ModelDefaults.Classification,
             MaxRetries: 2,
             RetryPromptSuffix: RetryPromptSuffix,
             WorkingDirectory: workingDirectory);
@@ -88,16 +88,10 @@ public sealed class ClassificationAgent(AgentInvoker agentInvoker)
             targetLabel);
     }
 
-    /// <summary>
-    /// DTO matching the JSON shape returned by the hone-classifier agent.
-    /// Instantiated by the JSON deserializer; suppress CA1812.
-    /// </summary>
-#pragma warning disable CA1812 // Instantiated via JSON deserialization
     private sealed class ClassificationResponse
     {
         public string? Scope { get; set; }
 
         public string? Reasoning { get; set; }
     }
-#pragma warning restore CA1812
 }

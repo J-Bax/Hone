@@ -9,8 +9,5 @@ public sealed record CollectorExportResult(
     string? Summary = null,
     IReadOnlyDictionary<string, object?>? ExtraProperties = null)
 {
-    /// <summary>
-    /// Gets the exported paths, defaulting to an empty list.
-    /// </summary>
-    public IReadOnlyList<string> ExportedPaths { get; init; } = ExportedPaths ?? [];
+    public IReadOnlyList<string> ExportedPaths { get; init; } = ExportedPaths;
 }

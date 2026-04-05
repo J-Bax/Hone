@@ -13,9 +13,6 @@ public sealed class LifecycleHookDispatcher(
     IProcessRunner processRunner,
     HttpClient httpClient)
 {
-    /// <summary>
-    /// Dispatches a resolved hook for execution.
-    /// </summary>
     public async Task<HookResult> DispatchAsync(
         string hookName,
         ResolvedHook hook,
@@ -37,15 +34,13 @@ public sealed class LifecycleHookDispatcher(
                 Message: "Skipped",
                 Duration: TimeSpan.Zero,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null),
+                BaseUrl: null),
             _ => new HookResult(
                 Success: false,
                 Message: $"Unknown hook type: {hook.Type}",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null),
+                BaseUrl: null),
         };
     }
 
@@ -81,8 +76,7 @@ public sealed class LifecycleHookDispatcher(
                 Message: result.Success ? "Command completed" : $"Command failed (exit code {result.ExitCode})",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -92,8 +86,7 @@ public sealed class LifecycleHookDispatcher(
                 Message: $"Command error: {ex.Message}",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
     }
 
@@ -120,8 +113,7 @@ public sealed class LifecycleHookDispatcher(
                 Message: $"HTTP hook has relative URL '{hook.Url}' but no BaseUrl provided",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
 
         try
@@ -137,8 +129,7 @@ public sealed class LifecycleHookDispatcher(
                 Message: $"HTTP {method} {requestUri} succeeded",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -148,8 +139,7 @@ public sealed class LifecycleHookDispatcher(
                 Message: $"HTTP {method} {requestUri} failed: {ex.Message}",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
     }
 }

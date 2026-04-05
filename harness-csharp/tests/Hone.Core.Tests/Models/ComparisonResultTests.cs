@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class ComparisonResultTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class ComparisonResultTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -71,16 +69,4 @@ public sealed class ComparisonResultTests(ITestOutputHelper output) : HoneTestBa
         }
     }
 
-    [Fact]
-    public void Details_DefaultsToEmptyList()
-    {
-        ComparisonResult result = new(
-            Accepted: true,
-            Outcome: ExperimentOutcome.Stale,
-            ImprovementPct: 0.0,
-            RegressionPct: 0.0,
-            Details: null!);
-
-        _ = result.Details.Should().BeEmpty();
-    }
 }

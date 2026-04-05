@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class IterationLogTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class IterationLogTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -28,13 +26,6 @@ public sealed class IterationLogTests(ITestOutputHelper output) : HoneTestBase(o
         _ = deserialized.Attempts[0].Should().Be(original.Attempts[0]);
         _ = deserialized.Attempts[1].Should().Be(original.Attempts[1]);
         _ = deserialized.Attempts[2].Should().Be(original.Attempts[2]);
-    }
-
-    [Fact]
-    public void Attempts_DefaultsToEmptyList()
-    {
-        IterationLog log = new(Attempts: null!);
-        _ = log.Attempts.Should().BeEmpty();
     }
 
     [Fact]

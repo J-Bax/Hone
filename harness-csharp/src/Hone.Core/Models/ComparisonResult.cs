@@ -12,8 +12,5 @@ public sealed record ComparisonResult(
     double RegressionPct,
     IReadOnlyList<MetricComparison> Details)
 {
-    /// <summary>
-    /// Gets the per-metric comparison details, defaulting to an empty list.
-    /// </summary>
-    public IReadOnlyList<MetricComparison> Details { get; init; } = Details ?? [];
+    public IReadOnlyList<MetricComparison> Details { get; init; } = Details;
 }

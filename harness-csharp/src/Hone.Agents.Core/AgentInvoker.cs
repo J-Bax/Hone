@@ -23,9 +23,6 @@ public sealed class AgentInvoker
     private readonly AgentConfig _agentConfig;
     private readonly FrozenDictionary<string, string?> _modelOverrides;
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="AgentInvoker"/>.
-    /// </summary>
     public AgentInvoker(IAgentRunner runner, AgentConfig agentConfig)
     {
         ArgumentNullException.ThrowIfNull(runner);
@@ -102,6 +99,18 @@ public sealed class AgentInvoker
                     RawOutput: lastRunResult.Output,
                     ResponseText: string.Empty,
                     TimedOut: true,
+                    ExitCode: lastRunResult.ExitCode);
+            }
+
+            // Non-zero exit code — return failure immediately without consuming a retry
+            if (lastRunResult.ExitCode != 0)
+            {
+                return new AgentResult<T>(
+                    Success: false,
+                    ParsedResult: default,
+                    RawOutput: lastRunResult.Output,
+                    ResponseText: string.Empty,
+                    TimedOut: false,
                     ExitCode: lastRunResult.ExitCode);
             }
 

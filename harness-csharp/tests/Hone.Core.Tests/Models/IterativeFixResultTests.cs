@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class IterativeFixResultTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class IterativeFixResultTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()

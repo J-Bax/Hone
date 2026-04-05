@@ -43,7 +43,6 @@ public sealed class DotnetBuildHook(IProcessRunner processRunner) : ILifecycleHo
             Message: result.Success ? "Build succeeded" : $"Build failed (exit code {result.ExitCode})",
             Duration: stopwatch.Elapsed,
             Artifacts: artifacts,
-            BaseUrl: null,
-            Process: null);
+            BaseUrl: null);
     }
 }

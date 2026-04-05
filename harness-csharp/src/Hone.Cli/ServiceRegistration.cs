@@ -7,9 +7,7 @@ using Hone.Agents.Preparation;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Observability;
-using Hone.Diagnostics.Collection;
 using Hone.Diagnostics.Discovery;
-using Hone.Diagnostics.Measurement;
 using Hone.Measurement.DotnetCounters;
 using Hone.Measurement.K6;
 using Hone.Orchestration.Failure;
@@ -30,16 +28,7 @@ internal static class ServiceRegistration
     /// <summary>
     /// Builds a fully configured <see cref="IServiceProvider"/> for the Hone CLI.
     /// </summary>
-    /// <param name="targetDir">Root directory of the target project.</param>
-    /// <param name="config">Resolved Hone configuration.</param>
-    /// <param name="dryRun">
-    /// When <see langword="true"/>, skip destructive operations.
-    /// Reserved for future use by command handlers.
-    /// </param>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage(
-        "Style", "IDE0060:Remove unused parameter",
-        Justification = "Reserved for future use by command handlers")]
-    internal static IServiceProvider Build(string targetDir, HoneConfig config, bool dryRun)
+    internal static IServiceProvider Build(string targetDir, HoneConfig config)
     {
         ArgumentException.ThrowIfNullOrEmpty(targetDir);
         ArgumentNullException.ThrowIfNull(config);
@@ -82,16 +71,6 @@ internal static class ServiceRegistration
 #pragma warning restore CA2000
         var pluginDiscovery = new PluginDiscoveryService();
 
-        // ── Diagnostics ──────────────────────────────────────────────────
-        IReadOnlyDictionary<string, ICollectorPlugin> collectorPlugins =
-            new Dictionary<string, ICollectorPlugin>(StringComparer.OrdinalIgnoreCase);
-        IReadOnlyDictionary<string, IAnalyzerPlugin> analyzerPlugins =
-            new Dictionary<string, IAnalyzerPlugin>(StringComparer.OrdinalIgnoreCase);
-
-        var collectionOrchestrator = new DiagnosticCollectionOrchestrator(collectorPlugins, eventBus);
-        var measurementOrchestrator = new DiagnosticMeasurementOrchestrator(
-            collectionOrchestrator, analyzerPlugins, eventBus);
-
         // ── Pipeline adapters ────────────────────────────────────────────
         ILoopPipeline loopPipeline = new LoopPipelineAdapter(
             loadTestRunner,
@@ -132,8 +111,6 @@ internal static class ServiceRegistration
         provider.Register(branchManager);
         provider.Register(prManager);
         provider.Register(pluginDiscovery);
-        provider.Register(collectionOrchestrator);
-        provider.Register(measurementOrchestrator);
         provider.Register(queueManager);
         provider.Register(implementerRunner);
         provider.Register(failureHandler);

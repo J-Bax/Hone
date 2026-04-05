@@ -30,8 +30,7 @@ public sealed class HealthPollHook(HttpClient httpClient) : ILifecycleHook
                 Message: "No BaseUrl provided",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
 
         // PS: $healthUrl = "$BaseUrl$($Config.Api.HealthEndpoint)"
@@ -51,8 +50,7 @@ public sealed class HealthPollHook(HttpClient httpClient) : ILifecycleHook
                 : $"Health endpoint not healthy after {timeoutSeconds}s",
             Duration: stopwatch.Elapsed,
             Artifacts: [],
-            BaseUrl: null,
-            Process: null);
+            BaseUrl: null);
     }
 
     /// <summary>

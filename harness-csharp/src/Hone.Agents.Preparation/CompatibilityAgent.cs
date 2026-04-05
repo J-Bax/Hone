@@ -18,7 +18,7 @@ public sealed class CompatibilityAgent
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private const string DefaultModel = "claude-opus-4.6";
+    private const string DefaultModel = ModelDefaults.Compatibility;
     private const string ModelConfigKey = "AnalysisModel";
     private const string AgentName = "hone-compatibility";
     private const int MaxRetries = 1;
@@ -28,14 +28,6 @@ public sealed class CompatibilityAgent
     private readonly AgentInvoker _invoker;
     private readonly IProcessRunner? _processRunner;
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="CompatibilityAgent"/>.
-    /// </summary>
-    /// <param name="invoker">Agent invoker for calling the AI model.</param>
-    /// <param name="processRunner">
-    /// Optional process runner used for git probes. When <see langword="null"/>,
-    /// git information is skipped in the pre-probe phase.
-    /// </param>
     public CompatibilityAgent(AgentInvoker invoker, IProcessRunner? processRunner = null)
     {
         ArgumentNullException.ThrowIfNull(invoker);

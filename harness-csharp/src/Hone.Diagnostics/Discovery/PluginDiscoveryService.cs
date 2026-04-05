@@ -22,7 +22,7 @@ public class PluginDiscoveryService
     /// <summary>
     /// Discovers all enabled collectors under <paramref name="collectorsPath"/>.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Instance method for DI/testability")]
+#pragma warning disable CA1822 // Instance method for DI/testability
     public async Task<IReadOnlyList<DiscoveredCollector>> DiscoverCollectorsAsync(
         string collectorsPath,
         DiagnosticsConfig config,
@@ -78,11 +78,12 @@ public class PluginDiscoveryService
 
         return results;
     }
+#pragma warning restore CA1822
 
     /// <summary>
     /// Discovers all enabled analyzers under <paramref name="analyzersPath"/>.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Instance method for DI/testability")]
+#pragma warning disable CA1822 // Instance method for DI/testability
     public async Task<IReadOnlyList<DiscoveredAnalyzer>> DiscoverAnalyzersAsync(
         string analyzersPath,
         DiagnosticsConfig config,
@@ -136,6 +137,7 @@ public class PluginDiscoveryService
 
         return results;
     }
+#pragma warning restore CA1822
 
     private static CollectorSettings MergeCollectorSettings(
         IReadOnlyDictionary<string, object?> defaults,

@@ -9,6 +9,18 @@ namespace Hone.Diagnostics.Collectors;
 internal static class PerfViewHelper
 {
     /// <summary>
+    /// Reads the entire contents of a file using sharing flags that allow
+    /// concurrent reads/writes/deletes by other processes.
+    /// </summary>
+    public static async Task<string> ReadFileWithSharingAsync(string path, CancellationToken ct)
+    {
+        using var stream = new FileStream(
+            path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Runs <c>logman stop</c> for each ETW session name to clean up stale sessions
     /// from prior interrupted runs.
     /// </summary>
@@ -111,6 +123,7 @@ internal static class PerfViewHelper
         // but has a known bug where the /NoGui process doesn't exit afterward.
         DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(stopTimeoutSec);
         bool workComplete = false;
+        long logPosition = 0;
 
         while (DateTimeOffset.UtcNow < deadline)
         {
@@ -119,11 +132,15 @@ internal static class PerfViewHelper
                 break;
             }
 
-            if (File.Exists(handle.OutputPath) &&
-                await LogContainsDoneMarkerAsync(logPath, ct).ConfigureAwait(false))
+            if (File.Exists(handle.OutputPath))
             {
-                workComplete = true;
-                break;
+                (bool found, long newPos) = await LogContainsDoneMarkerAsync(logPath, logPosition, ct).ConfigureAwait(false);
+                logPosition = newPos;
+                if (found)
+                {
+                    workComplete = true;
+                    break;
+                }
             }
 
             await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
@@ -173,20 +190,6 @@ internal static class PerfViewHelper
             arguments,
             timeout: TimeSpan.FromSeconds(timeoutSec),
             ct: ct).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// Validates and resolves the PerfView executable path from settings.
-    /// </summary>
-    public static string? ResolvePerfViewExePath(CollectorSettings settings)
-    {
-        string? perfViewExe = settings.PerfViewExePath;
-        if (string.IsNullOrEmpty(perfViewExe))
-        {
-            return null;
-        }
-
-        return perfViewExe;
     }
 
     /// <summary>
@@ -267,27 +270,36 @@ internal static class PerfViewHelper
         }
     }
 
-    private static async Task<bool> LogContainsDoneMarkerAsync(
-        string logPath, CancellationToken ct)
+    private static async Task<(bool Found, long NewPosition)> LogContainsDoneMarkerAsync(
+        string logPath, long lastPosition, CancellationToken ct)
     {
         if (!File.Exists(logPath))
         {
-            return false;
+            return (false, lastPosition);
         }
 
         try
         {
-            // Use FileShare.ReadWrite because PerfView may still be writing
+            // Use FileShare.ReadWrite because PerfView may still be writing.
+            // Seek to the last-read position so we only scan new content.
             using var stream = new FileStream(
                 logPath, FileMode.Open, FileAccess.Read,
                 FileShare.ReadWrite | FileShare.Delete);
+
+            if (stream.Length <= lastPosition)
+            {
+                return (false, lastPosition);
+            }
+
+            _ = stream.Seek(lastPosition, SeekOrigin.Begin);
             using var reader = new StreamReader(stream);
             string content = await reader.ReadToEndAsync(ct).ConfigureAwait(false);
-            return content.Contains("[DONE", StringComparison.Ordinal);
+            long newPosition = stream.Position;
+            return (content.Contains("[DONE", StringComparison.Ordinal), newPosition);
         }
         catch (IOException)
         {
-            return false;
+            return (false, lastPosition);
         }
     }
 

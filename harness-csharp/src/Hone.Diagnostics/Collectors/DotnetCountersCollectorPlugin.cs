@@ -173,7 +173,7 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
 
             exportedPaths.Add(destJson);
 
-            string jsonContent = await ReadFileAsync(jsonSource, ct).ConfigureAwait(false);
+            string jsonContent = await PerfViewHelper.ReadFileWithSharingAsync(jsonSource, ct).ConfigureAwait(false);
             try
             {
                 metrics = JsonSerializer.Deserialize<JsonElement>(jsonContent);
@@ -185,7 +185,7 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
         }
         else if (csvSource is not null)
         {
-            string csvContent = await ReadFileAsync(csvSource, ct).ConfigureAwait(false);
+            string csvContent = await PerfViewHelper.ReadFileWithSharingAsync(csvSource, ct).ConfigureAwait(false);
             JsonElement? parsed = ParseCountersCsv(csvContent);
             if (parsed.HasValue)
             {
@@ -326,8 +326,8 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
             },
         };
 
-        string json = JsonSerializer.Serialize(metricsDict, IndentedJsonOptions);
-        return JsonSerializer.Deserialize<JsonElement>(json);
+        using JsonDocument doc = JsonSerializer.SerializeToDocument(metricsDict);
+        return doc.RootElement.Clone();
     }
 
     private static Dictionary<string, double>? GetCounterStat(
@@ -370,13 +370,5 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
         }
 
         return -1;
-    }
-
-    private static async Task<string> ReadFileAsync(string path, CancellationToken ct)
-    {
-        using var stream = new FileStream(
-            path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream);
-        return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
     }
 }

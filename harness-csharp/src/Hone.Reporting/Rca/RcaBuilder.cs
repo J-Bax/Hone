@@ -214,7 +214,7 @@ internal static class RcaBuilder
 
         if (!string.IsNullOrEmpty(options.CodeBlock))
         {
-            sb.AppendLine("```");
+            sb.AppendLine("```csharp");
             sb.AppendLine(options.CodeBlock);
             sb.AppendLine("```");
         }

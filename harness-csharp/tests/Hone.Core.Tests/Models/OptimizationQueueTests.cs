@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class OptimizationQueueTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class OptimizationQueueTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -28,13 +26,6 @@ public sealed class OptimizationQueueTests(ITestOutputHelper output) : HoneTestB
         _ = deserialized.Items.Should().HaveCount(2);
         _ = deserialized.Items[0].Should().Be(original.Items[0]);
         _ = deserialized.Items[1].Should().Be(original.Items[1]);
-    }
-
-    [Fact]
-    public void Items_DefaultsToEmptyList()
-    {
-        OptimizationQueue queue = new(GeneratedByExperiment: 1, Items: null!);
-        _ = queue.Items.Should().BeEmpty();
     }
 
     [Fact]

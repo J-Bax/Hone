@@ -30,12 +30,6 @@ internal sealed class HoneLoopRunner
         ExperimentFailureHandler failureHandler,
         IHoneEventSink eventSink)
     {
-        ArgumentNullException.ThrowIfNull(pipeline);
-        ArgumentNullException.ThrowIfNull(queueManager);
-        ArgumentNullException.ThrowIfNull(implementer);
-        ArgumentNullException.ThrowIfNull(failureHandler);
-        ArgumentNullException.ThrowIfNull(eventSink);
-
         _pipeline = pipeline;
         _queueManager = queueManager;
         _implementer = implementer;
@@ -137,12 +131,16 @@ internal sealed class HoneLoopRunner
         string metadataPath,
         CancellationToken ct)
     {
-        string startedAt = DateTimeOffset.UtcNow.ToString("o");
+        DateTimeOffset startedAt = DateTimeOffset.UtcNow;
         _eventSink.Emit(new PhaseStarted("experiment", DateTimeOffset.UtcNow, exp));
 
         MetricSet reference = state.PreviousMetrics ?? baseline;
         string branchName = $"{config.Loop.BranchPrefix}-{exp}";
         string baseBranch = state.CurrentBranch;
+
+        var ctx = new ExperimentRunContext(
+            exp, startedAt, branchName, baseBranch, state, config, options,
+            targetDir, resultsPath, targetName, machineInfo, experiments, metadataPath);
 
         // ── Analyse (if queue empty) ────────────────────────────────────────
         if (!_queueManager.HasActionable())
@@ -204,10 +202,9 @@ internal sealed class HoneLoopRunner
 
         if (!implResult.Result.Success)
         {
-            return await HandleImplementationFailureAsync(
-                exp, startedAt, branchName, baseBranch, item, implResult,
-                state, config, targetDir, targetName, machineInfo,
-                experiments, metadataPath, ct)
+            return await HandleFailedExperimentAsync(
+                ctx, implResult.Result.ExitReason ?? "implementation_failed",
+                comparison: null, experimentMetrics: null, ct)
                 .ConfigureAwait(false);
         }
 
@@ -218,10 +215,9 @@ internal sealed class HoneLoopRunner
 
         if (experimentMetrics is null)
         {
-            return await HandleVerificationFailureAsync(
-                exp, startedAt, branchName, baseBranch, item,
-                state, config, targetDir, targetName, machineInfo,
-                experiments, metadataPath, ct)
+            return await HandleFailedExperimentAsync(
+                ctx, "load_test_failed",
+                comparison: null, experimentMetrics: null, ct)
                 .ConfigureAwait(false);
         }
 
@@ -237,31 +233,17 @@ internal sealed class HoneLoopRunner
         {
             ExperimentOutcome.Improved or ExperimentOutcome.EfficiencyWin =>
                 await HandleAcceptedAsync(
-                    exp, startedAt, branchName, baseBranch, item,
-                    experimentMetrics, comparison, state, config, options,
-                    targetDir, resultsPath, targetName, machineInfo,
-                    experiments, metadataPath, ct).ConfigureAwait(false),
+                    ctx, item, experimentMetrics, comparison, ct).ConfigureAwait(false),
 
             ExperimentOutcome.Regressed =>
-                await HandleRejectedAsync(
-                    exp, startedAt, branchName, baseBranch, item,
-                    experimentMetrics, comparison, state, config,
-                    targetDir, targetName, machineInfo,
-                    experiments, metadataPath, "regressed", ct).ConfigureAwait(false),
+                await HandleFailedExperimentAsync(
+                    ctx, "regressed", comparison, experimentMetrics, ct).ConfigureAwait(false),
 
             ExperimentOutcome.Stale =>
-                await HandleRejectedAsync(
-                    exp, startedAt, branchName, baseBranch, item,
-                    experimentMetrics, comparison, state, config,
-                    targetDir, targetName, machineInfo,
-                    experiments, metadataPath, "stale", ct).ConfigureAwait(false),
+                await HandleFailedExperimentAsync(
+                    ctx, "stale", comparison, experimentMetrics, ct).ConfigureAwait(false),
 
-            _ =>
-                await HandleRejectedAsync(
-                    exp, startedAt, branchName, baseBranch, item,
-                    experimentMetrics, comparison, state, config,
-                    targetDir, targetName, machineInfo,
-                    experiments, metadataPath, "stale", ct).ConfigureAwait(false),
+            _ => throw new InvalidOperationException($"Unexpected experiment outcome: {comparison.Outcome}"),
         };
     }
 
@@ -327,27 +309,22 @@ internal sealed class HoneLoopRunner
     // ── Outcome handlers ────────────────────────────────────────────────────
 
     private async Task<ExperimentContext> HandleAcceptedAsync(
-        int exp,
-        string startedAt,
-        string branchName,
-        string baseBranch,
+        ExperimentRunContext ctx,
         QueueItem item,
         MetricSet metrics,
         ComparisonResult comparison,
-        LoopState state,
-        HoneConfig config,
-        LoopOptions options,
-        string targetDir,
-        string resultsPath,
-        string targetName,
-        MachineInfo machineInfo,
-        List<ExperimentMetadata> experiments,
-        string metadataPath,
         CancellationToken ct)
     {
+        int exp = ctx.Experiment;
+        LoopState state = ctx.State;
+        HoneConfig config = ctx.Config;
+        string branchName = ctx.BranchName;
+        string baseBranch = ctx.BaseBranch;
+        string targetDir = ctx.TargetDir;
+
         // Stage artifacts
         IReadOnlyList<string> artifacts = ArtifactStager.CollectArtifactPaths(
-            targetDir, resultsPath, exp);
+            targetDir, ctx.ResultsPath, exp);
 
         if (artifacts.Count > 0)
         {
@@ -361,7 +338,7 @@ internal sealed class HoneLoopRunner
         _ = await _pipeline.PushBranchAsync(targetDir, branchName, ct)
             .ConfigureAwait(false);
 
-        string prBase = config.Loop.StackedDiffs ? baseBranch : options.DefaultBranch;
+        string prBase = config.Loop.StackedDiffs ? baseBranch : ctx.Options.DefaultBranch;
         PullRequestResult prResult = await _pipeline.CreatePullRequestAsync(
             new CreatePrOptions(
                 BaseBranch: prBase,
@@ -398,15 +375,15 @@ internal sealed class HoneLoopRunner
             ExperimentOutcome.EfficiencyWin => "efficiency_win",
             ExperimentOutcome.Regressed => "regressed",
             ExperimentOutcome.Stale => "stale",
-            _ => "stale",
+            _ => "unknown",
         };
         _queueManager.MarkDone(item.Id, outcomeName, exp);
 
         // Record metadata
-        experiments.Add(MakeExperimentMetadata(
-            exp, startedAt, comparison.Outcome, branchName, baseBranch,
+        ctx.Experiments.Add(MakeExperimentMetadata(
+            exp, ctx.StartedAt, comparison.Outcome, branchName, baseBranch,
             metrics, prResult, state));
-        await SaveMetadataAsync(metadataPath, targetName, machineInfo, experiments, ct)
+        await SaveMetadataAsync(ctx.MetadataPath, ctx.TargetName, ctx.MachineInfo, ctx.Experiments, ct)
             .ConfigureAwait(false);
 
         return CheckExitConditions(state, config)
@@ -414,24 +391,20 @@ internal sealed class HoneLoopRunner
             : ExperimentContext.Continue;
     }
 
-    private async Task<ExperimentContext> HandleRejectedAsync(
-        int exp,
-        string startedAt,
-        string branchName,
-        string baseBranch,
-        QueueItem item,
-        MetricSet? metrics,
-        ComparisonResult comparison,
-        LoopState state,
-        HoneConfig config,
-        string targetDir,
-        string targetName,
-        MachineInfo machineInfo,
-        List<ExperimentMetadata> experiments,
-        string metadataPath,
+    private async Task<ExperimentContext> HandleFailedExperimentAsync(
+        ExperimentRunContext ctx,
         string outcome,
+        ComparisonResult? comparison,
+        MetricSet? experimentMetrics,
         CancellationToken ct)
     {
+        int exp = ctx.Experiment;
+        LoopState state = ctx.State;
+        HoneConfig config = ctx.Config;
+        string branchName = ctx.BranchName;
+        string baseBranch = ctx.BaseBranch;
+        string targetDir = ctx.TargetDir;
+
         // In stacked-diffs mode, push branch and create rejected PR before reverting
         PullRequestResult? prResult = null;
         if (config.Loop.StackedDiffs)
@@ -442,7 +415,7 @@ internal sealed class HoneLoopRunner
                 new CreatePrOptions(
                     BaseBranch: baseBranch,
                     HeadBranch: branchName,
-                    Title: $"perf(rejected): experiment {exp} — {item.FilePath}",
+                    Title: $"perf(rejected): experiment {exp}",
                     Body: $"Rejected: {outcome}",
                     WorkingDirectory: targetDir), ct)
                 .ConfigureAwait(false);
@@ -452,12 +425,11 @@ internal sealed class HoneLoopRunner
         _ = await _failureHandler.HandleFailureAsync(
             new FailureContext(
                 BranchName: branchName,
-                FilePath: item.FilePath,
+                FilePath: string.Empty,
                 Experiment: exp,
                 Outcome: outcome,
                 RevertDescription: $"Revert {outcome} experiment {exp}",
-                TargetDir: targetDir,
-                QueueItemId: item.Id),
+                TargetDir: targetDir),
             onMetadataUpdate: null,
             ct).ConfigureAwait(false);
 
@@ -474,125 +446,26 @@ internal sealed class HoneLoopRunner
         state.FailedExperiments.Add(exp);
 
         // Record metadata
-        experiments.Add(MakeExperimentMetadata(
-            exp, startedAt, comparison.Outcome, branchName, baseBranch,
-            metrics, prResult: prResult, state));
-        await SaveMetadataAsync(metadataPath, targetName, machineInfo, experiments, ct)
-            .ConfigureAwait(false);
-
-        // Legacy mode: all failures break the loop immediately
-        if (!config.Loop.StackedDiffs)
+        if (comparison is not null)
         {
-            if (string.Equals(outcome, "regressed", StringComparison.Ordinal))
-            {
-                state.ExitReason = "regression";
-            }
-            else
-            {
-                _ = CheckExitConditions(state, config);
-            }
-
-            return ExperimentContext.Break;
+            ctx.Experiments.Add(MakeExperimentMetadata(
+                exp, ctx.StartedAt, comparison.Outcome, branchName, baseBranch,
+                experimentMetrics, prResult: prResult, state));
+        }
+        else
+        {
+            ctx.Experiments.Add(MakeFailedExperimentMetadata(
+                exp, ctx.StartedAt, branchName, baseBranch, state));
         }
 
-        return CheckExitConditions(state, config)
-            ? ExperimentContext.Break
-            : ExperimentContext.Continue;
-    }
-
-    private async Task<ExperimentContext> HandleImplementationFailureAsync(
-        int exp,
-        string startedAt,
-        string branchName,
-        string baseBranch,
-        QueueItem item,
-        ImplementerRunResult implResult,
-        LoopState state,
-        HoneConfig config,
-        string targetDir,
-        string targetName,
-        MachineInfo machineInfo,
-        List<ExperimentMetadata> experiments,
-        string metadataPath,
-        CancellationToken ct)
-    {
-        _ = await _failureHandler.HandleFailureAsync(
-            new FailureContext(
-                BranchName: branchName,
-                FilePath: item.FilePath,
-                Experiment: exp,
-                Outcome: implResult.Result.ExitReason,
-                RevertDescription: $"Revert failed implementation for experiment {exp}",
-                TargetDir: targetDir,
-                QueueItemId: item.Id),
-            onMetadataUpdate: null,
-            ct).ConfigureAwait(false);
-
-        await _pipeline.CheckoutAsync(targetDir, baseBranch, ct)
-            .ConfigureAwait(false);
-
-        state.ConsecutiveFailures++;
-        state.FailedExperiments.Add(exp);
-
-        experiments.Add(MakeFailedExperimentMetadata(
-            exp, startedAt, branchName, baseBranch, state));
-        await SaveMetadataAsync(metadataPath, targetName, machineInfo, experiments, ct)
+        await SaveMetadataAsync(ctx.MetadataPath, ctx.TargetName, ctx.MachineInfo, ctx.Experiments, ct)
             .ConfigureAwait(false);
 
         // Legacy mode: all failures break the loop immediately
         if (!config.Loop.StackedDiffs)
         {
-            state.ExitReason = implResult.Result.ExitReason ?? "implementation_failed";
-            return ExperimentContext.Break;
-        }
-
-        return CheckExitConditions(state, config)
-            ? ExperimentContext.Break
-            : ExperimentContext.Continue;
-    }
-
-    private async Task<ExperimentContext> HandleVerificationFailureAsync(
-        int exp,
-        string startedAt,
-        string branchName,
-        string baseBranch,
-        QueueItem item,
-        LoopState state,
-        HoneConfig config,
-        string targetDir,
-        string targetName,
-        MachineInfo machineInfo,
-        List<ExperimentMetadata> experiments,
-        string metadataPath,
-        CancellationToken ct)
-    {
-        _ = await _failureHandler.HandleFailureAsync(
-            new FailureContext(
-                BranchName: branchName,
-                FilePath: item.FilePath,
-                Experiment: exp,
-                Outcome: "load_test_failed",
-                RevertDescription: $"Revert experiment {exp} after load test failure",
-                TargetDir: targetDir,
-                QueueItemId: item.Id),
-            onMetadataUpdate: null,
-            ct).ConfigureAwait(false);
-
-        await _pipeline.CheckoutAsync(targetDir, baseBranch, ct)
-            .ConfigureAwait(false);
-
-        state.ConsecutiveFailures++;
-        state.FailedExperiments.Add(exp);
-
-        experiments.Add(MakeFailedExperimentMetadata(
-            exp, startedAt, branchName, baseBranch, state));
-        await SaveMetadataAsync(metadataPath, targetName, machineInfo, experiments, ct)
-            .ConfigureAwait(false);
-
-        // Legacy mode: all failures break the loop immediately
-        if (!config.Loop.StackedDiffs)
-        {
-            state.ExitReason = "load_test_failed";
+            state.ExitReason = outcome;
+            _ = CheckExitConditions(state, config);
             return ExperimentContext.Break;
         }
 
@@ -691,7 +564,7 @@ internal sealed class HoneLoopRunner
 
     private static ExperimentMetadata MakeExperimentMetadata(
         int experiment,
-        string startedAt,
+        DateTimeOffset startedAt,
         ExperimentOutcome outcome,
         string branchName,
         string baseBranch,
@@ -700,7 +573,7 @@ internal sealed class HoneLoopRunner
         LoopState state) =>
         new(
             Experiment: experiment,
-            StartedAt: startedAt,
+            StartedAt: startedAt.ToString("o"),
             CompletedAt: DateTimeOffset.UtcNow.ToString("o"),
             Outcome: outcome,
             BranchName: branchName,
@@ -714,13 +587,13 @@ internal sealed class HoneLoopRunner
 
     private static ExperimentMetadata MakeFailedExperimentMetadata(
         int experiment,
-        string startedAt,
+        DateTimeOffset startedAt,
         string branchName,
         string baseBranch,
         LoopState state) =>
         new(
             Experiment: experiment,
-            StartedAt: startedAt,
+            StartedAt: startedAt.ToString("o"),
             CompletedAt: DateTimeOffset.UtcNow.ToString("o"),
             Outcome: null,
             BranchName: branchName,

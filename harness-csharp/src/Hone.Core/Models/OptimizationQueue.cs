@@ -10,8 +10,5 @@ public sealed record OptimizationQueue(
     int GeneratedByExperiment,
     IReadOnlyList<QueueItem> Items)
 {
-    /// <summary>
-    /// Gets the queue items, defaulting to an empty list.
-    /// </summary>
-    public IReadOnlyList<QueueItem> Items { get; init; } = Items ?? [];
+    public IReadOnlyList<QueueItem> Items { get; init; } = Items;
 }

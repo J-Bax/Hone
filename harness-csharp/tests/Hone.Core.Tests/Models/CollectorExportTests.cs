@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class CollectorExportTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class CollectorExportTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -43,10 +41,4 @@ public sealed class CollectorExportTests(ITestOutputHelper output) : HoneTestBas
         _ = deserialized.Summary.Should().BeNull();
     }
 
-    [Fact]
-    public void ExportedPaths_DefaultsToEmptyList()
-    {
-        CollectorExport result = new(Success: true, ExportedPaths: null!, Summary: null);
-        _ = result.ExportedPaths.Should().BeEmpty();
-    }
 }

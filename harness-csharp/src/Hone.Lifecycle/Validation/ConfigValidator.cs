@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using Hone.Core.Config;
 using Hone.Lifecycle.Hooks;
 
@@ -10,16 +11,13 @@ namespace Hone.Lifecycle.Validation;
 public static class ConfigValidator
 {
     /// <summary>All 8 required lifecycle hooks.</summary>
-    private static readonly string[] RequiredHooks =
-        ["Prepare", "Start", "Stop", "Ready", "Warmup", "Active", "Cooldown", "Cleanup"];
+    private static readonly FrozenSet<string> RequiredHooks =
+        FrozenSet.ToFrozenSet(["Prepare", "Start", "Stop", "Ready", "Warmup", "Active", "Cooldown", "Cleanup"]);
 
     /// <summary>Valid hook types for target config validation.</summary>
-    private static readonly string[] ValidHookTypes =
-        ["BuiltIn", "Command", "Http", "Skip"];
+    private static readonly FrozenSet<string> ValidHookTypes =
+        FrozenSet.ToFrozenSet(["BuiltIn", "Command", "Http", "Skip"], StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Validates the engine configuration.
-    /// </summary>
     public static ValidationResult ValidateEngineConfig(HoneConfig config, string? rootPath = null)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -195,19 +193,17 @@ public static class ConfigValidator
     {
         foreach (string hookName in RequiredHooks)
         {
-            if (!targetConfig.Hooks.ContainsKey(hookName))
+            if (!targetConfig.Hooks.TryGetValue(hookName, out TargetHookConfig? hook))
             {
                 errors.Add($".hone/config.yaml Hooks.{hookName} is not declared");
                 continue;
             }
 
-            TargetHookConfig hook = targetConfig.Hooks[hookName];
-
             if (string.IsNullOrEmpty(hook.Type))
             {
                 errors.Add($".hone/config.yaml Hooks.{hookName} is missing Type");
             }
-            else if (!ValidHookTypes.Contains(hook.Type, StringComparer.OrdinalIgnoreCase))
+            else if (!ValidHookTypes.Contains(hook.Type))
             {
                 errors.Add($".hone/config.yaml Hooks.{hookName} has invalid Type '{hook.Type}' (valid: {string.Join(", ", ValidHookTypes)})");
             }

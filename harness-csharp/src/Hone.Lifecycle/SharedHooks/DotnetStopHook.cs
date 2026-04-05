@@ -16,6 +16,8 @@ public sealed class DotnetStopHook : ILifecycleHook
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        ct.ThrowIfCancellationRequested();
+
         var stopwatch = Stopwatch.StartNew();
 
         return Task.FromResult(StopProcesses(context, stopwatch));
@@ -40,8 +42,7 @@ public sealed class DotnetStopHook : ILifecycleHook
                 Message: "No running target API processes found",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
 
         List<string> stopped = [];
@@ -100,8 +101,7 @@ public sealed class DotnetStopHook : ILifecycleHook
             Message: message,
             Duration: stopwatch.Elapsed,
             Artifacts: [],
-            BaseUrl: null,
-            Process: null);
+            BaseUrl: null);
     }
 
     /// <summary>

@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class HookResultTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class HookResultTests
 {
     [Fact]
     public void RoundTrips_ThroughJson()
@@ -51,20 +49,6 @@ public sealed class HookResultTests(ITestOutputHelper output) : HoneTestBase(out
         _ = deserialized.Duration.Should().Be(TimeSpan.Zero);
         _ = deserialized.Artifacts.Should().BeEmpty();
         _ = deserialized.BaseUrl.Should().BeNull();
-    }
-
-    [Fact]
-    public void Artifacts_DefaultsToEmptyList()
-    {
-        HookResult result = new(
-            Success: true,
-            Message: null,
-            Duration: TimeSpan.Zero,
-            Artifacts: null!,
-            BaseUrl: null,
-            Process: null);
-
-        _ = result.Artifacts.Should().BeEmpty();
     }
 
     [Fact]

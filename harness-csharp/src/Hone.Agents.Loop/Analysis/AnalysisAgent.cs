@@ -36,7 +36,7 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
             AgentName: "hone-analyst",
             Prompt: prompt,
             ModelConfigKey: "AnalysisModel",
-            DefaultModel: "claude-opus-4.6",
+            DefaultModel: ModelDefaults.Analysis,
             WorkingDirectory: workingDirectory);
 
         AgentResult<AnalysisAgentResponse> result = await agentInvoker
@@ -152,20 +152,11 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
         return result;
     }
 
-    /// <summary>
-    /// DTO matching the JSON shape returned by the hone-analyst agent.
-    /// Instantiated by the JSON deserializer; suppress CA1812.
-    /// </summary>
-#pragma warning disable CA1812 // Instantiated via JSON deserialization
     private sealed class AnalysisAgentResponse
     {
         public List<OpportunityDto>? Opportunities { get; set; }
     }
 
-    /// <summary>
-    /// Individual opportunity DTO from the agent JSON response.
-    /// Instantiated by the JSON deserializer; suppress CA1812.
-    /// </summary>
     private sealed class OpportunityDto
     {
         public string? FilePath { get; set; }
@@ -180,5 +171,4 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 
         public string? ImpactEstimate { get; set; }
     }
-#pragma warning restore CA1812
 }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Hone.Agents.Core;
 using Hone.Core.Contracts;
 
 namespace Hone.Agents.CopilotCli;
@@ -28,6 +29,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
 
         if (!string.IsNullOrEmpty(invocation.WorkingDirectory))
@@ -75,14 +77,9 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
         }
         catch (OperationCanceledException)
         {
-            // Caller cancelled
+            // Caller cancelled — propagate to let upstream handle cancellation
             TryKillProcess(process);
-            string partialOutput = await ReadPartialOutputAsync(stdoutTask).ConfigureAwait(false);
-            return new AgentRunResult(
-                Success: false,
-                Output: partialOutput,
-                TimedOut: false,
-                ExitCode: -1);
+            throw;
         }
 
         string output = await stdoutTask.ConfigureAwait(false);
@@ -104,7 +101,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
         List<string> args =
         [
             "--agent", invocation.AgentName,
-            "--model", invocation.Model ?? "claude-sonnet-4-20250514",
+            "--model", invocation.Model ?? ModelDefaults.CopilotCli,
             "-p", invocation.Prompt,
             "-s",
             "--no-auto-update",
@@ -113,6 +110,8 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
 
         if (!string.IsNullOrEmpty(invocation.WorkingDirectory))
         {
+            // When running in the target dir, disable custom instructions to avoid interference
+            // from the target's .copilot/ config
             args.Add("--no-custom-instructions");
         }
 
@@ -145,7 +144,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
         {
             return await stdoutTask.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             return string.Empty;
         }

@@ -22,6 +22,7 @@ public sealed class JsonLogEventSink(string logPath, long maxFileSizeBytes = 50L
         Converters = { new JsonStringEnumConverter() },
     };
 
+    private readonly Lock _lock = new();
     private readonly string _logPath = logPath ?? throw new ArgumentNullException(nameof(logPath));
     private readonly long _maxFileSizeBytes = maxFileSizeBytes > 0
         ? maxFileSizeBytes
@@ -32,17 +33,20 @@ public sealed class JsonLogEventSink(string logPath, long maxFileSizeBytes = 50L
     {
         ArgumentNullException.ThrowIfNull(honeEvent);
 
-        // Ensure directory exists (matches PS: New-Item -ItemType Directory -Force)
-        string? dir = Path.GetDirectoryName(_logPath);
-        if (!string.IsNullOrEmpty(dir))
+        lock (_lock)
         {
-            Directory.CreateDirectory(dir);
+            // Ensure directory exists (matches PS: New-Item -ItemType Directory -Force)
+            string? dir = Path.GetDirectoryName(_logPath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            RotateIfNeeded();
+
+            string json = JsonSerializer.Serialize<HoneEvent>(honeEvent, JsonOptions);
+            File.AppendAllText(_logPath, json + "\n", Encoding.UTF8);
         }
-
-        RotateIfNeeded();
-
-        string json = JsonSerializer.Serialize<HoneEvent>(honeEvent, JsonOptions);
-        File.AppendAllText(_logPath, json + "\n", Encoding.UTF8);
     }
 
     private void RotateIfNeeded()

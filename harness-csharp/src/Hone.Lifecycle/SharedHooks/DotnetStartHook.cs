@@ -84,8 +84,7 @@ public sealed class DotnetStartHook(HttpClient httpClient) : ILifecycleHook
                 Message: $"API is healthy at {actualBaseUrl} (PID {apiProcess.Id})",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: actualBaseUrl,
-                Process: apiProcess);
+                BaseUrl: actualBaseUrl);
         }
 
         TryKillProcess(apiProcess);
@@ -95,8 +94,7 @@ public sealed class DotnetStartHook(HttpClient httpClient) : ILifecycleHook
             Message: $"API failed to become healthy within {timeout}s",
             Duration: stopwatch.Elapsed,
             Artifacts: [],
-            BaseUrl: null,
-            Process: null);
+            BaseUrl: null);
     }
 
     /// <summary>
@@ -116,12 +114,18 @@ public sealed class DotnetStartHook(HttpClient httpClient) : ILifecycleHook
         var startInfo = new ProcessStartInfo
         {
             FileName = "dotnet",
-            Arguments = $"run --project \"{projectPath}\" --configuration Release --urls {baseUrl}",
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            RedirectStandardOutput = false,
+            RedirectStandardError = false,
         };
+        startInfo.ArgumentList.Add("run");
+        startInfo.ArgumentList.Add("--project");
+        startInfo.ArgumentList.Add(projectPath);
+        startInfo.ArgumentList.Add("--configuration");
+        startInfo.ArgumentList.Add("Release");
+        startInfo.ArgumentList.Add("--urls");
+        startInfo.ArgumentList.Add(baseUrl.ToString());
 
         return Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start dotnet process");

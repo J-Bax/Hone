@@ -36,7 +36,7 @@ public sealed class DiagnosticCollectionOrchestrator
     /// Default-group collectors are included in every non-default group.
     /// If only default collectors exist, returns a single "default" group.
     /// </summary>
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Instance method for API consistency")]
+#pragma warning disable CA1822 // Instance method for API consistency
     public IReadOnlyDictionary<string, IReadOnlyList<DiscoveredCollector>> GetGroups(
         IReadOnlyList<DiscoveredCollector> collectors)
     {
@@ -67,6 +67,7 @@ public sealed class DiagnosticCollectionOrchestrator
 
         return groups;
     }
+#pragma warning restore CA1822
 
     /// <summary>
     /// Starts all collectors (or a subset), creating per-collector output directories.

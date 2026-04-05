@@ -11,10 +11,7 @@ public sealed record HookResult(
     TimeSpan Duration,
     IReadOnlyList<string> Artifacts,
     Uri? BaseUrl,
-    [property: JsonIgnore] object? Process)
+    [property: JsonIgnore, Obsolete("Unused — will be removed")] object? Process = null)
 {
-    /// <summary>
-    /// Gets the artifacts produced by the hook, defaulting to an empty list.
-    /// </summary>
-    public IReadOnlyList<string> Artifacts { get; init; } = Artifacts ?? [];
+    public IReadOnlyList<string> Artifacts { get; init; } = Artifacts;
 }

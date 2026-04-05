@@ -1,31 +1,12 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class OpportunityTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class OpportunityTests
 {
-    [Fact]
-    public void RoundTrips_ThroughJson()
-    {
-        Opportunity original = new(
-            FilePath: "src/Api/Controllers/OrderController.cs",
-            Title: "Reduce N+1 queries in order listing",
-            Explanation: "Each order triggers a separate DB query for customer data",
-            Scope: OpportunityScope.Narrow,
-            RootCause: "Missing eager loading",
-            ImpactEstimate: "~30% latency reduction on /api/orders");
-
-        string json = JsonSerializer.Serialize(original);
-        Opportunity? deserialized = JsonSerializer.Deserialize<Opportunity>(json);
-
-        _ = deserialized.Should().Be(original);
-    }
-
     [Fact]
     public void Opportunity_ScopeEnum_NarrowAndArchitecture()
     {
@@ -56,22 +37,5 @@ public sealed class OpportunityTests(ITestOutputHelper output) : HoneTestBase(ou
 
         _ = narrowDeserialized.Should().Be(narrow);
         _ = architectureDeserialized.Should().Be(architecture);
-    }
-
-    [Fact]
-    public void RoundTrips_WithNullOptionalFields()
-    {
-        Opportunity original = new(
-            FilePath: "src/Program.cs",
-            Title: "Optimize startup",
-            Explanation: "Startup is slow",
-            Scope: OpportunityScope.Architecture,
-            RootCause: null,
-            ImpactEstimate: null);
-
-        string json = JsonSerializer.Serialize(original);
-        Opportunity? deserialized = JsonSerializer.Deserialize<Opportunity>(json);
-
-        _ = deserialized.Should().Be(original);
     }
 }

@@ -54,6 +54,13 @@ public static class ConfigMerger
     {
         // Record types have exactly one public constructor (the primary constructor)
         ConstructorInfo ctor = typeof(T).GetConstructors()[0];
+        PropertyInfo[] properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        if (ctor.GetParameters().Length != properties.Length)
+        {
+            throw new InvalidOperationException(
+                $"Config record {typeof(T).Name} must use positional parameters matching properties.");
+        }
+
         ParameterInfo[] parameters = ctor.GetParameters();
         object?[] defaultArgs = BuildDefaultArgs(parameters);
         object defaults = ctor.Invoke(defaultArgs)!;

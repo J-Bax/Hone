@@ -59,8 +59,7 @@ public sealed partial class DotnetTestHook(IProcessRunner processRunner) : ILife
                 : $"{failedTests}/{totalTests} tests FAILED",
             Duration: stopwatch.Elapsed,
             Artifacts: [trxPath, testLogPath],
-            BaseUrl: null,
-            Process: null);
+            BaseUrl: null);
     }
 
     private static int ParseCount(Regex pattern, string output)

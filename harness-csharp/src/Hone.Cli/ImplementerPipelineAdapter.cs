@@ -25,11 +25,6 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
         IProcessRunner processRunner,
         IHoneEventSink eventSink)
     {
-        ArgumentNullException.ThrowIfNull(implementerAgent);
-        ArgumentNullException.ThrowIfNull(versionControl);
-        ArgumentNullException.ThrowIfNull(processRunner);
-        ArgumentNullException.ThrowIfNull(eventSink);
-
         _implementerAgent = implementerAgent;
         _versionControl = versionControl;
         _processRunner = processRunner;

@@ -17,9 +17,6 @@ internal static class Program
         RootCommand rootCommand = new("Hone optimization harness")
         {
             BuildRunCommand(),
-            BuildBaselineCommand(),
-            BuildResultsCommand(),
-            BuildDashboardCommand(),
             BuildValidateCommand(),
         };
 
@@ -65,7 +62,7 @@ internal static class Program
             var cliOverrides = new CliOverrides(MaxExperiments: maxExperiments);
             HoneConfig config = LoadAndMergeConfig(configPath, cliOverrides);
 
-            IServiceProvider services = ServiceRegistration.Build(targetDir, config, dryRun);
+            IServiceProvider services = ServiceRegistration.Build(targetDir, config);
             var loopRunner = (HoneLoopRunner)services.GetService(typeof(HoneLoopRunner))!;
 
             var options = new LoopOptions(
@@ -84,76 +81,6 @@ internal static class Program
             Console.WriteLine($"Baseline P95:    {result.BaselineP95:F1}ms");
 
             return result.SuccessCount > 0 ? 0 : 1;
-        });
-
-        return command;
-    }
-
-    // ── baseline ─────────────────────────────────────────────────────────
-
-    private static Command BuildBaselineCommand()
-    {
-        Option<string> targetOption = CreateTargetOption();
-
-        var command = new Command("baseline", "Establish performance baseline")
-        {
-            targetOption,
-        };
-
-        command.SetAction(static _ =>
-        {
-            // Baseline requires the full pipeline (load test runner, target app running).
-            // This will be wired when the baseline orchestration is extracted from the loop.
-            Console.Error.WriteLine("The 'baseline' command is not yet implemented.");
-            Console.Error.WriteLine("Run 'hone run --target <path>' to establish a baseline as part of the loop.");
-            return 1;
-        });
-
-        return command;
-    }
-
-    // ── results ──────────────────────────────────────────────────────────
-
-    private static Command BuildResultsCommand()
-    {
-        Option<string> targetOption = CreateTargetOption();
-
-        var command = new Command("results", "Show results in terminal")
-        {
-            targetOption,
-        };
-
-        command.SetAction(static _ =>
-        {
-            // ResultsRenderer.Render() requires a ResultsViewModel built from
-            // experiment result files. This will be wired when result file loading
-            // is extracted into a standalone reader.
-            Console.Error.WriteLine("The 'results' command is not yet implemented.");
-            Console.Error.WriteLine("Results are printed at the end of 'hone run'.");
-            return 1;
-        });
-
-        return command;
-    }
-
-    // ── dashboard ────────────────────────────────────────────────────────
-
-    private static Command BuildDashboardCommand()
-    {
-        Option<string> targetOption = CreateTargetOption();
-
-        var command = new Command("dashboard", "Generate HTML dashboard")
-        {
-            targetOption,
-        };
-
-        command.SetAction(static _ =>
-        {
-            // DashboardExporter.Build() requires pre-serialised JSON data from
-            // experiment result files. This will be wired when result file loading
-            // is extracted into a standalone reader.
-            Console.Error.WriteLine("The 'dashboard' command is not yet implemented.");
-            return 1;
         });
 
         return command;

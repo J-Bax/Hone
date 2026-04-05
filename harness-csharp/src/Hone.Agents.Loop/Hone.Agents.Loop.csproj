@@ -2,7 +2,8 @@
 
   <PropertyGroup>
     <!-- Project name deliberately uses 'Loop'; suppress reserved-keyword warning -->
-    <NoWarn>$(NoWarn);CA1716</NoWarn>
+    <!-- CA1812: private deserialization DTOs are instantiated by System.Text.Json -->
+    <NoWarn>$(NoWarn);CA1716;CA1812</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

@@ -634,7 +634,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 10));
 
         // Assert — should break after first experiment with regression exit reason
-        _ = result.ExitReason.Should().Be("regression");
+        _ = result.ExitReason.Should().Be("regressed");
         _ = result.ExperimentsRun.Should().Be(1);
         _ = result.SuccessCount.Should().Be(0);
         _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);

@@ -9,11 +9,6 @@ public sealed class HoneEventBus : IHoneEventSink
     private readonly List<IHoneEventSink> _sinks = [];
     private readonly Lock _lock = new();
 
-    /// <summary>
-    /// Registers a sink to receive all future events.
-    /// </summary>
-    /// <param name="sink">The sink to register.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="sink"/> is <see langword="null"/>.</exception>
     public void Register(IHoneEventSink sink)
     {
         ArgumentNullException.ThrowIfNull(sink);
@@ -46,10 +41,10 @@ public sealed class HoneEventBus : IHoneEventSink
                 sink.Emit(honeEvent);
             }
 #pragma warning disable CA1031 // Resilience: one bad sink must not break broadcasting
-            catch
+            catch (Exception ex)
 #pragma warning restore CA1031
             {
-                // Swallowed  observability must not crash the harness.
+                System.Diagnostics.Trace.WriteLine($"Event sink failed: {ex.Message}");
             }
         }
     }

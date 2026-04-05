@@ -1,10 +1,5 @@
 namespace Hone.Orchestration.Failure;
 
-/// <summary>
-/// Captures all information needed to handle a failed experiment:
-/// which branch, file, experiment number, outcome, and whether to skip
-/// metadata or queue updates.
-/// </summary>
 internal sealed record FailureContext(
     string BranchName,
     string FilePath,

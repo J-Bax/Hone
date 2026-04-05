@@ -1,13 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
 using Hone.Core.Models;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Models;
 
-public sealed class MetricSetTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class MetricSetTests
 {
     [Fact]
     public void MetricSet_Serialization_RoundTrips()

@@ -1,50 +1,22 @@
 using FluentAssertions;
 using Hone.Core.Utilities;
-using Hone.TestInfrastructure;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Hone.Core.Tests.Utilities;
 
-public sealed class JsonUtilsTests(ITestOutputHelper output) : HoneTestBase(output)
+public sealed class JsonUtilsTests
 {
     // ── SanitizeNaN ─────────────────────────────────────────────────────
 
-    [Fact]
-    public void SanitizeNaN_ReplacesNaN()
+    [Theory]
+    [InlineData("{\"value\": NaN}", "{\"value\": null}")]
+    [InlineData("{\"value\": Infinity}", "{\"value\": null}")]
+    [InlineData("{\"v\": -Infinity}", "{\"v\": null}")]
+    [InlineData("{\"count\": 42, \"name\": \"test\"}", "{\"count\": 42, \"name\": \"test\"}")]
+    [InlineData("{\"msg\": \"NaN value\"}", "{\"msg\": \"NaN value\"}")]
+    public void SanitizeNaN_ReturnsExpected(string input, string expected)
     {
-        string result = JsonUtils.SanitizeNaN("{\"value\": NaN}");
-        _ = result.Should().Be("{\"value\": null}");
-    }
-
-    [Fact]
-    public void SanitizeNaN_ReplacesInfinity()
-    {
-        string result = JsonUtils.SanitizeNaN("{\"value\": Infinity}");
-        _ = result.Should().Be("{\"value\": null}");
-    }
-
-    [Fact]
-    public void SanitizeNaN_NegativeInfinity()
-    {
-        string result = JsonUtils.SanitizeNaN("{\"v\": -Infinity}");
-        _ = result.Should().Be("{\"v\": null}");
-    }
-
-    [Fact]
-    public void SanitizeNaN_NoNaN_ReturnsUnchanged()
-    {
-        string json = "{\"count\": 42, \"name\": \"test\"}";
-        string result = JsonUtils.SanitizeNaN(json);
-        _ = result.Should().Be(json);
-    }
-
-    [Fact]
-    public void SanitizeNaN_NaNInsideString_NotReplaced()
-    {
-        string json = "{\"msg\": \"NaN value\"}";
-        string result = JsonUtils.SanitizeNaN(json);
-        _ = result.Should().Be(json);
+        _ = JsonUtils.SanitizeNaN(input).Should().Be(expected);
     }
 
     // ── ExtractJsonBlock ────────────────────────────────────────────────

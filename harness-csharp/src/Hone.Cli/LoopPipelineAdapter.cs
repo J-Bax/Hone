@@ -45,13 +45,6 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         IVersionControl versionControl,
         HoneConfig config)
     {
-        ArgumentNullException.ThrowIfNull(loadTestRunner);
-        ArgumentNullException.ThrowIfNull(analysisAgent);
-        ArgumentNullException.ThrowIfNull(classificationAgent);
-        ArgumentNullException.ThrowIfNull(codeHost);
-        ArgumentNullException.ThrowIfNull(versionControl);
-        ArgumentNullException.ThrowIfNull(config);
-
         _loadTestRunner = loadTestRunner;
         _analysisAgent = analysisAgent;
         _classificationAgent = classificationAgent;
@@ -190,29 +183,21 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     }
 
     /// <inheritdoc />
-    public async Task<PushResult> PushBranchAsync(string targetDir, string branch, CancellationToken ct)
-    {
-        return await _codeHost.PushBranchAsync(targetDir, branch, ct).ConfigureAwait(false);
-    }
+    public Task<PushResult> PushBranchAsync(string targetDir, string branch, CancellationToken ct) =>
+        _codeHost.PushBranchAsync(targetDir, branch, ct);
 
     /// <inheritdoc />
-    public async Task<PullRequestResult> CreatePullRequestAsync(CreatePrOptions options, CancellationToken ct)
-    {
-        return await _codeHost.CreatePullRequestAsync(options, ct).ConfigureAwait(false);
-    }
+    public Task<PullRequestResult> CreatePullRequestAsync(CreatePrOptions options, CancellationToken ct) =>
+        _codeHost.CreatePullRequestAsync(options, ct);
 
     /// <inheritdoc />
-    public async Task CommitArtifactsAsync(
-        string targetDir, IReadOnlyList<string> paths, string message, CancellationToken ct)
-    {
-        await _versionControl.CommitAsync(targetDir, message, paths, ct).ConfigureAwait(false);
-    }
+    public Task CommitArtifactsAsync(
+        string targetDir, IReadOnlyList<string> paths, string message, CancellationToken ct) =>
+        _versionControl.CommitAsync(targetDir, message, paths, ct);
 
     /// <inheritdoc />
-    public async Task CheckoutAsync(string targetDir, string branch, CancellationToken ct)
-    {
-        await _versionControl.CheckoutAsync(targetDir, branch, create: false, ct).ConfigureAwait(false);
-    }
+    public Task CheckoutAsync(string targetDir, string branch, CancellationToken ct) =>
+        _versionControl.CheckoutAsync(targetDir, branch, create: false, ct);
 
     /// <inheritdoc />
     public async Task<RunMetadata?> LoadRunMetadataAsync(string path, CancellationToken ct)

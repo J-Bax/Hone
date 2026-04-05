@@ -27,8 +27,6 @@ internal sealed class IterativeImplementerRunner
 
     internal IterativeImplementerRunner(IImplementerPipeline pipeline, IHoneEventSink eventSink)
     {
-        ArgumentNullException.ThrowIfNull(pipeline);
-        ArgumentNullException.ThrowIfNull(eventSink);
         _pipeline = pipeline;
         _eventSink = eventSink;
     }
@@ -174,21 +172,17 @@ internal sealed class IterativeImplementerRunner
 
                 if (changedTestFiles.Count > 0)
                 {
-                    timer.Stop();
                     lastFailureDetail = $"Fix modified test files: {string.Join(", ", changedTestFiles)}";
+                    bool canRetry = HandleStepFailure(
+                        "guard", "rejected", lastFailureDetail, lastFailureDetail,
+                        timer, attempt, maxAttempts, diffLines, applyResult.CommitSha,
+                        artifacts, entries, out lastFailureDetail, out previousErrors,
+                        changedFiles: [.. changedTestFiles]);
+
                     currentFileContent = await ReadFileContentAsync(fullTargetPath, ct)
                         .ConfigureAwait(false);
-                    previousErrors = FormatRetryContext(attempt, "guard", lastFailureDetail);
 
-                    entries.Add(new AttemptLogEntry(
-                        attempt, "guard", "rejected",
-                        RoundDuration(timer), diffLines,
-                        Error: lastFailureDetail,
-                        CommitSha: applyResult.CommitSha,
-                        ChangedFiles: [.. changedTestFiles],
-                        Artifacts: artifacts));
-
-                    if (attempt < maxAttempts)
+                    if (canRetry)
                     {
                         await _pipeline.RevertForRetryAsync(
                             new RevertInput(branchName, targetFile,
@@ -209,22 +203,17 @@ internal sealed class IterativeImplementerRunner
             if (diffGrowthGuardEnabled && attempt > 1
                 && diffLines > (firstAttemptDiffLines.Value * diffGrowthFactor))
             {
-                timer.Stop();
-                double maxAllowed = Math.Round(
-                    firstAttemptDiffLines.Value * diffGrowthFactor, 2);
-                lastFailureDetail = $"Diff grew to {diffLines} lines (limit: {maxAllowed}).";
+                string growthDetail = $"Diff grew to {diffLines} lines " +
+                    $"(limit: {Math.Round(firstAttemptDiffLines.Value * diffGrowthFactor, 2)}).";
+                bool canRetry = HandleStepFailure(
+                    "guard", "rejected", growthDetail, growthDetail,
+                    timer, attempt, maxAttempts, diffLines, applyResult.CommitSha,
+                    artifacts, entries, out lastFailureDetail, out previousErrors);
+
                 currentFileContent = await ReadFileContentAsync(fullTargetPath, ct)
                     .ConfigureAwait(false);
-                previousErrors = FormatRetryContext(attempt, "guard", lastFailureDetail);
 
-                entries.Add(new AttemptLogEntry(
-                    attempt, "guard", "rejected",
-                    RoundDuration(timer), diffLines,
-                    Error: lastFailureDetail,
-                    CommitSha: applyResult.CommitSha,
-                    Artifacts: artifacts));
-
-                if (attempt < maxAttempts)
+                if (canRetry)
                 {
                     await _pipeline.RevertForRetryAsync(
                         new RevertInput(branchName, targetFile,
@@ -250,21 +239,15 @@ internal sealed class IterativeImplementerRunner
 
             if (!buildResult.Success)
             {
-                timer.Stop();
-                lastFailureDetail = LimitErrorText(buildResult.Output);
+                bool canRetry = HandleStepFailure(
+                    "build", "failed", LimitErrorText(buildResult.Output), buildResult.Output,
+                    timer, attempt, maxAttempts, diffLines, applyResult.CommitSha,
+                    artifacts, entries, out lastFailureDetail, out previousErrors);
+
                 currentFileContent = await ReadFileContentAsync(fullTargetPath, ct)
                     .ConfigureAwait(false);
-                previousErrors = FormatRetryContext(
-                    attempt, "build", buildResult.Output);
 
-                entries.Add(new AttemptLogEntry(
-                    attempt, "build", "failed",
-                    RoundDuration(timer), diffLines,
-                    Error: lastFailureDetail,
-                    CommitSha: applyResult.CommitSha,
-                    Artifacts: artifacts));
-
-                if (attempt < maxAttempts)
+                if (canRetry)
                 {
                     await _pipeline.RevertForRetryAsync(
                         new RevertInput(branchName, targetFile,
@@ -295,21 +278,15 @@ internal sealed class IterativeImplementerRunner
 
             if (!testResult.Success)
             {
-                timer.Stop();
-                lastFailureDetail = LimitErrorText(testResult.Output);
+                bool canRetry = HandleStepFailure(
+                    "test", "failed", LimitErrorText(testResult.Output), testResult.Output,
+                    timer, attempt, maxAttempts, diffLines, applyResult.CommitSha,
+                    artifacts, entries, out lastFailureDetail, out previousErrors);
+
                 currentFileContent = await ReadFileContentAsync(fullTargetPath, ct)
                     .ConfigureAwait(false);
-                previousErrors = FormatRetryContext(
-                    attempt, "test", testResult.Output);
 
-                entries.Add(new AttemptLogEntry(
-                    attempt, "test", "failed",
-                    RoundDuration(timer), diffLines,
-                    Error: lastFailureDetail,
-                    CommitSha: applyResult.CommitSha,
-                    Artifacts: artifacts));
-
-                if (attempt < maxAttempts)
+                if (canRetry)
                 {
                     await _pipeline.RevertForRetryAsync(
                         new RevertInput(branchName, targetFile,
@@ -350,6 +327,34 @@ internal sealed class IterativeImplementerRunner
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stops the timer, records the failure in the attempt log, and returns
+    /// <see langword="true"/> if the caller should retry (i.e. attempt &lt; maxAttempts).
+    /// </summary>
+    private static bool HandleStepFailure(
+        string stepName, string stepOutcome,
+        string? errorDetail, string? rawErrorForRetry,
+        Stopwatch timer, int attempt, int maxAttempts,
+        int diffLines, string? commitSha,
+        Dictionary<string, string?> artifacts, List<AttemptLogEntry> entries,
+        out string? failureDetail, out string retryContext,
+        IReadOnlyList<string>? changedFiles = null)
+    {
+        timer.Stop();
+        failureDetail = errorDetail;
+        retryContext = FormatRetryContext(attempt, stepName, rawErrorForRetry ?? failureDetail ?? string.Empty);
+
+        entries.Add(new AttemptLogEntry(
+            attempt, stepName, stepOutcome,
+            RoundDuration(timer), diffLines,
+            Error: failureDetail,
+            CommitSha: commitSha,
+            ChangedFiles: changedFiles,
+            Artifacts: artifacts));
+
+        return attempt < maxAttempts;
+    }
 
     private static ImplementerRunResult BuildFinalResult(
         ImplementerOptions options, string branchName,
@@ -489,11 +494,11 @@ internal sealed class IterativeImplementerRunner
                 continue;
             }
 
-            string value = raw.Replace('/', '\\')
+            string value = raw.Replace('\\', '/')
                 .Trim()
                 .TrimStart('.')
-                .TrimStart('\\')
-                .TrimEnd('\\');
+                .TrimStart('/')
+                .TrimEnd('/');
 
             if (value.Length > 0)
             {
@@ -515,15 +520,15 @@ internal sealed class IterativeImplementerRunner
         var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string file in changedFiles)
         {
-            string normalizedFile = file.Replace('/', '\\')
+            string normalizedFile = file.Replace('\\', '/')
                 .TrimStart('.')
-                .TrimStart('\\');
+                .TrimStart('/');
 
             foreach (string root in guardRoots)
             {
                 if (normalizedFile.Equals(root, StringComparison.OrdinalIgnoreCase)
                     || normalizedFile.StartsWith(
-                        root + "\\", StringComparison.OrdinalIgnoreCase))
+                        root + "/", StringComparison.OrdinalIgnoreCase))
                 {
                     _ = matched.Add(file);
                     break;

@@ -35,7 +35,7 @@ public sealed class ImplementerAgent(AgentInvoker agentInvoker)
             AgentName: "hone-fixer",
             Prompt: prompt,
             ModelConfigKey: "FixModel",
-            DefaultModel: "claude-opus-4.6",
+            DefaultModel: ModelDefaults.Implementation,
             WorkingDirectory: workingDirectory);
 
         // The fixer returns code, not JSON. We use InvokeAgentAsync<object> to

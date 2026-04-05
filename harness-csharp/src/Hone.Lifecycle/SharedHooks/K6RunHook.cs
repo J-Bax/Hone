@@ -24,8 +24,7 @@ public sealed class K6RunHook(ILoadTestRunner loadTestRunner) : ILifecycleHook
                 Message: "k6 scale tests require a BaseUrl",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
 
         string scenarioPath = Path.Combine(context.TargetPath, context.Config.ScaleTest.ScenarioPath);
@@ -58,8 +57,7 @@ public sealed class K6RunHook(ILoadTestRunner loadTestRunner) : ILifecycleHook
                 Message: result.Success ? "k6 scale tests completed" : "k6 scale tests failed",
                 Duration: stopwatch.Elapsed,
                 Artifacts: artifacts,
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -69,8 +67,7 @@ public sealed class K6RunHook(ILoadTestRunner loadTestRunner) : ILifecycleHook
                 Message: $"k6 scale tests error: {ex.Message}",
                 Duration: stopwatch.Elapsed,
                 Artifacts: [],
-                BaseUrl: null,
-                Process: null);
+                BaseUrl: null);
         }
     }
 }

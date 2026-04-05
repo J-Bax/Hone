@@ -37,8 +37,8 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
         ArgumentException.ThrowIfNullOrEmpty(branch);
 
         string[] arguments = create
-            ? ["checkout", "-b", branch]
-            : ["checkout", branch];
+            ? ["checkout", "-b", "--", branch]
+            : ["checkout", "--", branch];
 
         ProcessResult result = await processRunner.RunAsync(
             "git",
@@ -62,7 +62,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (paths is not null)
         {
-            List<string> addArgs = ["add"];
+            List<string> addArgs = ["add", "--"];
             addArgs.AddRange(paths);
 
             ProcessResult addResult = await processRunner.RunAsync(
@@ -99,7 +99,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
         ArgumentException.ThrowIfNullOrEmpty(workingDir);
 
         string[] arguments = baseBranch is not null
-            ? ["diff", $"{baseBranch}...HEAD"]
+            ? ["diff", "--", $"{baseBranch}...HEAD"]
             : ["diff"];
 
         ProcessResult result = await processRunner.RunAsync(

@@ -29,18 +29,38 @@ public sealed record CollectorSettings(IReadOnlyDictionary<string, object?> Valu
             return typed;
         }
 
-        try
-        {
-            return (T)Convert.ChangeType(raw, typeof(T), CultureInfo.InvariantCulture);
-        }
-        catch (InvalidCastException)
+        string? str = raw.ToString();
+        if (str is null)
         {
             return defaultValue;
         }
-        catch (FormatException)
+
+        if (typeof(T) == typeof(int))
         {
-            return defaultValue;
+            return int.TryParse(str, CultureInfo.InvariantCulture, out int i) ? (T)(object)i : defaultValue;
         }
+
+        if (typeof(T) == typeof(long))
+        {
+            return long.TryParse(str, CultureInfo.InvariantCulture, out long l) ? (T)(object)l : defaultValue;
+        }
+
+        if (typeof(T) == typeof(double))
+        {
+            return double.TryParse(str, CultureInfo.InvariantCulture, out double d) ? (T)(object)d : defaultValue;
+        }
+
+        if (typeof(T) == typeof(bool))
+        {
+            return bool.TryParse(str, out bool b) ? (T)(object)b : defaultValue;
+        }
+
+        if (typeof(T) == typeof(string))
+        {
+            return (T)(object)str;
+        }
+
+        return defaultValue;
     }
 
     /// <summary>Maximum collection duration in seconds.</summary>
