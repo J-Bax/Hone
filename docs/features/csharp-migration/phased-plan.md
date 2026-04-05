@@ -465,15 +465,15 @@ Migrate the performance measurement pipeline: metric comparison (the accept/reje
 This is the highest-value migration target: the accept/reject decision logic that determines whether an experiment is accepted. It must produce identical results to the PowerShell implementation.
 
 ```csharp
-public class MetricComparer
+public sealed class MetricComparer
 {
-    public ComparisonResult Compare(
+    public static ComparisonResult Compare(
         MetricSet current,
         MetricSet previous,
         MetricSet? baseline,
         TolerancesConfig tolerances,
-        CounterMetrics? currentCounters = null,
-        CounterMetrics? previousCounters = null);
+        RuntimeCounterMetrics? currentCounters = null,
+        RuntimeCounterMetrics? previousCounters = null);
 }
 ```
 
@@ -1268,8 +1268,7 @@ public static class ServiceRegistration
         services.AddSingleton<IAgentRunner, CopilotCliAgentRunner>();
         services.AddTransient<AgentInvoker>();
         
-        // Measurement (swap ILoadTestRunner for future load test tools)
-        services.AddTransient<MetricComparer>();
+        // Measurement (MetricComparer.Compare is static — no DI needed)
         services.AddTransient<ILoadTestRunner, K6LoadTestRunner>();
         services.AddTransient<IRuntimeMetricsCollector, DotnetCountersCollector>();
         services.AddTransient<ScaleTestOrchestrator>();

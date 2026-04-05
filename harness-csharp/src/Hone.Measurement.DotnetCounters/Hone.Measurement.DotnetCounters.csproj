@@ -5,4 +5,8 @@
     <ProjectReference Include="..\Hone.Measurement\Hone.Measurement.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.Measurement.DotnetCounters.Tests" />
+  </ItemGroup>
+
 </Project>

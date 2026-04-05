@@ -1,0 +1,25 @@
+Timestamp,Provider,Counter Name,Counter Type,Mean/Increment
+2024-01-01 00:00:00,System.Runtime,CPU Usage,Mean,45.2
+2024-01-01 00:00:01,System.Runtime,CPU Usage,Mean,47.1
+2024-01-01 00:00:02,System.Runtime,CPU Usage,Mean,43.0
+2024-01-01 00:00:00,System.Runtime,Working Set,Mean,150.5
+2024-01-01 00:00:01,System.Runtime,Working Set,Mean,152.3
+2024-01-01 00:00:02,System.Runtime,Working Set,Mean,151.0
+2024-01-01 00:00:00,System.Runtime,GC Heap Size,Mean,80.5
+2024-01-01 00:00:01,System.Runtime,GC Heap Size,Mean,82.0
+2024-01-01 00:00:00,System.Runtime,Gen 0 GC Count,Increment,5
+2024-01-01 00:00:01,System.Runtime,Gen 0 GC Count,Increment,3
+2024-01-01 00:00:00,System.Runtime,Gen 1 GC Count,Increment,2
+2024-01-01 00:00:01,System.Runtime,Gen 1 GC Count,Increment,1
+2024-01-01 00:00:00,System.Runtime,Gen 2 GC Count,Increment,0
+2024-01-01 00:00:01,System.Runtime,Gen 2 GC Count,Increment,1
+2024-01-01 00:00:00,System.Runtime,% Time in GC since last GC,Mean,1.5
+2024-01-01 00:00:01,System.Runtime,% Time in GC since last GC,Mean,2.0
+2024-01-01 00:00:00,System.Runtime,Allocation Rate,Increment,25.5
+2024-01-01 00:00:01,System.Runtime,Allocation Rate,Increment,28.3
+2024-01-01 00:00:00,System.Runtime,Number of Exceptions / sec,Increment,0
+2024-01-01 00:00:01,System.Runtime,Number of Exceptions / sec,Increment,2
+2024-01-01 00:00:00,System.Runtime,ThreadPool Thread Count,Mean,15
+2024-01-01 00:00:01,System.Runtime,ThreadPool Thread Count,Mean,18
+2024-01-01 00:00:00,System.Runtime,ThreadPool Queue Length,Mean,0
+2024-01-01 00:00:01,System.Runtime,ThreadPool Queue Length,Mean,3
