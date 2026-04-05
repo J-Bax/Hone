@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\Hone.Orchestration\Hone.Orchestration.csproj" />
     <ProjectReference Include="..\..\src\Hone.Cli\Hone.Cli.csproj" />
     <ProjectReference Include="..\..\src\Hone.Measurement\Hone.Measurement.csproj" />
+    <ProjectReference Include="..\..\src\Hone.Measurement.K6\Hone.Measurement.K6.csproj" />
     <ProjectReference Include="..\..\src\Hone.Reporting\Hone.Reporting.csproj" />
     <ProjectReference Include="..\Hone.TestInfrastructure\Hone.TestInfrastructure.csproj" />
   </ItemGroup>

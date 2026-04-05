@@ -8,7 +8,7 @@ namespace Hone.Reporting.Console;
 /// Renders performance results as a formatted console table.
 /// Pure renderer — no file I/O. Replaces <c>Show-Results.ps1</c>.
 /// </summary>
-internal static class ResultsRenderer
+public static class ResultsRenderer
 {
     private const int LabelWidth = 14;
     private const int ColWidth = 12;

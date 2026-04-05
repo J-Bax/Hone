@@ -4,7 +4,7 @@ namespace Hone.Reporting.Dashboard;
 /// Pre-serialised data payloads for the HTML dashboard template.
 /// All JSON strings are injected verbatim into template placeholders.
 /// </summary>
-internal sealed record DashboardData
+public sealed record DashboardData
 {
     /// <summary>JSON array of per-experiment k6 summary objects.</summary>
     public required string DataJson { get; init; }

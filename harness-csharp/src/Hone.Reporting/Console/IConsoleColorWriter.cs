@@ -4,7 +4,7 @@ namespace Hone.Reporting.Console;
 /// Abstraction for writing colored text to the console.
 /// Enables testing without coupling to <see cref="System.Console"/>.
 /// </summary>
-internal interface IConsoleColorWriter
+public interface IConsoleColorWriter
 {
     /// <summary>
     /// Writes text without a trailing newline.

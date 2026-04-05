@@ -151,7 +151,7 @@ Tests use xUnit, NSubstitute for mocking, and FluentAssertions. Integration test
 
 ## Remaining Gaps / Future Work
 
-- `hone baseline`, `hone results`, and `hone dashboard` commands are stubs — functional equivalents of `Get-PerformanceBaseline.ps1`, `Show-Results.ps1`, and `Export-Dashboard.ps1` still need to be fully wired
+- `hone baseline`, `hone results`, and `hone dashboard` commands are fully wired — `hone baseline` runs scale tests via `ScaleTestOrchestrator` and saves results; `hone results` reads the results directory and renders via `ResultsRenderer`; `hone dashboard` generates a self-contained HTML dashboard via `DashboardExporter`
 - Non-.NET target support via `Command` hooks is functional but not tested end-to-end
 - `CompatibilityAgent` (from `Hone.Agents.Preparation`) produces assessment reports but is not yet exposed as a dedicated CLI command
 - TUI / web dashboard sinks for `HoneEventBus` are designed but not implemented

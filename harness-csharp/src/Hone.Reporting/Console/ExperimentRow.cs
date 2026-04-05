@@ -5,7 +5,7 @@ namespace Hone.Reporting.Console;
 /// <summary>
 /// Per-experiment row data for the console results table.
 /// </summary>
-internal sealed record ExperimentRow(
+public sealed record ExperimentRow(
     int Experiment,
     MetricSet Metrics,
     ConsoleCounterData? Counters = null);

@@ -7,7 +7,7 @@ namespace Hone.Reporting.Dashboard;
 /// Generates a self-contained HTML performance dashboard by injecting data into
 /// an embedded HTML template. Replaces <c>Export-Dashboard.ps1</c>.
 /// </summary>
-internal static class DashboardExporter
+public static class DashboardExporter
 {
     private const string TemplateResourceName = "Hone.Reporting.Dashboard.DashboardTemplate.html";
 

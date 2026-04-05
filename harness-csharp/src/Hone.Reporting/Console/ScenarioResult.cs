@@ -3,7 +3,7 @@ namespace Hone.Reporting.Console;
 /// <summary>
 /// Per-scenario baseline and experiment data for the scenario breakdown section.
 /// </summary>
-internal sealed record ScenarioResult(
+public sealed record ScenarioResult(
     string ScenarioName,
     ExperimentRow Baseline,
     IReadOnlyList<ExperimentRow> Experiments)

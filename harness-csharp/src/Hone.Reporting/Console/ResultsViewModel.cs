@@ -7,7 +7,7 @@ namespace Hone.Reporting.Console;
 /// All structured data needed to render the console results table.
 /// Replaces the file I/O in <c>Show-Results.ps1</c>.
 /// </summary>
-internal sealed record ResultsViewModel(
+public sealed record ResultsViewModel(
     MetricSet Baseline,
     IReadOnlyList<ExperimentRow> Experiments,
     TolerancesConfig Tolerances,
