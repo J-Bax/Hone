@@ -100,11 +100,15 @@ internal static class PreProber
         {
             string firstLine = remoteResult.Output
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)[0];
-            // Strip "origin\t<url> (fetch)" → <url>
-            info.RemoteUrl = firstLine
-                .Replace("(fetch)", "", StringComparison.Ordinal)
-                .Replace("origin", "", StringComparison.OrdinalIgnoreCase)
-                .Trim();
+            // "origin\thttps://github.com/repo.git (fetch)" → split on tab, take URL part
+            string[] parts = firstLine.Split('\t', StringSplitOptions.TrimEntries);
+            if (parts.Length >= 2)
+            {
+                info.RemoteUrl = parts[1]
+                    .Replace("(fetch)", "", StringComparison.Ordinal)
+                    .Replace("(push)", "", StringComparison.Ordinal)
+                    .Trim();
+            }
         }
 
         ProcessResult headResult = await processRunner.RunAsync(

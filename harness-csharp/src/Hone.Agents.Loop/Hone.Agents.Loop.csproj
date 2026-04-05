@@ -1,5 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- Project name deliberately uses 'Loop'; suppress reserved-keyword warning -->
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
     <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
