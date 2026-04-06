@@ -7,7 +7,6 @@ namespace Hone.Reporting.Rca;
 /// <summary>
 /// Builds a root cause analysis markdown document from structured inputs.
 /// Pure template — no I/O, no file system access.
-/// Replaces <c>Export-ExperimentRCA.ps1</c>.
 /// </summary>
 internal static class RcaBuilder
 {
@@ -180,7 +179,7 @@ internal static class RcaBuilder
         {
             OpportunityScope.Narrow => "narrow",
             OpportunityScope.Architecture => "architecture",
-            _ => options.ChangeScope.ToString(),
+            OpportunityScope.Unknown or _ => options.ChangeScope.ToString(),
         };
 
         sb.AppendLine("## Root Cause / Rationale");

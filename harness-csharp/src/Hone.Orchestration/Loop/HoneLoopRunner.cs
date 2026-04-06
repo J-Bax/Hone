@@ -13,7 +13,6 @@ namespace Hone.Orchestration.Loop;
 /// <summary>
 /// Main entry point for the Hone optimization loop.
 /// Orchestrates analysis → queue → implement → verify → accept/reject for each experiment.
-/// Mirrors <c>harness/Invoke-HoneLoop.ps1</c>.
 /// </summary>
 internal sealed class HoneLoopRunner
 {
@@ -52,16 +51,16 @@ internal sealed class HoneLoopRunner
         _eventSink.Emit(new PhaseStarted("loop", DateTimeOffset.UtcNow, Experiment: null));
         var sw = Stopwatch.StartNew();
 
-        // ── Phase 1: Baseline ───────────────────────────────────────────────
+        // ── Baseline ────────────────────────────────────────────────────────
         MetricSet baseline = await _pipeline.LoadOrCreateBaselineAsync(targetDir, config, ct)
             .ConfigureAwait(false);
         double baselineP95 = baseline.HttpReqDuration.P95;
 
-        // ── Phase 2: Machine info ───────────────────────────────────────────
+        // ── Machine info ────────────────────────────────────────────────────
         MachineInfo machineInfo = await _pipeline.GetMachineInfoAsync(ct)
             .ConfigureAwait(false);
 
-        // ── Phase 3: Load or initialise run metadata ────────────────────────
+        // ── Load or initialise run metadata ─────────────────────────────────
         RunMetadata? existingMetadata = await _pipeline.LoadRunMetadataAsync(metadataPath, ct)
             .ConfigureAwait(false);
         string targetName = options.TargetName
@@ -70,7 +69,7 @@ internal sealed class HoneLoopRunner
         var experiments = new List<ExperimentMetadata>(existingMetadata?.Experiments ?? []);
         int priorCount = experiments.Count;
 
-        // ── Phase 4: Resume state from prior experiments ────────────────────
+        // ── Resume state from prior experiments ─────────────────────────────
         var state = new LoopState
         {
             BestP95 = baselineP95,
@@ -78,7 +77,7 @@ internal sealed class HoneLoopRunner
         };
         ResumeState(state, experiments);
 
-        // ── Phase 5: Experiment loop ────────────────────────────────────────
+        // ── Experiment loop ─────────────────────────────────────────────────
         int maxExp = options.MaxExperimentsOverride ?? config.Loop.MaxExperiments;
         int startExperiment = experiments.Count + 1;
 
@@ -97,7 +96,7 @@ internal sealed class HoneLoopRunner
             }
         }
 
-        // ── Phase 6: Finalise ───────────────────────────────────────────────
+        // ── Finalise ────────────────────────────────────────────────────────
         sw.Stop();
         _eventSink.Emit(new PhaseCompleted(
             "loop", sw.Elapsed, Success: true,
@@ -243,7 +242,7 @@ internal sealed class HoneLoopRunner
                 await HandleFailedExperimentAsync(
                     ctx, "stale", comparison, experimentMetrics, ct).ConfigureAwait(false),
 
-            _ => throw new InvalidOperationException($"Unexpected experiment outcome: {comparison.Outcome}"),
+            ExperimentOutcome.Unknown or _ => throw new InvalidOperationException($"Unexpected experiment outcome: {comparison.Outcome}"),
         };
     }
 
@@ -375,7 +374,7 @@ internal sealed class HoneLoopRunner
             ExperimentOutcome.EfficiencyWin => "efficiency_win",
             ExperimentOutcome.Regressed => "regressed",
             ExperimentOutcome.Stale => "stale",
-            _ => "unknown",
+            ExperimentOutcome.Unknown or _ => "unknown",
         };
         _queueManager.MarkDone(item.Id, outcomeName, exp);
 

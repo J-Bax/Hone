@@ -70,7 +70,7 @@ internal sealed class OptimizationQueueManager
                 {
                     OpportunityScope.Narrow => "narrow",
                     OpportunityScope.Architecture => "architecture",
-                    _ => "narrow",
+                    OpportunityScope.Unknown or _ => "narrow",
                 };
                 string rcaContent = $"# {title}\n\n> **File:** `{opp.FilePath}` | **Scope:** {scopeStr}\n\n{opp.RootCause}";
                 File.WriteAllText(rcaFile, rcaContent, Encoding.UTF8);
@@ -265,10 +265,10 @@ internal sealed class OptimizationQueueManager
                 QueueItemStatus.InProgress => " *(in progress)*",
                 QueueItemStatus.Done => $" *(experiment {item.TriedByExperiment} \u2014 {item.Outcome})*",
                 QueueItemStatus.Skipped => "",
-                _ => "",
+                QueueItemStatus.Unknown or _ => "",
             };
 
-            sb.Append(CultureInfo.InvariantCulture, $"- [{check}] **#{item.Id}** {scopeTag}`{item.FilePath}` \u2014 {item.Title}{statusNote}\n");
+            sb.Append(CultureInfo.InvariantCulture, $"- [{check}] **#{item.Id}**{scopeTag}`{item.FilePath}` \u2014 {item.Title}{statusNote}\n");
         }
 
         File.WriteAllText(_queueMdPath, sb.ToString(), Encoding.UTF8);

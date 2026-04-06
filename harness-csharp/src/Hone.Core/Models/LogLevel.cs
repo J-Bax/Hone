@@ -5,15 +5,18 @@ namespace Hone.Core.Models;
 /// </summary>
 public enum LogLevel
 {
+    /// <summary>Uninitialized or unknown log level.</summary>
+    Unknown = 0,
+
     /// <summary>Detailed diagnostic information.</summary>
-    Verbose,
+    Verbose = 1,
 
     /// <summary>General informational messages.</summary>
-    Info,
+    Info = 2,
 
     /// <summary>Potential issues that are not errors.</summary>
-    Warning,
+    Warning = 3,
 
     /// <summary>Errors that require attention.</summary>
-    Error,
+    Error = 4,
 }

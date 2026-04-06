@@ -2,19 +2,22 @@ namespace Hone.Lifecycle.Hooks;
 
 /// <summary>
 /// Discriminator for hook resolution.
-/// BuiltIn replaces the PowerShell Script and Shared types with native C# implementations.
+/// BuiltIn uses native C# implementations.
 /// </summary>
 public enum HookType
 {
-    /// <summary>Native C# hook implementation (replaces PS Script + Shared).</summary>
-    BuiltIn,
+    /// <summary>Uninitialized or unknown hook type.</summary>
+    Unknown = 0,
+
+    /// <summary>Native C# hook implementation.</summary>
+    BuiltIn = 1,
 
     /// <summary>Runs a shell command string.</summary>
-    Command,
+    Command = 2,
 
     /// <summary>Makes an HTTP request to the configured URL.</summary>
-    Http,
+    Http = 3,
 
     /// <summary>No-op; hook is intentionally skipped.</summary>
-    Skip,
+    Skip = 4,
 }

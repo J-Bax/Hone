@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.Hooks;
 
 /// <summary>
 /// Dispatches resolved hooks to their execution strategy.
-/// Replaces <c>Invoke-LifecycleHook</c> + <c>hooks/Invoke-Hook.ps1</c>.
 /// </summary>
 public sealed class LifecycleHookDispatcher(
     IBuiltInHookRegistry hookRegistry,
@@ -35,7 +34,7 @@ public sealed class LifecycleHookDispatcher(
                 Duration: TimeSpan.Zero,
                 Artifacts: [],
                 BaseUrl: null),
-            _ => new HookResult(
+            HookType.Unknown or _ => new HookResult(
                 Success: false,
                 Message: $"Unknown hook type: {hook.Type}",
                 Duration: stopwatch.Elapsed,
@@ -59,8 +58,7 @@ public sealed class LifecycleHookDispatcher(
     {
         try
         {
-            // PS: $sb = [scriptblock]::Create($Hook.Value); $output = & $sb 2>&1
-            // C#: Run via shell to support piping, redirection, etc.
+            // Run via shell to support piping, redirection, etc.
             ProcessResult result = await processRunner.RunAsync(
                 executable: OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
                 arguments: OperatingSystem.IsWindows()
@@ -93,8 +91,7 @@ public sealed class LifecycleHookDispatcher(
     private async Task<HookResult> DispatchHttpAsync(
         ResolvedHook hook, HookContext context, Stopwatch stopwatch, CancellationToken ct)
     {
-        // PS: $uri = "$BaseUrl$($Hook.Path)"
-        // C#: hook.Url may be relative — combine with context.BaseUrl
+        // hook.Url may be relative — combine with context.BaseUrl
         HttpMethod method = new(hook.HttpMethod ?? "GET");
         Uri requestUri;
 

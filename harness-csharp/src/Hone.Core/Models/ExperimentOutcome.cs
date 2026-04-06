@@ -5,15 +5,18 @@ namespace Hone.Core.Models;
 /// </summary>
 public enum ExperimentOutcome
 {
+    /// <summary>Uninitialized or unknown outcome.</summary>
+    Unknown = 0,
+
     /// <summary>The target metric improved.</summary>
-    Improved,
+    Improved = 1,
 
     /// <summary>The target metric regressed.</summary>
-    Regressed,
+    Regressed = 2,
 
     /// <summary>No statistically significant change was detected.</summary>
-    Stale,
+    Stale = 3,
 
     /// <summary>An efficiency improvement was detected.</summary>
-    EfficiencyWin,
+    EfficiencyWin = 4,
 }

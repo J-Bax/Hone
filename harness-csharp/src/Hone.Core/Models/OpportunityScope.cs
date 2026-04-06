@@ -5,9 +5,12 @@ namespace Hone.Core.Models;
 /// </summary>
 public enum OpportunityScope
 {
+    /// <summary>Uninitialized or unknown scope.</summary>
+    Unknown = 0,
+
     /// <summary>A narrow, targeted change.</summary>
-    Narrow,
+    Narrow = 1,
 
     /// <summary>A broader architectural change.</summary>
-    Architecture,
+    Architecture = 2,
 }
