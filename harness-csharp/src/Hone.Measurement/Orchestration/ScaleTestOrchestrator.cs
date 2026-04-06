@@ -13,12 +13,20 @@ public sealed class ScaleTestOrchestrator
     /// <summary>
     /// Runs the full scale test cycle.
     /// </summary>
+    /// <param name="config">Scale test configuration.</param>
+    /// <param name="runner">Load test runner.</param>
+    /// <param name="baseUrl">Base URL of the API under test.</param>
+    /// <param name="outputDir">Output directory for artifacts.</param>
+    /// <param name="experiment">Experiment number (0 for baseline).</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="afterRunCallback">Optional callback invoked after each k6 run (e.g., trigger server-side GC).</param>
     public static async Task<ScaleTestResult> RunAsync(
         ScaleTestConfig config,
         ILoadTestRunner runner,
         Uri baseUrl,
         string outputDir,
         int experiment,
+        Func<CancellationToken, Task>? afterRunCallback = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -36,6 +44,12 @@ public sealed class ScaleTestOrchestrator
                 Timeout: null);
 
             _ = await runner.RunAsync(warmupOptions, ct).ConfigureAwait(false);
+
+            if (afterRunCallback is not null)
+            {
+                await afterRunCallback(ct).ConfigureAwait(false);
+            }
+
             await Task.Delay(TimeSpan.FromSeconds(config.CooldownSeconds), ct).ConfigureAwait(false);
         }
 
@@ -46,6 +60,11 @@ public sealed class ScaleTestOrchestrator
         {
             if (run > 1)
             {
+                if (afterRunCallback is not null)
+                {
+                    await afterRunCallback(ct).ConfigureAwait(false);
+                }
+
                 await Task.Delay(TimeSpan.FromSeconds(config.CooldownSeconds), ct).ConfigureAwait(false);
             }
 

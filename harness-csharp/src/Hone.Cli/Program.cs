@@ -212,7 +212,7 @@ internal static class Program
             Console.WriteLine($"Running baseline measurement against {baseUrl}...");
 
             ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-                config.ScaleTest, loadTestRunner, baseUrl, baselineDir, experiment: 0, ct)
+                config.ScaleTest, loadTestRunner, baseUrl, baselineDir, experiment: 0, ct: ct)
                 .ConfigureAwait(false);
 
             if (result.Metrics is null)
