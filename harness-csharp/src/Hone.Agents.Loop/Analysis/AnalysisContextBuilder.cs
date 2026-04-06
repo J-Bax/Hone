@@ -4,6 +4,7 @@ using System.Text.Json;
 
 using Hone.Core.Config;
 using Hone.Core.Models;
+using Hone.Core.Observability;
 
 namespace Hone.Agents.Loop.Analysis;
 
@@ -22,19 +23,21 @@ public static class AnalysisContextBuilder
     /// Assembles a complete <see cref="AnalysisContext"/> from config, counters,
     /// history files, and diagnostic reports.
     /// </summary>
-    public static AnalysisContext Build(
+    public static async Task<AnalysisContext> BuildAsync(
         string targetDir,
         HoneConfig config,
         CounterSummary? counters,
         string? previousRcaExplanation,
-        IReadOnlyDictionary<string, AnalyzerReport>? diagnosticReports)
+        IReadOnlyDictionary<string, AnalyzerReport>? diagnosticReports,
+        IHoneEventSink? eventSink = null,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(config);
 
         IReadOnlyList<string> sourcePaths = CollectSourceFilePaths(targetDir, config.Api);
         string counterCtx = BuildCounterContext(counters);
-        string trafficCtx = BuildTrafficContext(targetDir, config.ScaleTest);
-        string historyCtx = BuildHistoryContext(targetDir, config.Api, previousRcaExplanation);
+        string trafficCtx = await BuildTrafficContextAsync(targetDir, config.ScaleTest, ct).ConfigureAwait(false);
+        string historyCtx = await BuildHistoryContextAsync(targetDir, config.Api, previousRcaExplanation, eventSink, ct).ConfigureAwait(false);
         string profilingCtx = BuildProfilingContext(diagnosticReports);
 
         return new AnalysisContext(sourcePaths, counterCtx, trafficCtx, historyCtx, profilingCtx);
@@ -59,7 +62,7 @@ public static class AnalysisContextBuilder
 
             foreach (string file in Directory.EnumerateFiles(searchDir, glob, SearchOption.AllDirectories))
             {
-                // Return paths relative to targetDir, matching PS behavior
+                // Return paths relative to targetDir
                 string relative = Path.GetRelativePath(targetDir, file);
                 results.Add(relative);
             }
@@ -89,7 +92,7 @@ public static class AnalysisContextBuilder
 
     // ── Traffic distribution context ─────────────────────────────────────────
 
-    internal static string BuildTrafficContext(string targetDir, ScaleTestConfig scaleTest)
+    internal static async Task<string> BuildTrafficContextAsync(string targetDir, ScaleTestConfig scaleTest, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(scaleTest.ScenarioPath))
         {
@@ -102,9 +105,7 @@ public static class AnalysisContextBuilder
             return string.Empty;
         }
 
-#pragma warning disable RS0030 // Sync I/O — matches PS behavior; async is a future concern
-        string content = File.ReadAllText(scenarioFullPath);
-#pragma warning restore RS0030
+        string content = await File.ReadAllTextAsync(scenarioFullPath, ct).ConfigureAwait(false);
 
         return $"""
 
@@ -120,7 +121,9 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
 
     // ── Optimization history context ─────────────────────────────────────────
 
-    internal static string BuildHistoryContext(string targetDir, ApiConfig api, string? previousRcaExplanation)
+    internal static async Task<string> BuildHistoryContextAsync(
+        string targetDir, ApiConfig api, string? previousRcaExplanation,
+        IHoneEventSink? eventSink, CancellationToken ct)
     {
         var sb = new StringBuilder();
         string metadataDir = Path.Combine(targetDir, api.MetadataPath);
@@ -129,30 +132,17 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
         string logPath = Path.Combine(metadataDir, "experiment-log.md");
         if (File.Exists(logPath))
         {
-#pragma warning disable RS0030 // Sync I/O — matches PS behavior; async is a future concern
-            string logContent = File.ReadAllText(logPath);
-#pragma warning restore RS0030
+            string logContent = await File.ReadAllTextAsync(logPath, ct).ConfigureAwait(false);
             sb.Append("\n## Previously Tried Optimizations\n")
               .Append(logContent)
               .Append('\n');
         }
 
-        // Queue: prefer structured JSON, fall back to markdown
+        // Queue: structured JSON only
         string queueJsonPath = Path.Combine(metadataDir, "experiment-queue.json");
-        string queueMdPath = Path.Combine(metadataDir, "experiment-queue.md");
-
         if (File.Exists(queueJsonPath))
         {
-            AppendQueueFromJson(sb, queueJsonPath);
-        }
-        else if (File.Exists(queueMdPath))
-        {
-#pragma warning disable RS0030 // Sync I/O — matches PS behavior; async is a future concern
-            string queueContent = File.ReadAllText(queueMdPath);
-#pragma warning restore RS0030
-            sb.Append("\n## Known Optimization Queue\n")
-              .Append(queueContent)
-              .Append('\n');
+            await AppendQueueFromJsonAsync(sb, queueJsonPath, eventSink, ct).ConfigureAwait(false);
         }
 
         // Previous RCA explanation
@@ -167,19 +157,18 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
         string runMetadataPath = Path.Combine(targetDir, api.ResultsPath, "run-metadata.json");
         if (File.Exists(runMetadataPath))
         {
-            AppendExperimentHistory(sb, runMetadataPath);
+            await AppendExperimentHistoryAsync(sb, runMetadataPath, eventSink, ct).ConfigureAwait(false);
         }
 
         return sb.ToString();
     }
 
-    private static void AppendQueueFromJson(StringBuilder sb, string queueJsonPath)
+    private static async Task AppendQueueFromJsonAsync(
+        StringBuilder sb, string queueJsonPath, IHoneEventSink? eventSink, CancellationToken ct)
     {
         try
         {
-#pragma warning disable RS0030 // Sync I/O — matches PS behavior; async is a future concern
-            string json = File.ReadAllText(queueJsonPath);
-#pragma warning restore RS0030
+            string json = await File.ReadAllTextAsync(queueJsonPath, ct).ConfigureAwait(false);
             OptimizationQueue? queue = JsonSerializer.Deserialize<OptimizationQueue>(json, JsonOptions);
             if (queue is null)
             {
@@ -207,19 +196,21 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
                 sb.Append(CultureInfo.InvariantCulture, $"- [PENDING] {scopeTag}`{item.FilePath}` — {item.Explanation}\n");
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            // Non-fatal: queue is supplementary context
+            eventSink?.Emit(new StatusMessage(
+                $"Failed to parse optimization queue JSON at '{queueJsonPath}': {ex.Message}",
+                LogLevel.Warning,
+                DateTimeOffset.UtcNow));
         }
     }
 
-    private static void AppendExperimentHistory(StringBuilder sb, string runMetadataPath)
+    private static async Task AppendExperimentHistoryAsync(
+        StringBuilder sb, string runMetadataPath, IHoneEventSink? eventSink, CancellationToken ct)
     {
         try
         {
-#pragma warning disable RS0030 // Sync I/O — matches PS behavior; async is a future concern
-            string json = File.ReadAllText(runMetadataPath);
-#pragma warning restore RS0030
+            string json = await File.ReadAllTextAsync(runMetadataPath, ct).ConfigureAwait(false);
             RunMetadata? runMeta = JsonSerializer.Deserialize<RunMetadata>(json, JsonOptions);
             if (runMeta is null)
             {
@@ -250,9 +241,12 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
                 sb.Append(CultureInfo.InvariantCulture, $"| {exp.Experiment} | — | {exp.Outcome} | {p95} | {rps} | {branch} |\n");
             }
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            // Non-fatal: run-metadata is supplementary context
+            eventSink?.Emit(new StatusMessage(
+                $"Failed to parse run metadata JSON at '{runMetadataPath}': {ex.Message}",
+                LogLevel.Warning,
+                DateTimeOffset.UtcNow));
         }
     }
 

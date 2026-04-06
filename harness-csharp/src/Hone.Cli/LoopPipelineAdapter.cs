@@ -105,12 +105,13 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     /// <inheritdoc />
     public async Task<LoopAnalysisResult> RunAnalysisAsync(AnalysisInput input, CancellationToken ct)
     {
-        AnalysisContext context = AnalysisContextBuilder.Build(
+        AnalysisContext context = await AnalysisContextBuilder.BuildAsync(
             input.TargetDir,
             _config,
             counters: null,
             previousRcaExplanation: null,
-            diagnosticReports: null);
+            diagnosticReports: null,
+            ct: ct).ConfigureAwait(false);
 
         MetricSet current = input.ReferenceMetrics ?? input.BaselineMetrics;
 

@@ -10,7 +10,6 @@ namespace Hone.Cli;
 
 /// <summary>
 /// Wires the real service implementations to the <see cref="IImplementerPipeline"/> contract.
-/// Each method delegates to the appropriate component from Phases 1-8.
 /// </summary>
 internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
 {
@@ -32,7 +31,7 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     }
 
     /// <inheritdoc />
-    public async Task<FixStepResult> InvokeFixAgentAsync(FixStepInput input, CancellationToken ct)
+    public async Task<FixStepResult> InvokeImplementerAgentAsync(FixStepInput input, CancellationToken ct)
     {
         ImplementerResult result = await _implementerAgent.ImplementAsync(
             input.FilePath,

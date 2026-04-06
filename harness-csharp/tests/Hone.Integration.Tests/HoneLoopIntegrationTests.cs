@@ -486,7 +486,7 @@ public sealed class HoneLoopIntegrationTests(ITestOutputHelper output)
         IHoneEventSink eventSink = Substitute.For<IHoneEventSink>();
         IImplementerPipeline implPipeline = Substitute.For<IImplementerPipeline>();
 
-        _ = implPipeline.InvokeFixAgentAsync(
+        _ = implPipeline.InvokeImplementerAgentAsync(
                 Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(SucceededFix()));
         _ = implPipeline.ApplySuggestionAsync(

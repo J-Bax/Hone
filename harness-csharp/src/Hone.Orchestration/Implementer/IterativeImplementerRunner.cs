@@ -8,7 +8,6 @@ namespace Hone.Orchestration.Implementer;
 
 /// <summary>
 /// Orchestrates the iterative fix/apply/build/test cycle for a single experiment.
-/// Mirrors <c>harness/Invoke-IterativeFix.ps1</c>.
 /// </summary>
 internal sealed class IterativeImplementerRunner
 {
@@ -98,7 +97,7 @@ internal sealed class IterativeImplementerRunner
             }
 
             // ── Fix ─────────────────────────────────────────────────────────
-            FixStepResult fixResult = await _pipeline.InvokeFixAgentAsync(
+            FixStepResult fixResult = await _pipeline.InvokeImplementerAgentAsync(
                 new FixStepInput(
                     targetFile, options.Explanation, options.RootCauseDocument,
                     options.Experiment, options.TargetName, options.TargetDir,

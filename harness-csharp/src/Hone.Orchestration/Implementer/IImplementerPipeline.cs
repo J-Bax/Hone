@@ -2,7 +2,7 @@ namespace Hone.Orchestration.Implementer;
 
 internal interface IImplementerPipeline
 {
-    public Task<FixStepResult> InvokeFixAgentAsync(FixStepInput input, CancellationToken ct);
+    public Task<FixStepResult> InvokeImplementerAgentAsync(FixStepInput input, CancellationToken ct);
     public Task<ApplyStepResult> ApplySuggestionAsync(ApplyStepInput input, CancellationToken ct);
     public Task<BuildStepResult> BuildProjectAsync(BuildStepInput input, CancellationToken ct);
     public Task<TestStepResult> RunTestsAsync(TestStepInput input, CancellationToken ct);

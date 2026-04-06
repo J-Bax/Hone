@@ -17,7 +17,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     // ── Source file collection ────────────────────────────────────────────
 
     [Fact]
-    public void ContextBuilder_CollectsSourcePaths()
+    public async Task ContextBuilder_CollectsSourcePaths()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddFile("myapi/Controllers/ValuesController.cs", "// controller")
@@ -30,7 +30,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers", "Models"],
                 SourceFileGlob: "*.cs"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.SourceFilePaths.Should().HaveCount(2);
@@ -40,7 +40,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_CollectsSourcePaths_RecursesSubdirectories()
+    public async Task ContextBuilder_CollectsSourcePaths_RecursesSubdirectories()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddFile("myapi/Controllers/v1/UsersController.cs", "// nested"));
@@ -51,7 +51,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 SourceFileGlob: "*.cs"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.SourceFilePaths.Should().ContainSingle()
@@ -61,7 +61,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     // ── Counter context ──────────────────────────────────────────────────
 
     [Fact]
-    public void ContextBuilder_FormatsCounterMetrics()
+    public async Task ContextBuilder_FormatsCounterMetrics()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -75,7 +75,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
         var config = new HoneConfig(
             Api: new ApiConfig(ProjectPath: "myapi", SourceCodePaths: ["Controllers"]));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.CounterContext.Should().Contain("## Runtime Counters");
@@ -86,7 +86,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_NoCounters_EmptyCounterContext()
+    public async Task ContextBuilder_NoCounters_EmptyCounterContext()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -94,7 +94,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
         var config = new HoneConfig(
             Api: new ApiConfig(ProjectPath: "myapi", SourceCodePaths: ["Controllers"]));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.CounterContext.Should().BeEmpty();
@@ -103,7 +103,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     // ── Traffic context ──────────────────────────────────────────────────
 
     [Fact]
-    public void ContextBuilder_TrafficContext_IncludesScenarioContent()
+    public async Task ContextBuilder_TrafficContext_IncludesScenarioContent()
     {
         const string ScenarioJs = "export default function() { http.get('/api/items'); }";
 
@@ -115,7 +115,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
             Api: new ApiConfig(ProjectPath: "myapi", SourceCodePaths: ["Controllers"]),
             ScaleTest: new ScaleTestConfig(ScenarioPath: "scale-tests/baseline.js"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.TrafficContext.Should().Contain("## Traffic Distribution (k6 Scenario)");
@@ -124,7 +124,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_TrafficContext_MissingFile_ReturnsEmpty()
+    public async Task ContextBuilder_TrafficContext_MissingFile_ReturnsEmpty()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -133,7 +133,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
             Api: new ApiConfig(ProjectPath: "myapi", SourceCodePaths: ["Controllers"]),
             ScaleTest: new ScaleTestConfig(ScenarioPath: "nonexistent/scenario.js"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.TrafficContext.Should().BeEmpty();
@@ -142,7 +142,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     // ── History context ──────────────────────────────────────────────────
 
     [Fact]
-    public void ContextBuilder_IncludesHistory()
+    public async Task ContextBuilder_IncludesHistory()
     {
         const string LogContent = "# Experiment 1\nOptimized serialization\n";
 
@@ -156,7 +156,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 MetadataPath: "metadata"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.HistoryContext.Should().Contain("## Previously Tried Optimizations");
@@ -164,7 +164,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_HistoryContext_IncludesQueueJson()
+    public async Task ContextBuilder_HistoryContext_IncludesQueueJson()
     {
         var queue = new OptimizationQueue(
             GeneratedByExperiment: 1,
@@ -187,7 +187,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 MetadataPath: "metadata"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.HistoryContext.Should().Contain("## Known Optimization Queue");
@@ -197,7 +197,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_HistoryContext_FallsBackToQueueMarkdown()
+    public async Task ContextBuilder_HistoryContext_NoQueueMarkdownFallback()
     {
         const string QueueMd = "- Optimize serialization\n- Cache responses\n";
 
@@ -211,15 +211,15 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 MetadataPath: "metadata"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
-        _ = result.HistoryContext.Should().Contain("## Known Optimization Queue");
-        _ = result.HistoryContext.Should().Contain("Cache responses");
+        _ = result.HistoryContext.Should().NotContain("## Known Optimization Queue",
+            "markdown queue fallback was removed — only JSON queue is supported");
     }
 
     [Fact]
-    public void ContextBuilder_HistoryContext_IncludesPreviousRca()
+    public async Task ContextBuilder_HistoryContext_IncludesPreviousRca()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -230,7 +230,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 MetadataPath: "metadata"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null,
             previousRcaExplanation: "Switched from Newtonsoft to System.Text.Json",
             diagnosticReports: null);
@@ -240,7 +240,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_HistoryContext_IncludesExperimentTable()
+    public async Task ContextBuilder_HistoryContext_IncludesExperimentTable()
     {
         var runMeta = new RunMetadata(
             TargetName: "SampleApi",
@@ -287,7 +287,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
                 SourceCodePaths: ["Controllers"],
                 ResultsPath: "results"));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.HistoryContext.Should().Contain("## Experiment History (with metrics)");
@@ -300,7 +300,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     // ── Profiling context ────────────────────────────────────────────────
 
     [Fact]
-    public void ContextBuilder_IncludesDiagnosticReports()
+    public async Task ContextBuilder_IncludesDiagnosticReports()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -314,7 +314,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
             ["AllocAnalyzer"] = new(Success: true, Report: null, Summary: "High allocations in Repo.Get", PromptPath: null, ResponsePath: null),
         };
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: reports);
 
         _ = result.ProfilingContext.Should().Contain("## Diagnostic Profiling Reports");
@@ -326,7 +326,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
-    public void ContextBuilder_NoDiagnostics_EmptyProfilingContext()
+    public async Task ContextBuilder_NoDiagnostics_EmptyProfilingContext()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -334,14 +334,14 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
         var config = new HoneConfig(
             Api: new ApiConfig(ProjectPath: "myapi", SourceCodePaths: ["Controllers"]));
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
 
         _ = result.ProfilingContext.Should().BeEmpty();
     }
 
     [Fact]
-    public void ContextBuilder_DiagnosticReports_SortedByName()
+    public async Task ContextBuilder_DiagnosticReports_SortedByName()
     {
         string targetDir = CreateTargetDir("proj", b => b
             .AddDirectory("myapi/Controllers"));
@@ -355,7 +355,7 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
             ["Alpha"] = new(Success: true, Report: "a-data", Summary: null, PromptPath: null, ResponsePath: null),
         };
 
-        AnalysisContext result = AnalysisContextBuilder.Build(
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
             targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: reports);
 
         int alphaPos = result.ProfilingContext.IndexOf("### Alpha", StringComparison.Ordinal);

@@ -72,7 +72,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -109,7 +109,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -143,7 +143,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         // Verify second fix call received previous errors
         IReadOnlyList<FixStepInput> fixCalls =
             [.. pipeline.ReceivedCalls()
-                .Where(c => string.Equals(c.GetMethodInfo().Name, nameof(IImplementerPipeline.InvokeFixAgentAsync), StringComparison.Ordinal))
+                .Where(c => string.Equals(c.GetMethodInfo().Name, nameof(IImplementerPipeline.InvokeImplementerAgentAsync), StringComparison.Ordinal))
                 .Select(c => (FixStepInput)c.GetArguments()[0]!),];
 
         _ = fixCalls.Should().HaveCount(2);
@@ -164,7 +164,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -195,7 +195,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         // Verify second fix call received test error context
         IReadOnlyList<FixStepInput> fixCalls =
             [.. pipeline.ReceivedCalls()
-                .Where(c => string.Equals(c.GetMethodInfo().Name, nameof(IImplementerPipeline.InvokeFixAgentAsync), StringComparison.Ordinal))
+                .Where(c => string.Equals(c.GetMethodInfo().Name, nameof(IImplementerPipeline.InvokeImplementerAgentAsync), StringComparison.Ordinal))
                 .Select(c => (FixStepInput)c.GetArguments()[0]!),];
 
         _ = fixCalls[1].PreviousErrors.Should().Contain("test");
@@ -214,7 +214,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -254,7 +254,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -303,7 +303,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -362,7 +362,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply()));
@@ -409,7 +409,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
         IHoneEventSink sink = Substitute.For<IHoneEventSink>();
 
-        _ = pipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkFix()));
         _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OkApply("sha-final")));

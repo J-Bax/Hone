@@ -122,7 +122,7 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
 
         // Implementer pipeline mock — sensible defaults
         IImplementerPipeline implPipeline = Substitute.For<IImplementerPipeline>();
-        _ = implPipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = implPipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(SucceededFix()));
         _ = implPipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ApplyStepResult(Success: true, CommitSha: "abc123", Description: "fix")));

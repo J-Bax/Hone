@@ -1,5 +1,6 @@
 using System.Text.Json;
 
+using Hone.Core.Constants;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
 
@@ -9,7 +10,6 @@ namespace Hone.Diagnostics.Analyzers;
 /// Analyzes GC statistics and allocation data by building a prompt with
 /// GC report content and performance metrics, then calling the
 /// <c>hone-memory-profiler</c> AI agent.
-/// Ports <c>harness/analyzers/memory-gc/Invoke-Analyzer.ps1</c>.
 /// </summary>
 internal sealed class MemoryGcAnalyzer : IAnalyzerPlugin
 {
@@ -32,7 +32,7 @@ internal sealed class MemoryGcAnalyzer : IAnalyzerPlugin
     public string Name => "memory-gc";
 
     /// <inheritdoc />
-    public IReadOnlyList<string> RequiredCollectors { get; } = ["perfview-gc"];
+    public IReadOnlyList<string> RequiredCollectors { get; } = [WellKnownCollectors.PerfViewGc];
 
     /// <inheritdoc />
     public async Task<AnalyzerResult> AnalyzeAsync(
@@ -42,7 +42,7 @@ internal sealed class MemoryGcAnalyzer : IAnalyzerPlugin
         ArgumentNullException.ThrowIfNull(context);
 
         // ── Resolve GC report data ──────────────────────────────────────
-        if (!context.CollectorData.TryGetValue("perfview-gc", out CollectorExportResult? gcData))
+        if (!context.CollectorData.TryGetValue(WellKnownCollectors.PerfViewGc, out CollectorExportResult? gcData))
         {
             return new AnalyzerResult(
                 Success: false,
@@ -60,7 +60,7 @@ internal sealed class MemoryGcAnalyzer : IAnalyzerPlugin
 
         // ── Optionally read allocation type data from perfview-cpu ──────
         string? allocTypesContent = null;
-        if (context.CollectorData.TryGetValue("perfview-cpu", out CollectorExportResult? cpuData))
+        if (context.CollectorData.TryGetValue(WellKnownCollectors.PerfViewCpu, out CollectorExportResult? cpuData))
         {
             string? allocPath = AnalyzerPromptHelper.ResolveDataPath(cpuData, "AllocTypesPath", fallbackIndex: 1);
             allocTypesContent = await AnalyzerPromptHelper.ReadFileOrNullAsync(allocPath, ct).ConfigureAwait(false);

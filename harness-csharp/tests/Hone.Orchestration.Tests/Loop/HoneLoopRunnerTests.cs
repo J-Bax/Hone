@@ -113,7 +113,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
 
         // Implementer pipeline mock
         IImplementerPipeline implPipeline = Substitute.For<IImplementerPipeline>();
-        _ = implPipeline.InvokeFixAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+        _ = implPipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(SucceededFix()));
         _ = implPipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ApplyStepResult(Success: true, CommitSha: "abc123", Description: "fix")));
@@ -287,7 +287,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                     .Returns(ImprovedComparison());
             },
             configureImplementer: implPipeline =>
-                _ = implPipeline.InvokeFixAgentAsync(
+                _ = implPipeline.InvokeImplementerAgentAsync(
                         Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
                     .Returns(_ =>
                     {
@@ -400,7 +400,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                     .Returns(Task.FromResult(new AnalysisResult(
                         Success: true, Opportunities: MakeOpportunities(count: 5)))),
             configureImplementer: implPipeline =>
-                _ = implPipeline.InvokeFixAgentAsync(
+                _ = implPipeline.InvokeImplementerAgentAsync(
                         Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
                     .Returns(Task.FromResult(FailedFix())),
             config: config);
