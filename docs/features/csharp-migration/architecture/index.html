@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hone C# Migration — Architecture Review</title>
+  <style>
+    /* ===== Reset & Base ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --primary: #2563eb;
+      --primary-light: #dbeafe;
+      --secondary: #16a34a;
+      --secondary-light: #dcfce7;
+      --accent: #ea580c;
+      --accent-light: #fff7ed;
+      --neutral: #64748b;
+      --neutral-light: #f1f5f9;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #1e293b;
+      --text-muted: #475569;
+      --border: #e2e8f0;
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05);
+      --radius: 8px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif;
+      --font-mono: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace;
+    }
+
+    html { font-size: 16px; scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code, .mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+    /* ===== Navigation ===== */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--card-bg);
+      border-bottom: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .navbar-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 0 1.5rem;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .navbar-brand {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: var(--primary);
+      white-space: nowrap;
+      padding: 0.85rem 1rem 0.85rem 0;
+      border-right: 1px solid var(--border);
+      margin-right: 0.25rem;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-links { display: flex; gap: 0; list-style: none; }
+
+    .nav-links a {
+      display: block;
+      padding: 0.85rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .nav-links a:hover { color: var(--primary); text-decoration: none; }
+
+    .nav-links a.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ===== Layout ===== */
+    .container { max-width: 1280px; margin: 0 auto; padding: 0 1.5rem; }
+
+    section { padding: 2.5rem 0; }
+    section + section { border-top: 1px solid var(--border); }
+
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      color: var(--text);
+    }
+
+    /* ===== Hero ===== */
+    .hero {
+      background: linear-gradient(135deg, #1e3a8a 0%, var(--primary) 60%, #3b82f6 100%);
+      color: #fff;
+      padding: 3.5rem 0 3rem;
+      text-align: center;
+    }
+
+    .hero h1 { font-size: 2.2rem; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 0.5rem; }
+    .hero p { font-size: 1.1rem; opacity: 0.88; max-width: 640px; margin: 0 auto; }
+
+    /* ===== Quick Stats ===== */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 1rem;
+      padding: 2rem 0;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1rem;
+      text-align: center;
+      box-shadow: var(--shadow);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+    .stat-number {
+      display: block;
+      font-size: 1.85rem;
+      font-weight: 800;
+      color: var(--primary);
+      line-height: 1.1;
+    }
+
+    .stat-label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 0.35rem;
+    }
+
+    /* ===== Phase Timeline ===== */
+    .timeline-wrapper {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 1rem 0 1.5rem;
+    }
+
+    .timeline-svg { display: block; min-width: 1100px; }
+
+    .timeline-hint {
+      display: none;
+      font-size: 0.78rem;
+      color: var(--neutral);
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    @media (max-width: 1140px) {
+      .timeline-hint { display: block; }
+    }
+
+    /* ===== Migration Overview ===== */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .overview-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+
+    .overview-card h3 {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.75rem;
+    }
+
+    .overview-card h3.from-label { color: var(--accent); }
+    .overview-card h3.to-label { color: var(--secondary); }
+    .overview-card h3.strategy-label { color: var(--primary); }
+    .overview-card h3.loop-label { color: #7c3aed; }
+
+    .overview-card p, .overview-card ul { font-size: 0.92rem; color: var(--text-muted); }
+    .overview-card ul { padding-left: 1.25rem; }
+    .overview-card li { margin-bottom: 0.3rem; }
+
+    .loop-steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    .loop-step {
+      background: #f5f3ff;
+      color: #6d28d9;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+    }
+
+    .loop-arrow { color: var(--neutral); font-size: 0.85rem; }
+
+    /* ===== Page Guide ===== */
+    .page-guide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+
+    .guide-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.35rem;
+      box-shadow: var(--shadow);
+      transition: transform 0.15s, box-shadow 0.15s;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .guide-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+    .guide-card-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .guide-card h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    .guide-card h3 a { color: var(--text); }
+    .guide-card h3 a:hover { color: var(--primary); text-decoration: none; }
+
+    .guide-card p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      flex: 1;
+    }
+
+    .guide-card .guide-link {
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    /* ===== Footer ===== */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem 0;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--neutral);
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+      .hero { padding: 2.5rem 0 2rem; }
+      .hero h1 { font-size: 1.6rem; }
+      .hero p { font-size: 0.95rem; }
+      .overview-grid { grid-template-columns: 1fr; }
+      .navbar-brand { display: none; }
+      .nav-links a { padding: 0.75rem 0.65rem; font-size: 0.76rem; }
+    }
+
+    /* ===== Print ===== */
+    @media print {
+      .navbar { position: static; box-shadow: none; border-bottom: 2px solid #000; }
+      .hero { background: none !important; color: #000; border-bottom: 2px solid #000; padding: 1.5rem 0; }
+      .stat-card, .guide-card, .overview-card { box-shadow: none; border: 1px solid #ccc; break-inside: avoid; }
+      .timeline-wrapper { overflow: visible; }
+      .timeline-hint { display: none !important; }
+      body { background: #fff; }
+      section + section { border-top: 1px solid #ccc; }
+      a { color: #000 !important; }
+      .site-footer { border-top: 1px solid #ccc; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== Navbar ===== -->
+  <nav class="navbar" aria-label="Main navigation">
+    <div class="navbar-inner">
+      <span class="navbar-brand">Hone Architecture</span>
+      <ul class="nav-links">
+        <li><a href="index.html" class="active">Overview</a></li>
+        <li><a href="solution-structure.html">Solution Structure</a></li>
+        <li><a href="core-domain.html">Core Domain</a></li>
+        <li><a href="data-flows.html">Data Flows</a></li>
+        <li><a href="interfaces-contracts.html">Interfaces &amp; Contracts</a></li>
+        <li><a href="phase-map.html">Phase Map</a></li>
+        <li><a href="observability-events.html">Observability</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- ===== Hero ===== -->
+  <header class="hero">
+    <div class="container">
+      <h1>Hone C# Migration — Architecture Review</h1>
+      <p>A visual guide to the .NET 10 agentic performance optimization harness</p>
+    </div>
+  </header>
+
+  <!-- ===== Quick Stats ===== -->
+  <section>
+    <div class="container">
+      <div class="stats-bar">
+        <div class="stat-card">
+          <span class="stat-number">15</span>
+          <span class="stat-label">Source Projects</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">16</span>
+          <span class="stat-label">Test Projects</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">10</span>
+          <span class="stat-label">Migration Phases</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">9</span>
+          <span class="stat-label">Core Interfaces</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">25+</span>
+          <span class="stat-label">Domain Models</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">7</span>
+          <span class="stat-label">Event Types</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-number">~9,500</span>
+          <span class="stat-label">Lines Added</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Phase Timeline ===== -->
+  <section>
+    <div class="container">
+      <h2 class="section-title">Phase Timeline</h2>
+      <p class="timeline-hint">← Scroll horizontally to see all phases →</p>
+      <div class="timeline-wrapper">
+        <svg class="timeline-svg" viewBox="0 0 1100 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Phase timeline showing migration phases 0 through 10 with dependency arrows">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 3.5 L 0 7 z" fill="#94a3b8"/>
+            </marker>
+            <filter id="nodeShadow" x="-10%" y="-10%" width="120%" height="130%">
+              <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.12"/>
+            </filter>
+          </defs>
+
+          <!-- Phase nodes — arranged in a DAG-like layout -->
+          <!-- Row 1 (y=45): Phase 0 -->
+          <!-- Row 2 (y=125): Phase 1 -->
+          <!-- Row 3 (y=205): Phases 2,3,4,5,6,7 -->
+          <!-- Row 4 (y=285): Phases 8,9,10 -->
+
+          <!-- ===== Dependency Arrows ===== -->
+          <!-- Phase 0 → 1 -->
+          <line x1="90" y1="67" x2="90" y2="103" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 1 → 2 -->
+          <path d="M 65 147 L 65 167 Q 65 177 65 177 L 65 183" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 1 → 3 -->
+          <path d="M 90 147 L 230 183" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 1 → 4 -->
+          <path d="M 115 147 L 395 183" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 1 → 5 (via 1,2) -->
+          <path d="M 115 147 L 555 183" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+          <!-- Phase 2 → 5 -->
+          <path d="M 90 227 L 540 195" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 1 → 7 -->
+          <path d="M 115 147 L 870 183" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)" stroke-dasharray="4,3"/>
+          <!-- Phase 2 → 7 -->
+          <path d="M 90 227 L 855 207" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 2 → 6 -->
+          <path d="M 90 227 L 695 210" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 5 → 6 -->
+          <path d="M 595 205 L 695 205" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phases 1-7 → 8 (fan-in) -->
+          <path d="M 65 227 L 395 263" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <path d="M 255 227 L 395 268" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <path d="M 420 227 L 420 263" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <path d="M 575 227 L 445 268" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <path d="M 735 227 L 445 273" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <path d="M 895 227 L 445 278" fill="none" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 8 → 9 -->
+          <line x1="470" y1="285" x2="650" y2="285" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+          <!-- Phase 9 → 10 -->
+          <line x1="790" y1="285" x2="900" y2="285" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+          <!-- ===== Phase Nodes ===== -->
+          <!-- Phase 0: Solution Scaffolding -->
+          <g filter="url(#nodeShadow)">
+            <rect x="30" y="25" width="120" height="42" rx="6" fill="#64748b"/>
+            <text x="90" y="42" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 0</text>
+            <text x="90" y="57" text-anchor="middle" fill="#e2e8f0" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Solution Scaffolding</text>
+          </g>
+
+          <!-- Phase 1: Core Models, Config, Observability -->
+          <g filter="url(#nodeShadow)">
+            <rect x="30" y="105" width="120" height="42" rx="6" fill="#2563eb"/>
+            <text x="90" y="122" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 1</text>
+            <text x="90" y="137" text-anchor="middle" fill="#dbeafe" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Core / Config / Obs.</text>
+          </g>
+
+          <!-- Phase 2: Measurement & Comparison -->
+          <g filter="url(#nodeShadow)">
+            <rect x="30" y="185" width="120" height="42" rx="6" fill="#16a34a"/>
+            <text x="90" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 2</text>
+            <text x="90" y="217" text-anchor="middle" fill="#dcfce7" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Measure &amp; Compare</text>
+          </g>
+
+          <!-- Phase 3: Lifecycle & Hooks -->
+          <g filter="url(#nodeShadow)">
+            <rect x="190" y="185" width="120" height="42" rx="6" fill="#16a34a"/>
+            <text x="250" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 3</text>
+            <text x="250" y="217" text-anchor="middle" fill="#dcfce7" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Lifecycle &amp; Hooks</text>
+          </g>
+
+          <!-- Phase 4: Source Control -->
+          <g filter="url(#nodeShadow)">
+            <rect x="350" y="185" width="120" height="42" rx="6" fill="#16a34a"/>
+            <text x="410" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 4</text>
+            <text x="410" y="217" text-anchor="middle" fill="#dcfce7" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Source Control</text>
+          </g>
+
+          <!-- Phase 5: AI Agent Integration -->
+          <g filter="url(#nodeShadow)">
+            <rect x="510" y="185" width="120" height="42" rx="6" fill="#7c3aed"/>
+            <text x="570" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 5</text>
+            <text x="570" y="217" text-anchor="middle" fill="#ede9fe" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">AI Agent Integration</text>
+          </g>
+
+          <!-- Phase 6: Diagnostic Profiling -->
+          <g filter="url(#nodeShadow)">
+            <rect x="670" y="185" width="120" height="42" rx="6" fill="#0891b2"/>
+            <text x="730" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 6</text>
+            <text x="730" y="217" text-anchor="middle" fill="#cffafe" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Diagnostic Profiling</text>
+          </g>
+
+          <!-- Phase 7: Reporting & Export -->
+          <g filter="url(#nodeShadow)">
+            <rect x="830" y="185" width="120" height="42" rx="6" fill="#0891b2"/>
+            <text x="890" y="202" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 7</text>
+            <text x="890" y="217" text-anchor="middle" fill="#cffafe" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Reporting &amp; Export</text>
+          </g>
+
+          <!-- Phase 8: Orchestration -->
+          <g filter="url(#nodeShadow)">
+            <rect x="360" y="265" width="120" height="42" rx="6" fill="#ea580c"/>
+            <text x="420" y="282" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 8</text>
+            <text x="420" y="297" text-anchor="middle" fill="#fff7ed" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Orchestration ★</text>
+          </g>
+
+          <!-- Phase 9: CLI Host & Integration Tests -->
+          <g filter="url(#nodeShadow)">
+            <rect x="660" y="265" width="130" height="42" rx="6" fill="#be185d"/>
+            <text x="725" y="282" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 9</text>
+            <text x="725" y="297" text-anchor="middle" fill="#fce7f3" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">CLI &amp; Integration Tests</text>
+          </g>
+
+          <!-- Phase 10: Target Migration & Cutover -->
+          <g filter="url(#nodeShadow)">
+            <rect x="910" y="265" width="150" height="42" rx="6" fill="#b91c1c"/>
+            <text x="985" y="282" text-anchor="middle" fill="#fff" font-size="10" font-weight="700" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Phase 10</text>
+            <text x="985" y="297" text-anchor="middle" fill="#fef2f2" font-size="8.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Migration &amp; Cutover</text>
+          </g>
+
+          <!-- Legend -->
+          <g transform="translate(10, 325)">
+            <rect x="0" y="0" width="8" height="8" rx="2" fill="#64748b"/><text x="12" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Infrastructure</text>
+            <rect x="100" y="0" width="8" height="8" rx="2" fill="#2563eb"/><text x="112" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Core / Foundation</text>
+            <rect x="210" y="0" width="8" height="8" rx="2" fill="#16a34a"/><text x="222" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Implementation</text>
+            <rect x="310" y="0" width="8" height="8" rx="2" fill="#7c3aed"/><text x="322" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">AI / Agents</text>
+            <rect x="390" y="0" width="8" height="8" rx="2" fill="#0891b2"/><text x="402" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Diagnostics</text>
+            <rect x="475" y="0" width="8" height="8" rx="2" fill="#ea580c"/><text x="487" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Orchestration</text>
+            <rect x="575" y="0" width="8" height="8" rx="2" fill="#be185d"/><text x="587" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Integration</text>
+            <rect x="660" y="0" width="8" height="8" rx="2" fill="#b91c1c"/><text x="672" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Cutover</text>
+            <line x1="780" y1="4" x2="810" y2="4" stroke="#94a3b8" stroke-width="1.5"/><text x="815" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Direct dep</text>
+            <line x1="890" y1="4" x2="920" y2="4" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/><text x="925" y="8" font-size="7.5" fill="#64748b" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">Transitive dep</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Migration Overview ===== -->
+  <section>
+    <div class="container">
+      <h2 class="section-title">Migration Overview</h2>
+      <div class="overview-grid">
+        <div class="overview-card">
+          <h3 class="from-label">From — PowerShell Harness</h3>
+          <ul>
+            <li>~11,000 lines across 87 files</li>
+            <li>Dynamic typing throughout</li>
+            <li>Poor testability &amp; limited IDE support</li>
+            <li>Monolithic script architecture</li>
+          </ul>
+        </div>
+        <div class="overview-card">
+          <h3 class="to-label">To — C# / .NET 10</h3>
+          <ul>
+            <li>15 source projects, strong typing</li>
+            <li>Async-first design throughout</li>
+            <li>Plugin architecture via interfaces</li>
+            <li>Independently testable components</li>
+          </ul>
+        </div>
+        <div class="overview-card">
+          <h3 class="strategy-label">Strategy</h3>
+          <p>Clean break — not a line-by-line port. Each phase is independently buildable and testable, with clear interfaces defining the contracts between components. The migration proceeds bottom-up, from core models to full orchestration.</p>
+        </div>
+        <div class="overview-card">
+          <h3 class="loop-label">The Agentic Loop</h3>
+          <div class="loop-steps">
+            <span class="loop-step">Build</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Verify</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Measure</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Analyze</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Classify</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Implement</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Compare</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Publish</span><span class="loop-arrow">→</span>
+            <span class="loop-step">Repeat</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Page Guide ===== -->
+  <section>
+    <div class="container">
+      <h2 class="section-title">Page Guide</h2>
+      <div class="page-guide-grid">
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#dbeafe;">
+            <!-- Folder tree icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+          </div>
+          <h3><a href="solution-structure.html">Solution Structure</a></h3>
+          <p>How the 31 projects are organized — source vs. test, layer boundaries, dependency graph, and naming conventions.</p>
+          <a class="guide-link" href="solution-structure.html">View page →</a>
+        </div>
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#dcfce7;">
+            <!-- Cube/domain icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </div>
+          <h3><a href="core-domain.html">Core Domain</a></h3>
+          <p>The 25+ domain models, value objects, enums, and the rich type system that replaced PowerShell's dynamic objects.</p>
+          <a class="guide-link" href="core-domain.html">View page →</a>
+        </div>
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#e0f2fe;">
+            <!-- Flow/arrows icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0891b2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
+              <polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/>
+              <line x1="4" y1="4" x2="9" y2="9"/>
+            </svg>
+          </div>
+          <h3><a href="data-flows.html">Data Flows</a></h3>
+          <p>How data moves through the system — from build output to measurements, through classification, and into reports.</p>
+          <a class="guide-link" href="data-flows.html">View page →</a>
+        </div>
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#f5f3ff;">
+            <!-- Interface/contract icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+          </div>
+          <h3><a href="interfaces-contracts.html">Interfaces &amp; Contracts</a></h3>
+          <p>The 9 core interfaces that define the plugin architecture — what each abstracts, its methods, and how they compose.</p>
+          <a class="guide-link" href="interfaces-contracts.html">View page →</a>
+        </div>
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#fff7ed;">
+            <!-- Map/phases icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+              <line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/>
+            </svg>
+          </div>
+          <h3><a href="phase-map.html">Phase Map</a></h3>
+          <p>Detailed breakdown of each migration phase — scope, deliverables, dependencies, and implementation status.</p>
+          <a class="guide-link" href="phase-map.html">View page →</a>
+        </div>
+
+        <div class="guide-card">
+          <div class="guide-card-icon" style="background:#fce7f3;">
+            <!-- Activity/observability icon -->
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#be185d" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+          </div>
+          <h3><a href="observability-events.html">Observability</a></h3>
+          <p>The 7 event types, structured logging design, and how the system exposes its internal state for monitoring and debugging.</p>
+          <a class="guide-link" href="observability-events.html">View page →</a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Footer ===== -->
+  <footer class="site-footer">
+    <div class="container">
+      Hone C# Migration — Architecture Documentation
+    </div>
+  </footer>
+
+</body>
+</html>

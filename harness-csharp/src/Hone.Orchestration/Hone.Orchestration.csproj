@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.Orchestration.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    <InternalsVisibleTo Include="Hone.Cli" />
+    <InternalsVisibleTo Include="Hone.Integration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.Agents.CopilotCli.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
+  </ItemGroup>
+
+</Project>

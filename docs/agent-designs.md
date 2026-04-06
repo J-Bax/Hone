@@ -13,19 +13,19 @@ flowchart TD
     subgraph DIAGNOSTIC["Diagnostic Phase"]
         PV_CPU["perfview-cpu<br/>collector"] --> EXP_CPU["Export &<br/>fold stacks"]
         PV_GC["perfview-gc<br/>collector"] --> EXP_GC["Export GC<br/>stats"]
-        EXP_CPU --> CPU_AGENT["🧠 hone-cpu-profiler<br/>(cpu-hotspots analyzer)"]
-        EXP_GC --> MEM_AGENT["🧠 hone-memory-profiler<br/>(memory-gc analyzer)"]
+        EXP_CPU --> CPU_AGENT["🧠 hone-cpu-profiler<br/>(CpuHotspotsAnalyzer)"]
+        EXP_GC --> MEM_AGENT["🧠 hone-memory-profiler<br/>(MemoryGcAnalyzer)"]
     end
 
     subgraph MAIN["Main Experiment Phase"]
-        CPU_AGENT --> CONTEXT["Build-AnalysisContext.ps1<br/>(metrics + source + history + profiling)"]
+        CPU_AGENT --> CONTEXT["AnalysisContextBuilder<br/>(metrics + source + history + profiling)"]
         MEM_AGENT --> CONTEXT
         CONTEXT --> ANALYST["🧠 hone-analyst<br/>→ 1-3 ranked opportunities"]
-        ANALYST --> QUEUE["Manage-OptimizationQueue.ps1<br/>→ queue populated"]
+        ANALYST --> QUEUE["OptimizationQueueManager<br/>→ queue populated"]
         QUEUE --> CLASSIFIER["🧠 hone-classifier<br/>→ narrow / architecture"]
-        CLASSIFIER -->|narrow| RCA["Export-ExperimentRCA.ps1<br/>→ root-cause document"]
-        RCA --> FIXER["🧠 hone-fixer<br/>→ complete file content"]
-        FIXER --> APPLY["Apply-Suggestion.ps1<br/>→ build, test, measure"]
+        CLASSIFIER -->|narrow| RCA["RcaExporter<br/>→ root-cause document"]
+        RCA --> IMPLEMENTER["🧠 hone-implementer<br/>→ complete file content"]
+        IMPLEMENTER --> APPLY["ExperimentBranchManager<br/>→ build, test, measure"]
         CLASSIFIER -->|architecture| SKIP["Deferred<br/>(logged, stays in queue)"]
     end
 
@@ -37,10 +37,57 @@ flowchart TD
     style MEM_AGENT fill:#9b59b6,color:#fff
     style ANALYST fill:#9b59b6,color:#fff
     style CLASSIFIER fill:#9b59b6,color:#fff
-    style FIXER fill:#e74c3c,color:#fff
+    style IMPLEMENTER fill:#e74c3c,color:#fff
 ```
 
-The diagnostic phase runs PerfView profiling and feeds the results through specialized analyzer agents. Their reports are injected into the main analyst's prompt alongside performance metrics and source code. The analyst produces ranked optimization opportunities that populate a queue. Each queued item goes through classification (narrow vs. architecture) — narrow items proceed to the fixer agent for code generation.
+The diagnostic phase runs PerfView profiling and feeds the results through specialized analyzer agents (`CpuHotspotsAnalyzer`, `MemoryGcAnalyzer` in `Hone.Diagnostics`). Their reports are injected into the main analyst's prompt alongside performance metrics and source code. The analyst produces ranked optimization opportunities that populate a queue. Each queued item goes through classification (narrow vs. architecture) — narrow items proceed to the implementer agent for code generation.
+
+## `IAgentRunner` Architecture
+
+All AI agent invocations flow through the `IAgentRunner` interface defined in `Hone.Core/Contracts/`:
+
+```csharp
+public interface IAgentRunner
+{
+    Task<AgentRunResult> InvokeAsync(AgentInvocation invocation, CancellationToken ct = default);
+}
+
+public sealed record AgentInvocation(
+    string AgentName,       // Copilot agent name (e.g., "hone-analyst")
+    string Model,           // Model to use (e.g., "claude-opus-4.6")
+    string Prompt,          // Full prompt content
+    TimeSpan Timeout,       // Max execution time
+    string? WorkingDir = null
+);
+
+public sealed record AgentRunResult(
+    bool Success,
+    string? Output,
+    bool TimedOut,
+    int ExitCode
+);
+```
+
+**`CopilotCliAgentRunner`** in `Hone.Agents.CopilotCli` implements `IAgentRunner`. It:
+- Uses `IProcessRunner` to invoke `copilot --agent <name> --model <model>` as a subprocess
+- Enforces timeout via `CancellationTokenSource.CreateLinkedTokenSource`
+- Handles UTF-8 encoding for non-ASCII content in source code and prompts
+- Returns structured `AgentRunResult` for typed error handling
+
+**`AgentInvoker`** in `Hone.Agents.Core` wraps `IAgentRunner` and provides:
+- **JSON response handling**: `JsonUtils.ExtractJsonBlock` strips markdown fences, `JsonUtils.SanitizeNaN` replaces JavaScript literals
+- **Retry logic**: configurable max retries with prompt augmentation on failure
+- **Artifact saving**: prompt and response saved to `experiment-N/` for debugging and audit
+- **Mock support**: when `MockResponsePath` is set, returns canned file content without invoking Copilot
+
+The invocation flow:
+
+```
+AnalysisAgent / ClassificationAgent / ImplementerAgent (prompt building)
+  → AgentInvoker (JSON extraction, retry, artifact saving)
+    → CopilotCliAgentRunner (process management, timeout)
+      → copilot CLI
+```
 
 ## Agents
 
@@ -49,9 +96,8 @@ The diagnostic phase runs PerfView profiling and feeds the results through speci
 | | |
 |---|---|
 | **Definition** | `harness/analyzers/cpu-hotspots/agent.md` (symlinked to `.github/agents/hone-cpu-profiler.agent.md`) |
-| **Invoker** | `harness/analyzers/cpu-hotspots/Invoke-Analyzer.ps1` |
-| **Metadata** | `harness/analyzers/cpu-hotspots/analyzer.psd1` |
-| **Default model** | `claude-opus-4.6` (via `Diagnostics.AnalyzerSettings.'cpu-hotspots'.Model`) |
+| **C# Implementation** | `CpuHotspotsAnalyzer` in `Hone.Diagnostics` (implements `IAnalyzerPlugin`) |
+| **Default model** | `claude-opus-4.6` (via `Diagnostics.AnalyzerSettings.cpu-hotspots.Model`) |
 | **Tools** | None — receives all data in the prompt |
 | **Required collectors** | `perfview-cpu` |
 
@@ -85,9 +131,8 @@ The diagnostic phase runs PerfView profiling and feeds the results through speci
 | | |
 |---|---|
 | **Definition** | `harness/analyzers/memory-gc/agent.md` (symlinked to `.github/agents/hone-memory-profiler.agent.md`) |
-| **Invoker** | `harness/analyzers/memory-gc/Invoke-Analyzer.ps1` |
-| **Metadata** | `harness/analyzers/memory-gc/analyzer.psd1` |
-| **Default model** | `claude-opus-4.6` (via `Diagnostics.AnalyzerSettings.'memory-gc'.Model`) |
+| **C# Implementation** | `MemoryGcAnalyzer` in `Hone.Diagnostics` (implements `IAnalyzerPlugin`) |
+| **Default model** | `claude-opus-4.6` (via `Diagnostics.AnalyzerSettings.memory-gc.Model`) |
 | **Tools** | None — receives all data in the prompt |
 | **Required collectors** | `perfview-gc` |
 | **Optional collectors** | `perfview-cpu` (for allocation type data) |
@@ -137,24 +182,24 @@ The diagnostic phase runs PerfView profiling and feeds the results through speci
 | | |
 |---|---|
 | **Definition** | `.github/agents/hone-analyst.agent.md` |
-| **Invoker** | `harness/Invoke-AnalysisAgent.ps1` → `Invoke-CopilotAgent.ps1` |
-| **Prompt builder** | `harness/Build-AnalysisContext.ps1` |
-| **Default model** | `claude-opus-4.6` (via `Copilot.AnalysisModel`) |
+| **C# Implementation** | `AnalysisAgent` in `Hone.Agents.Loop` |
+| **Prompt builder** | `AnalysisContextBuilder` in `Hone.Agents.Loop` |
+| **Default model** | `claude-opus-4.6` (via `Agents.AnalysisModel`) |
 | **Tools** | `read` — can read source files directly |
 
 **Purpose.** The orchestrating analysis agent. Examines performance metrics, profiling data, source code, and optimization history to identify the highest-impact optimization opportunities. This is the most context-heavy agent in the pipeline.
 
-**Prompt construction.** `Build-AnalysisContext.ps1` assembles five context sections:
+**Prompt construction.** `AnalysisContextBuilder` assembles five context sections:
 
 | Section | Content | Source |
 |---------|---------|--------|
 | **SourceFilePaths** | List of API source files (paths only — agent reads files itself) | Filesystem scan of `Api.ProjectPath` |
 | **CounterContext** | .NET runtime counters: CPU avg, GC heap max, Gen2 collections, thread pool | `dotnet-counters` collector |
 | **TrafficContext** | k6 scenario source code showing request weights and endpoint distribution | k6 scenario file |
-| **HistoryContext** | Previously tried optimizations, optimization queue state, last experiment's fix, experiment metrics table | `experiment-log.md`, `experiment-queue.json`, `run-metadata.json` |
+| **HistoryContext** | Previously tried optimizations, optimization queue state, last experiment's fix, experiment metrics table | `experiment-log.md`, `experiment-queue.json`, `run-metadata.json` (read by `AnalysisContextBuilder`) |
 | **ProfilingContext** | Diagnostic reports from analyzer agents (CPU hotspots, memory/GC analysis) | `DiagnosticReports` hashtable |
 
-The invoker (`Invoke-AnalysisAgent.ps1`) wraps these sections into a structured prompt alongside current and baseline performance metrics, then delegates to the unified agent runner (`Invoke-CopilotAgent.ps1`) which handles model resolution, UTF-8 encoding, timeout enforcement (configurable via `Copilot.AgentTimeoutSec`, default 600s), JSON extraction, and retry logic.
+The invoker (`AnalysisAgent`) wraps these sections into a structured prompt alongside current and baseline performance metrics, then delegates to `AgentInvoker` which handles model resolution, UTF-8 encoding, timeout enforcement (configurable via `Agents.AgentTimeoutSec`, default 1800s), JSON extraction, and retry logic.
 
 **Inputs.** Current metrics (p95, RPS, error rate), baseline metrics, comparison result, .NET counter metrics, optimization history, diagnostic profiling reports, and previous experiment's RCA explanation.
 
@@ -182,7 +227,7 @@ The invoker (`Invoke-AnalysisAgent.ps1`) wraps these sections into a structured 
 
 The `rootCause` field is a markdown document with four required sections: Evidence (code snippets + line numbers), Theory (why the pattern causes poor performance), Proposed Fixes (what to change and where), and Expected Impact (which metrics should improve).
 
-**Output handling.** Parsed opportunities are fed into the optimization queue via `Manage-OptimizationQueue.ps1`. The primary opportunity's `filePath` and `rootCause` are passed downstream to the classifier and fixer.
+**Output handling.** Parsed opportunities are fed into the optimization queue via `OptimizationQueueManager`. The primary opportunity's `filePath` and `rootCause` are passed downstream to the classifier and implementer.
 
 **Artifacts saved:**
 - `experiment-N/analysis-prompt.md` — the full prompt sent to the agent
@@ -202,11 +247,11 @@ The `rootCause` field is a markdown document with four required sections: Eviden
 | | |
 |---|---|
 | **Definition** | `.github/agents/hone-classifier.agent.md` |
-| **Invoker** | `harness/Invoke-ClassificationAgent.ps1` → `Invoke-CopilotAgent.ps1` |
-| **Default model** | `claude-haiku-4.5` (via `Copilot.ClassificationModel`) |
+| **C# Implementation** | `ClassificationAgent` in `Hone.Agents.Loop` |
+| **Default model** | `claude-opus-4.6` (via `Agents.ClassificationModel`) |
 | **Tools** | `read` — reads the target file to verify scope |
 
-**Purpose.** Binary scope classification gate. Determines whether a proposed optimization is **narrow** (single-file, implementation-only) or **architecture** (multi-file, schema change, new dependency). Only narrow-classified changes proceed to the fixer agent.
+**Purpose.** Binary scope classification gate. Determines whether a proposed optimization is **narrow** (single-file, implementation-only) or **architecture** (multi-file, schema change, new dependency). Only narrow-classified changes proceed to the implementer agent.
 
 **Inputs.** Target file path (relative to `sample-api/`) and the optimization explanation from the analyst.
 
@@ -233,18 +278,18 @@ The `rootCause` field is a markdown document with four required sections: Eviden
 
 ---
 
-### hone-fixer
+### hone-implementer
 
 | | |
 |---|---|
-| **Definition** | `.github/agents/hone-fixer.agent.md` |
-| **Invoker** | `harness/Invoke-FixAgent.ps1` → `Invoke-CopilotAgent.ps1` |
-| **Default model** | `claude-sonnet-4.6` (via `Copilot.FixModel`) |
+| **Definition** | `.github/agents/hone-implementer.agent.md` |
+| **C# Implementation** | `ImplementerAgent` in `Hone.Agents.Loop`, invoked via `IterativeImplementerRunner` in `Hone.Orchestration` |
+| **Default model** | `claude-sonnet-4.6` (via `Agents.ImplementerModel`) |
 | **Tools** | `read` — reads the target file before generating the replacement |
 
 **Purpose.** Generates the complete optimized file content for narrow-scope changes. This is the only agent that produces code — all other agents produce analysis and classifications.
 
-**Inputs.** Target file path, optimization explanation, and an optional root-cause document. The root-cause document (generated by `Export-ExperimentRCA.ps1`) provides the fixer with detailed evidence, theory, and proposed approaches from the analyst's root-cause analysis.
+**Inputs.** Target file path, optimization explanation, and an optional root-cause document. The root-cause document (generated by `RcaBuilder` in `Hone.Reporting`) provides the implementer with detailed evidence, theory, and proposed approaches from the analyst's root-cause analysis.
 
 **Prompt structure:**
 
@@ -263,7 +308,7 @@ Apply this specific optimization to the file and return the complete new file co
 
 **Output format.** A single fenced code block containing the complete replacement file content. No explanation, no commentary — just the code. The code block is extracted via regex (`(?ms)```(?:\w+)?\s*\r?\n(.+?)``\``).
 
-**Output handling.** The extracted code block is written to the target file by `Apply-Suggestion.ps1`, which handles the file I/O. The harness then runs build and E2E tests to validate the change.
+**Output handling.** The extracted code block is written to the target file by `ExperimentBranchManager`, which handles the file I/O. The harness then runs build and E2E tests via `DotnetBuildHook` and `DotnetTestHook` to validate the change.
 
 **Key rules enforced by the agent definition:**
 - Must read the target file first before generating changes
@@ -278,46 +323,46 @@ Apply this specific optimization to the file and return the complete new file co
 
 ## Unified Agent Invocation
 
-All three main pipeline agents share a common invocation layer via `Invoke-CopilotAgent.ps1`. Each domain-specific invoker script handles prompt construction and result interpretation, then delegates execution to the unified runner.
+All three main pipeline agents share a common invocation layer via `AgentInvoker` in `Hone.Agents.Core`. Each domain-specific agent class handles prompt construction and result interpretation, then delegates execution to `AgentInvoker`.
 
 ### Execution Flow
 
 ```
-Invoker script (prompt building)
-  → Invoke-CopilotAgent.ps1 (execution)
-    → Invoke-CopilotWithTimeout (process management)
+AnalysisAgent / ClassificationAgent / ImplementerAgent (prompt building)
+  → AgentInvoker (JSON extraction, retry, artifact saving)
+    → CopilotCliAgentRunner (process management, timeout)
       → copilot CLI
 ```
 
 ### Model Resolution
 
-The runner resolves the model in priority order:
-1. Per-agent override in config (e.g., `Copilot.AnalysisModel`)
-2. Global `Copilot.Model` fallback
-3. Hardcoded default specified by the invoker
+`AgentInvoker` resolves the model in priority order:
+1. Per-agent override in config (e.g., `Agents.AnalysisModel`)
+2. Global `Agents.DefaultModel` fallback
+3. Hardcoded default specified by the agent class
 
 ### Timeout Enforcement
 
-Copilot CLI invocations are bounded by `Copilot.AgentTimeoutSec` (default: 600 seconds). The runner uses `System.Diagnostics.ProcessStartInfo` to launch copilot as a subprocess with proper argument quoting, then `WaitForExit` with the configured timeout. If exceeded, the process is terminated and the runner returns a timeout error.
+Copilot CLI invocations are bounded by `Agents.AgentTimeoutSec` (default: 1800 seconds). `CopilotCliAgentRunner` uses `IProcessRunner` to launch copilot as a subprocess with proper argument quoting, then waits with the configured timeout via `CancellationToken`. If exceeded, the process tree is terminated and the runner returns a timeout error result.
 
 ### JSON Response Handling
 
-Agent responses often include markdown code fences around JSON. The runner:
-1. Strips ` ```json ` / ` ``` ` fences
-2. Sanitizes JavaScript literals (`NaN` → `null`, `Infinity` → `null`)
-3. Extracts the first complete JSON object (`{...}`)
-4. Returns both the raw response text and parsed JSON to the invoker
+Agent responses often include markdown code fences around JSON. `AgentInvoker` uses `JsonUtils` to:
+1. Strip ` ```json ` / ` ``` ` fences via `ExtractJsonBlock`
+2. Sanitize JavaScript literals (`NaN` → `null`, `Infinity` → `null`) via `SanitizeNaN`
+3. Extract the first complete JSON object (`{...}`)
+4. Return both the raw response text and parsed JSON to the agent class
 
 ### Retry Logic
 
-When `MaxRetries > 0`, the runner retries on failure:
+When `MaxRetries > 0`, `AgentInvoker` retries on failure:
 - Augments the prompt with a configurable suffix (e.g., strict JSON formatting reminder)
 - Retries up to the specified number of attempts
 - Returns an error result if all retries are exhausted
 
 ### DryRun Mock Support
 
-When `-MockResponsePath` is provided, the runner returns the canned file content without invoking copilot. This enables fast iteration on harness logic without consuming API calls.
+When a `MockResponsePath` is configured, `AgentInvoker` returns the canned file content without invoking copilot. This enables fast iteration on harness logic without consuming API calls.
 
 ## Agent Definition Files
 
@@ -341,7 +386,7 @@ classification criteria, and numbered rules.
 **YAML frontmatter fields:**
 - `name` — Agent identifier used with `copilot --agent <name>`
 - `description` — Brief description shown in agent listings
-- `tools` — List of tools the agent can use. Main pipeline agents (`hone-analyst`, `hone-classifier`, `hone-fixer`) have `read` access. Analyzer agents (`hone-cpu-profiler`, `hone-memory-profiler`) have no tools — they receive all data directly in the prompt
+- `tools` — List of tools the agent can use. Main pipeline agents (`hone-analyst`, `hone-classifier`, `hone-implementer`) have `read` access. Analyzer agents (`hone-cpu-profiler`, `hone-memory-profiler`) have no tools — they receive all data directly in the prompt
 
 **Analyzer agent symlinks.** Analyzer agent definitions live alongside their plugin code in `harness/analyzers/<name>/agent.md` and are symlinked into `.github/agents/` so the `copilot` CLI can discover them:
 
@@ -352,24 +397,25 @@ harness/analyzers/memory-gc/agent.md     →  .github/agents/hone-memory-profile
 
 ## Model Configuration
 
-Agent models are configured in `harness/config.psd1` with a hierarchy of defaults and overrides:
+Agent models are configured in `harness-csharp/config.yaml` (engine defaults) or `.hone/config.yaml` (target overrides) with a hierarchy of defaults and overrides:
 
-```powershell
-Copilot = @{
-    Model               = 'claude-sonnet-4.5'    # Global default for all agents
-    AnalysisModel       = 'claude-opus-4.6'      # hone-analyst
-    ClassificationModel = 'claude-haiku-4.5'     # hone-classifier
-    FixModel            = 'claude-sonnet-4.6'    # hone-fixer
-}
+```yaml
+Agents:
+  DefaultModel: "claude-sonnet-4.5"    # Global default for all agents
+  AnalysisModel: "claude-opus-4.6"     # hone-analyst
+  ClassificationModel: "claude-opus-4.6" # hone-classifier
+  ImplementerModel: "claude-sonnet-4.6"  # hone-implementer
 ```
 
 Analyzer agents have separate model overrides in the diagnostics section:
 
-```powershell
-Diagnostics.AnalyzerSettings = @{
-    'cpu-hotspots' = @{ Model = 'claude-opus-4.6' }
-    'memory-gc'    = @{ Model = 'claude-opus-4.6' }
-}
+```yaml
+Diagnostics:
+  AnalyzerSettings:
+    cpu-hotspots:
+      Model: "claude-opus-4.6"
+    memory-gc:
+      Model: "claude-opus-4.6"
 ```
 
 **Model selection rationale:**
@@ -379,28 +425,27 @@ Diagnostics.AnalyzerSettings = @{
 | hone-analyst | `claude-opus-4.6` | Deep multi-factor analysis across metrics, source code, profiling data, and history. Requires strongest reasoning. |
 | hone-cpu-profiler | `claude-opus-4.6` | Interprets complex folded stack traces and identifies non-obvious performance patterns. |
 | hone-memory-profiler | `claude-opus-4.6` | Analyzes GC statistics and allocation data — requires domain expertise in .NET memory model. |
-| hone-classifier | `claude-haiku-4.5` | Fast binary decision (narrow vs. architecture). Simple criteria, low latency preferred over deep reasoning. |
-| hone-fixer | `claude-sonnet-4.6` | Code generation requiring both correctness and performance awareness. Balances quality with speed. |
+| hone-classifier | `claude-opus-4.6` | Scope classification requires careful reasoning about change surface — Opus reduces misclassification risk. |
+| hone-implementer | `claude-sonnet-4.6` | Code generation requiring both correctness and performance awareness. Balances quality with speed. |
 
-Each invoker script resolves the model in order: per-agent override → global `Model` default → hardcoded fallback.
+Each agent class resolves the model in order: per-agent override → `Agents.DefaultModel` → hardcoded fallback.
 
 ### Observed Cost Breakdown
 
-A full 35-experiment run on the sample API (~24 hours) cost approximately **$108** at public API pricing. The tiered model strategy keeps costs manageable — Opus handles the complex analytical work while cheaper models handle simple decisions and code generation:
+A full 35-experiment run on the sample API (~24 hours) cost approximately **$108** at public API pricing. The tiered model strategy keeps costs manageable — Opus handles the complex analytical work while a mid-tier model handles code generation:
 
 | Model | Role | Requests | Input Tokens | Cache Hits | Output Tokens | Est. Cost |
 |-------|------|----------|-------------|------------|---------------|----------|
-| Opus 4.6 | Analyst + Profilers | 1,074 | 67M | 59M (~88%) | 1.3M | ~$102 |
-| Sonnet 4.5 | Fixer | 69 | 2.6M | 2.5M (~96%) | 15K | ~$1.28 |
-| Haiku 4.5 | Classifier | 673 | 16M | 14M (~88%) | 330K | ~$5.05 |
+| Opus 4.6 | Analyst + Profilers + Classifier | 1,074 | 67M | 59M (~88%) | 1.3M | ~$102 |
+| Sonnet 4.5 | Implementer | 69 | 2.6M | 2.5M (~96%) | 15K | ~$1.28 |
+| Haiku 4.5 | (historical classification) | 673 | 16M | 14M (~88%) | 330K | ~$5.05 |
 | **Total** | | **1,816** | **85.6M** | **75.5M** | **1.6M** | **~$108** |
 
 Key observations:
 
 - **Input prompt caching** is critical — ~88% cache hit rate across all models reduces effective input costs significantly. The Copilot CLI handles caching automatically.
 - **Opus dominates cost** (~94% of total) because it handles the most requests with the largest prompts. The analyst and profiler agents receive extensive context (metrics, source code, profiling stacks, optimization history).
-- **Haiku for classification** is ~20x cheaper per-request than Opus. Since classification is a simple binary decision (narrow vs. architecture), using a cheaper model here saves ~$95 compared to using Opus for all agents.
-- **Sonnet for code generation** balances quality with cost. The fixer runs fewer times (69 requests vs. 1,074 for Opus) because it only runs for narrow-classified experiments.
+- **Sonnet for code generation** balances quality with cost. The implementer runs fewer times (69 requests vs. 1,074 for Opus) because it only runs for narrow-classified experiments.
 
 ## Prompt and Response Artifacts
 
@@ -411,7 +456,7 @@ Every agent invocation saves artifacts for debugging, auditing, and history trac
 | Analysis prompt | hone-analyst | `experiment-N/analysis-prompt.md` |
 | Analysis response | hone-analyst | `experiment-N/analysis-response.json` |
 | Classification response | hone-classifier | `experiment-N/classification-response.json` |
-| Fix response | hone-fixer | `experiment-N/fix-response.md` |
+| Implementer response | hone-implementer | `experiment-N/fix-response.md` |
 | CPU analysis prompt | hone-cpu-profiler | `experiment-N/diagnostics/cpu-hotspots/cpu-hotspots-prompt.md` |
 | Memory analysis prompt | hone-memory-profiler | `experiment-N/diagnostics/memory-gc/memory-gc-prompt.md` |
 

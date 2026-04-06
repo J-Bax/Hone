@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.SourceControl.Git.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\Hone.SourceControl\Hone.SourceControl.csproj" />
+  </ItemGroup>
+
+</Project>

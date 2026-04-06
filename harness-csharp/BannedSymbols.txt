@@ -1,0 +1,6 @@
+T:System.DateTime; Use DateTimeOffset instead for timezone safety
+M:System.Threading.Thread.Sleep(System.Int32); Use Task.Delay for async code
+M:System.IO.File.ReadAllText(System.String); Use File.ReadAllTextAsync for async I/O
+M:System.IO.File.WriteAllText(System.String,System.String); Use File.WriteAllTextAsync for async I/O
+T:System.Collections.ArrayList; Use generic List<T>
+T:System.Collections.Hashtable; Use generic Dictionary<TKey,TValue>

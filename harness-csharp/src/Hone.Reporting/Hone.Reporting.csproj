@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.Reporting.Tests" />
+    <InternalsVisibleTo Include="Hone.Cli" />
+    <InternalsVisibleTo Include="Hone.Integration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Dashboard\DashboardTemplate.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+  </ItemGroup>
+
+</Project>

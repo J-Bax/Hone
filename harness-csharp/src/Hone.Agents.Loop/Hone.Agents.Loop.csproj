@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Project name deliberately uses 'Loop'; suppress reserved-keyword warning -->
+    <!-- CA1812: private deserialization DTOs are instantiated by System.Text.Json -->
+    <NoWarn>$(NoWarn);CA1716;CA1812</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
+  </ItemGroup>
+
+</Project>

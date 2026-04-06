@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Solution Structure — Hone C# Migration Architecture</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#2563eb;--secondary:#16a34a;--accent:#ea580c;
+    --neutral:#64748b;--bg:#f8fafc;--card:#ffffff;--text:#1e293b;
+    --border:#e2e8f0;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+    --shadow-md:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -2px rgba(0,0,0,.1);
+    --radius:8px;
+    --blue:#2563eb;--green:#16a34a;--purple:#7c3aed;--teal:#0d9488;
+    --amber:#d97706;--rose:#e11d48;--indigo:#4f46e5;--orange:#ea580c;--slate:#475569;
+  }
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ── Nav ─────────────────────────────────────── */
+  nav{background:var(--text);color:#fff;padding:.75rem 1.5rem;position:sticky;top:0;z-index:100;
+    display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.25rem;font-size:.875rem}
+  nav .brand{font-weight:700;font-size:1rem;margin-right:auto;white-space:nowrap}
+  nav a{color:#cbd5e1}nav a:hover{color:#fff;text-decoration:none}
+  nav a.active{color:#fff;font-weight:600;border-bottom:2px solid var(--primary);padding-bottom:2px}
+
+  /* ── Layout ──────────────────────────────────── */
+  .container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem 4rem}
+  h1{font-size:2rem;font-weight:800;margin-bottom:.25rem}
+  .subtitle{color:var(--neutral);font-size:1.05rem;margin-bottom:2rem}
+  h2{font-size:1.4rem;font-weight:700;margin:2.5rem 0 .75rem;padding-bottom:.5rem;border-bottom:2px solid var(--border)}
+  h3{font-size:1.15rem;font-weight:600;margin:1.5rem 0 .5rem}
+
+  /* ── SVG container ───────────────────────────── */
+  .graph-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow-x:auto;padding:1rem;margin-bottom:2rem}
+  .graph-wrap svg{display:block;margin:0 auto}
+
+  /* ── Legend ───────────────────────────────────── */
+  .legend{display:flex;flex-wrap:wrap;gap:.75rem 1.5rem;font-size:.8rem;margin-bottom:1.5rem;padding:.75rem 1rem;
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius)}
+  .legend-item{display:flex;align-items:center;gap:.35rem}
+  .legend-swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+
+  /* ── Cards grid ──────────────────────────────── */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1.25rem;margin-bottom:2rem}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:1.15rem 1.25rem;display:flex;flex-direction:column;gap:.45rem}
+  .card-header{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+  .card-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+  .card-title{font-weight:700;font-size:1rem}
+  .card-phase{font-size:.75rem;font-weight:600;padding:.15rem .55rem;border-radius:9999px;
+    background:#e0e7ff;color:#3730a3;white-space:nowrap}
+  .card-desc{font-size:.875rem;color:var(--neutral)}
+  .card-meta{font-size:.8rem;color:var(--neutral);display:flex;flex-wrap:wrap;gap:.35rem .75rem}
+  .card-meta strong{color:var(--text)}
+  .card-ns{font-size:.8rem;line-height:1.55}
+  .card-ns code{background:#f1f5f9;padding:.1rem .35rem;border-radius:3px;font-size:.78rem}
+
+  /* ── Dependency matrix ───────────────────────── */
+  .matrix-wrap{overflow-x:auto;margin-bottom:2rem}
+  .matrix{border-collapse:collapse;font-size:.72rem;min-width:720px}
+  .matrix th,.matrix td{border:1px solid var(--border);padding:3px 5px;text-align:center;white-space:nowrap}
+  .matrix th{background:#f1f5f9;font-weight:600;position:sticky}
+  .matrix .row-header{text-align:left;font-weight:600;background:#f1f5f9;position:sticky;left:0;z-index:1}
+  .matrix .dep{color:var(--primary);font-weight:700}
+  .matrix .col-header{writing-mode:vertical-lr;transform:rotate(180deg);height:130px;vertical-align:bottom;font-size:.7rem}
+
+  /* ── Build infra ─────────────────────────────── */
+  .build-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.25rem;margin-bottom:2rem}
+  .build-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:1rem 1.15rem}
+  .build-card h3{margin:0 0 .5rem;font-size:1rem}
+  .build-card ul{margin:0;padding-left:1.3rem;font-size:.875rem;color:var(--text)}
+  .build-card li{margin-bottom:.25rem}
+  .build-card code{background:#f1f5f9;padding:.1rem .3rem;border-radius:3px;font-size:.82rem}
+
+  /* ── Print ───────────────────────────────────── */
+  @media print{
+    nav{position:static;background:#fff;color:#000}
+    nav a{color:#000}
+    .graph-wrap,.card,.build-card{break-inside:avoid;box-shadow:none;border:1px solid #ccc}
+    body{background:#fff}
+  }
+  @media(max-width:640px){
+    .cards{grid-template-columns:1fr}
+    .build-grid{grid-template-columns:1fr}
+    h1{font-size:1.5rem}
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════ Navigation ════════ -->
+<nav>
+  <span class="brand">Hone C# Architecture</span>
+  <a href="index.html">Overview</a>
+  <a href="solution-structure.html" class="active">Solution Structure</a>
+  <a href="core-domain.html">Core Domain</a>
+  <a href="data-flows.html">Data Flows</a>
+  <a href="interfaces-contracts.html">Interfaces &amp; Contracts</a>
+  <a href="phase-map.html">Phase Map</a>
+  <a href="observability-events.html">Observability</a>
+</nav>
+
+<div class="container">
+
+<h1>Solution Structure &amp; Assembly Dependencies</h1>
+<p class="subtitle">15 source projects — layered from <strong>Hone.Core</strong> foundation to <strong>Hone.Cli</strong> composition root.</p>
+
+<!-- ════════ 1. Assembly Dependency Graph ════════ -->
+<h2>1. Assembly Dependency Graph</h2>
+
+<div class="legend">
+  <div class="legend-item"><span class="legend-swatch" style="background:#2563eb"></span> Core</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#16a34a"></span> Measurement</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#7c3aed"></span> Lifecycle</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#0d9488"></span> Source Control</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#d97706"></span> Agents</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#e11d48"></span> Diagnostics</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#4f46e5"></span> Reporting</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#ea580c"></span> Orchestration</div>
+  <div class="legend-item"><span class="legend-swatch" style="background:#475569"></span> CLI</div>
+</div>
+
+<div class="graph-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 680" width="960" height="680" role="img" aria-label="Assembly dependency graph showing 15 projects and their references">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse" fill="#94a3b8">
+      <path d="M0,0 L10,5 L0,10 Z"/>
+    </marker>
+    <filter id="nodeShadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity=".12"/>
+    </filter>
+  </defs>
+
+  <!-- ── Layer positions (y centres): L0=590 L1=430 L2=250 L3=70 ── -->
+
+  <!-- ── LAYER 0 — Hone.Core ── -->
+  <g filter="url(#nodeShadow)">
+    <rect x="380" y="572" width="200" height="40" rx="6" fill="#2563eb"/>
+    <text x="480" y="597" text-anchor="middle" fill="#fff" font-size="13" font-weight="700" font-family="system-ui,sans-serif">Hone.Core</text>
+  </g>
+
+  <!-- ── LAYER 1 ── -->
+  <!-- Measurement x=60 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="20" y="412" width="170" height="40" rx="6" fill="#16a34a"/>
+    <text x="105" y="437" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.Measurement</text>
+  </g>
+  <!-- Lifecycle x=230 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="210" y="412" width="150" height="40" rx="6" fill="#7c3aed"/>
+    <text x="285" y="437" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.Lifecycle</text>
+  </g>
+  <!-- SourceControl x=400 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="380" y="412" width="180" height="40" rx="6" fill="#0d9488"/>
+    <text x="470" y="437" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.SourceControl</text>
+  </g>
+  <!-- Agents.Core x=600 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="580" y="412" width="160" height="40" rx="6" fill="#d97706"/>
+    <text x="660" y="437" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.Agents.Core</text>
+  </g>
+  <!-- Diagnostics x=770 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="760" y="412" width="160" height="40" rx="6" fill="#e11d48"/>
+    <text x="840" y="437" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.Diagnostics</text>
+  </g>
+  <!-- Reporting — put below Diagnostics on L1 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="760" y="462" width="160" height="40" rx="6" fill="#4f46e5"/>
+    <text x="840" y="487" text-anchor="middle" fill="#fff" font-size="12" font-weight="600" font-family="system-ui,sans-serif">Hone.Reporting</text>
+  </g>
+
+  <!-- ── LAYER 2 ── -->
+  <!-- Measurement.K6 -->
+  <g filter="url(#nodeShadow)">
+    <rect x="4" y="252" width="178" height="40" rx="6" fill="#16a34a"/>
+    <text x="93" y="277" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.Measurement.K6</text>
+  </g>
+  <!-- Measurement.DotnetCounters -->
+  <g filter="url(#nodeShadow)">
+    <rect x="4" y="302" width="178" height="40" rx="6" fill="#16a34a"/>
+    <text x="93" y="322" text-anchor="middle" fill="#fff" font-size="9.5" font-weight="600" font-family="system-ui,sans-serif">Hone.Measurement</text>
+    <text x="93" y="334" text-anchor="middle" fill="#fff" font-size="9.5" font-weight="600" font-family="system-ui,sans-serif">.DotnetCounters</text>
+  </g>
+  <!-- SourceControl.Git -->
+  <g filter="url(#nodeShadow)">
+    <rect x="200" y="252" width="180" height="40" rx="6" fill="#0d9488"/>
+    <text x="290" y="277" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.SourceControl.Git</text>
+  </g>
+  <!-- Agents.Loop -->
+  <g filter="url(#nodeShadow)">
+    <rect x="400" y="252" width="165" height="40" rx="6" fill="#d97706"/>
+    <text x="482" y="277" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.Agents.Loop</text>
+  </g>
+  <!-- Agents.Preparation -->
+  <g filter="url(#nodeShadow)">
+    <rect x="580" y="252" width="190" height="40" rx="6" fill="#d97706"/>
+    <text x="675" y="277" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.Agents.Preparation</text>
+  </g>
+  <!-- Agents.CopilotCli -->
+  <g filter="url(#nodeShadow)">
+    <rect x="580" y="302" width="190" height="40" rx="6" fill="#d97706"/>
+    <text x="675" y="327" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.Agents.CopilotCli</text>
+  </g>
+  <!-- Orchestration -->
+  <g filter="url(#nodeShadow)">
+    <rect x="790" y="252" width="160" height="40" rx="6" fill="#ea580c"/>
+    <text x="870" y="277" text-anchor="middle" fill="#fff" font-size="11" font-weight="600" font-family="system-ui,sans-serif">Hone.Orchestration</text>
+  </g>
+
+  <!-- ── LAYER 3 — Hone.Cli ── -->
+  <g filter="url(#nodeShadow)">
+    <rect x="400" y="60" width="160" height="44" rx="6" fill="#475569"/>
+    <text x="480" y="87" text-anchor="middle" fill="#fff" font-size="14" font-weight="700" font-family="system-ui,sans-serif">Hone.Cli</text>
+  </g>
+
+  <!-- ════ Arrows (dependent → dependency = top → bottom) ════ -->
+  <g stroke="#94a3b8" stroke-width="1.4" fill="none" marker-end="url(#arrow)">
+
+    <!-- Layer 1 → Core -->
+    <line x1="105" y1="452" x2="400" y2="572"/><!-- Measurement → Core -->
+    <line x1="285" y1="452" x2="440" y2="572"/><!-- Lifecycle → Core -->
+    <line x1="470" y1="452" x2="480" y2="572"/><!-- SourceControl → Core -->
+    <line x1="660" y1="452" x2="520" y2="572"/><!-- Agents.Core → Core -->
+    <line x1="840" y1="452" x2="560" y2="572"/><!-- Diagnostics → Core -->
+    <line x1="840" y1="502" x2="570" y2="578"/><!-- Reporting → Core -->
+
+    <!-- Layer 2 → Core (direct deps) -->
+    <line x1="93" y1="292" x2="390" y2="572"/><!-- K6 → Core -->
+    <line x1="93" y1="342" x2="395" y2="572"/><!-- DotnetCounters → Core -->
+    <line x1="290" y1="292" x2="430" y2="572"/><!-- SC.Git → Core -->
+    <line x1="482" y1="292" x2="480" y2="572"/><!-- Agents.Loop → Core -->
+    <line x1="675" y1="292" x2="530" y2="572"/><!-- Agents.Preparation → Core -->
+    <line x1="675" y1="342" x2="535" y2="572"/><!-- Agents.CopilotCli → Core -->
+    <line x1="870" y1="292" x2="560" y2="572"/><!-- Orchestration → Core -->
+
+    <!-- Layer 2 → Layer 1 parents -->
+    <line x1="80" y1="292" x2="95" y2="452"/><!-- K6 → Measurement -->
+    <line x1="70" y1="342" x2="90" y2="452"/><!-- DotnetCounters → Measurement -->
+    <line x1="290" y1="292" x2="460" y2="452"/><!-- SC.Git → SourceControl -->
+    <line x1="482" y1="292" x2="660" y2="452"/><!-- Agents.Loop → Agents.Core -->
+    <line x1="660" y1="292" x2="660" y2="412"/><!-- Agents.Preparation → Agents.Core -->
+    <line x1="660" y1="342" x2="660" y2="412"/><!-- Agents.CopilotCli → Agents.Core -->
+
+    <!-- Cli → every Layer 2 project -->
+    <line x1="420" y1="104" x2="93" y2="252"/><!-- Cli → K6 -->
+    <line x1="415" y1="104" x2="93" y2="302"/><!-- Cli → DotnetCounters -->
+    <line x1="440" y1="104" x2="290" y2="252"/><!-- Cli → SC.Git -->
+    <line x1="480" y1="104" x2="482" y2="252"/><!-- Cli → Agents.Loop -->
+    <line x1="520" y1="104" x2="675" y2="252"/><!-- Cli → Agents.Preparation -->
+    <line x1="525" y1="104" x2="675" y2="302"/><!-- Cli → Agents.CopilotCli -->
+    <line x1="540" y1="104" x2="870" y2="252"/><!-- Cli → Orchestration -->
+
+    <!-- Cli → every Layer 1 project -->
+    <line x1="420" y1="104" x2="105" y2="412"/><!-- Cli → Measurement -->
+    <line x1="435" y1="104" x2="285" y2="412"/><!-- Cli → Lifecycle -->
+    <line x1="470" y1="104" x2="470" y2="412"/><!-- Cli → SourceControl -->
+    <line x1="510" y1="104" x2="660" y2="412"/><!-- Cli → Agents.Core -->
+    <line x1="540" y1="104" x2="840" y2="412"/><!-- Cli → Diagnostics -->
+    <line x1="545" y1="104" x2="840" y2="462"/><!-- Cli → Reporting -->
+
+    <!-- Cli → Core -->
+    <line x1="480" y1="104" x2="480" y2="572"/><!-- Cli → Core -->
+  </g>
+
+  <!-- Layer labels -->
+  <text x="6" y="600" font-size="10" fill="#94a3b8" font-family="system-ui,sans-serif" font-weight="600">Layer 0 — Foundation</text>
+  <text x="6" y="408" font-size="10" fill="#94a3b8" font-family="system-ui,sans-serif" font-weight="600">Layer 1 — Domain</text>
+  <text x="6" y="245" font-size="10" fill="#94a3b8" font-family="system-ui,sans-serif" font-weight="600">Layer 2 — Implementations</text>
+  <text x="6" y="55" font-size="10" fill="#94a3b8" font-family="system-ui,sans-serif" font-weight="600">Layer 3 — Composition Root</text>
+</svg>
+</div>
+
+<!-- ════════ 2. Project Detail Cards ════════ -->
+<h2>2. Project Details</h2>
+
+<div class="cards">
+
+  <!-- Hone.Core -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#2563eb"></span>
+      <span class="card-title mono">Hone.Core</span>
+      <span class="card-phase">Phase 1</span>
+    </div>
+    <div class="card-desc">Foundation — config, contracts, models, observability, utilities</div>
+    <div class="card-meta"><span><strong>77</strong> C# files</span><span>NuGet: <code>YamlDotNet</code></span></div>
+    <div class="card-ns">Key namespaces: <code>Config/</code> (16) · <code>Contracts/</code> (21) · <code>Models/</code> (25+) · <code>Observability/</code> (5) · <code>Utilities/</code> (2)</div>
+  </div>
+
+  <!-- Hone.Lifecycle -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#7c3aed"></span>
+      <span class="card-title mono">Hone.Lifecycle</span>
+      <span class="card-phase">Phase 3</span>
+    </div>
+    <div class="card-desc">Hook execution engine</div>
+    <div class="card-meta"><span><strong>18</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>DotnetBuildHook</code> · <code>DotnetStartHook</code> · <code>DotnetStopHook</code> · <code>DotnetTestHook</code> · <code>HealthPollHook</code> · <code>K6RunHook</code> · <code>HookResolver</code> · <code>LifecycleHookDispatcher</code></div>
+  </div>
+
+  <!-- Hone.Measurement -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#16a34a"></span>
+      <span class="card-title mono">Hone.Measurement</span>
+      <span class="card-phase">Phase 2</span>
+    </div>
+    <div class="card-desc">Baseline / comparison logic</div>
+    <div class="card-meta"><span><strong>10</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>MetricComparer</code> · <code>ScaleTestOrchestrator</code> · <code>BaselineMeasurer</code></div>
+  </div>
+
+  <!-- Hone.Measurement.K6 -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#16a34a"></span>
+      <span class="card-title mono">Hone.Measurement.K6</span>
+      <span class="card-phase">Phase 2</span>
+    </div>
+    <div class="card-desc">k6 load test runner</div>
+    <div class="card-meta"><span><strong>5</strong> C# files</span><span>Refs: <code>Core</code>, <code>Measurement</code></span></div>
+    <div class="card-ns">Key types: <code>K6LoadTestRunner</code> · <code>K6SummaryParser</code></div>
+  </div>
+
+  <!-- Hone.Measurement.DotnetCounters -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#16a34a"></span>
+      <span class="card-title mono">Hone.Measurement.DotnetCounters</span>
+      <span class="card-phase">Phase 2</span>
+    </div>
+    <div class="card-desc">.NET perf counters</div>
+    <div class="card-meta"><span><strong>7</strong> C# files</span><span>Refs: <code>Core</code>, <code>Measurement</code></span></div>
+    <div class="card-ns">Key types: <code>DotnetCountersRuntimeMetricsCollector</code></div>
+  </div>
+
+  <!-- Hone.SourceControl -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#0d9488"></span>
+      <span class="card-title mono">Hone.SourceControl</span>
+      <span class="card-phase">Phase 4</span>
+    </div>
+    <div class="card-desc">VCS abstraction</div>
+    <div class="card-meta"><span><strong>16</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>ExperimentBranchManager</code> · <code>PullRequestManager</code></div>
+  </div>
+
+  <!-- Hone.SourceControl.Git -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#0d9488"></span>
+      <span class="card-title mono">Hone.SourceControl.Git</span>
+      <span class="card-phase">Phase 4</span>
+    </div>
+    <div class="card-desc">Git / GitHub implementation</div>
+    <div class="card-meta"><span><strong>5</strong> C# files</span><span>Refs: <code>Core</code>, <code>SourceControl</code></span></div>
+    <div class="card-ns">Key types: <code>GitVersionControl</code> · <code>GitHubCodeHost</code></div>
+  </div>
+
+  <!-- Hone.Agents.Core -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#d97706"></span>
+      <span class="card-title mono">Hone.Agents.Core</span>
+      <span class="card-phase">Phase 5</span>
+    </div>
+    <div class="card-desc">Shared agent infrastructure</div>
+    <div class="card-meta"><span><strong>7</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>ModelDefaults</code> · <code>AgentAnalysisContext</code></div>
+  </div>
+
+  <!-- Hone.Agents.Loop -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#d97706"></span>
+      <span class="card-title mono">Hone.Agents.Loop</span>
+      <span class="card-phase">Phase 5</span>
+    </div>
+    <div class="card-desc">Loop agent orchestration</div>
+    <div class="card-meta"><span><strong>12</strong> C# files</span><span>Refs: <code>Core</code>, <code>Agents.Core</code></span></div>
+    <div class="card-ns">Key types: <code>AnalysisAgent</code> · <code>ClassificationAgent</code> · <code>ImplementerAgent</code></div>
+  </div>
+
+  <!-- Hone.Agents.Preparation -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#d97706"></span>
+      <span class="card-title mono">Hone.Agents.Preparation</span>
+      <span class="card-phase">Phase 5</span>
+    </div>
+    <div class="card-desc">Pre-probe compatibility</div>
+    <div class="card-meta"><span><strong>8</strong> C# files</span><span>Refs: <code>Core</code>, <code>Agents.Core</code></span></div>
+    <div class="card-ns">Key types: <code>CompatibilityAgent</code> · <code>PreProber</code> · <code>PreProbeData</code></div>
+  </div>
+
+  <!-- Hone.Agents.CopilotCli -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#d97706"></span>
+      <span class="card-title mono">Hone.Agents.CopilotCli</span>
+      <span class="card-phase">Phase 5</span>
+    </div>
+    <div class="card-desc">Copilot CLI runner</div>
+    <div class="card-meta"><span><strong>4</strong> C# files</span><span>Refs: <code>Core</code>, <code>Agents.Core</code></span></div>
+    <div class="card-ns">Key types: <code>CopilotCliAgentRunner</code> (<code>IAgentRunner</code> impl)</div>
+  </div>
+
+  <!-- Hone.Diagnostics -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#e11d48"></span>
+      <span class="card-title mono">Hone.Diagnostics</span>
+      <span class="card-phase">Phase 6</span>
+    </div>
+    <div class="card-desc">Profiling plugin system</div>
+    <div class="card-meta"><span><strong>29</strong> C# files</span><span>Refs: <code>Core</code> · NuGet: <code>YamlDotNet</code></span></div>
+    <div class="card-ns">Key types: <code>PluginDiscoveryService</code> · <code>DiagnosticCollectionOrchestrator</code> · <code>CpuHotspotsAnalyzer</code> · <code>MemoryGcAnalyzer</code> · <code>PerfViewCpuCollector</code> · <code>PerfViewGcCollector</code></div>
+  </div>
+
+  <!-- Hone.Reporting -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#4f46e5"></span>
+      <span class="card-title mono">Hone.Reporting</span>
+      <span class="card-phase">Phase 7</span>
+    </div>
+    <div class="card-desc">Dashboard &amp; reports</div>
+    <div class="card-meta"><span><strong>19</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>HtmlDashboardGenerator</code> · <code>ResultsRenderer</code> · <code>ReportFormatter</code></div>
+  </div>
+
+  <!-- Hone.Orchestration -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#ea580c"></span>
+      <span class="card-title mono">Hone.Orchestration</span>
+      <span class="card-phase">Phase 8</span>
+    </div>
+    <div class="card-desc">Main experiment loop</div>
+    <div class="card-meta"><span><strong>21</strong> C# files</span><span>Refs: <code>Core</code></span></div>
+    <div class="card-ns">Key types: <code>HoneLoopRunner</code> · <code>OptimizationQueueManager</code> · <code>IterativeImplementerRunner</code> · <code>ExperimentFailureHandler</code> · <code>ArtifactStager</code></div>
+  </div>
+
+  <!-- Hone.Cli -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-dot" style="background:#475569"></span>
+      <span class="card-title mono">Hone.Cli</span>
+      <span class="card-phase">Phase 9</span>
+    </div>
+    <div class="card-desc">CLI entry point — composition root</div>
+    <div class="card-meta"><span><strong>9</strong> C# files</span><span>Refs: <strong>ALL projects</strong> · NuGet: <code>System.CommandLine</code></span></div>
+    <div class="card-ns">Key types: <code>Program</code> (entry) · <code>RunCommand</code> · <code>ValidateCommand</code> · <code>BaselineCommand</code> · <code>ResultsCommand</code> · <code>DashboardCommand</code></div>
+  </div>
+
+</div>
+
+<!-- ════════ 3. Dependency Matrix ════════ -->
+<h2>3. Dependency Matrix</h2>
+<p style="font-size:.875rem;color:var(--neutral);margin-bottom:.75rem">Rows depend on columns. Read left → right: ✓ means the row project references the column project.</p>
+
+<div class="matrix-wrap">
+<table class="matrix">
+<thead>
+<tr>
+  <th></th>
+  <th class="col-header">Hone.Core</th>
+  <th class="col-header">Hone.Measurement</th>
+  <th class="col-header">Hone.Lifecycle</th>
+  <th class="col-header">Hone.SourceControl</th>
+  <th class="col-header">Hone.Agents.Core</th>
+  <th class="col-header">Hone.Diagnostics</th>
+  <th class="col-header">Hone.Reporting</th>
+  <th class="col-header">Hone.Measurement.K6</th>
+  <th class="col-header">Hone.Measurement.DotnetCounters</th>
+  <th class="col-header">Hone.SourceControl.Git</th>
+  <th class="col-header">Hone.Agents.Loop</th>
+  <th class="col-header">Hone.Agents.Preparation</th>
+  <th class="col-header">Hone.Agents.CopilotCli</th>
+  <th class="col-header">Hone.Orchestration</th>
+  <th class="col-header">Hone.Cli</th>
+</tr>
+</thead>
+<tbody>
+<!-- Core -->
+<tr>
+  <td class="row-header">Hone.Core</td>
+  <td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Measurement -->
+<tr>
+  <td class="row-header">Hone.Measurement</td>
+  <td class="dep">✓</td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Lifecycle -->
+<tr>
+  <td class="row-header">Hone.Lifecycle</td>
+  <td class="dep">✓</td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- SourceControl -->
+<tr>
+  <td class="row-header">Hone.SourceControl</td>
+  <td class="dep">✓</td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Agents.Core -->
+<tr>
+  <td class="row-header">Hone.Agents.Core</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Diagnostics -->
+<tr>
+  <td class="row-header">Hone.Diagnostics</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Reporting -->
+<tr>
+  <td class="row-header">Hone.Reporting</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Measurement.K6 -->
+<tr>
+  <td class="row-header">Hone.Measurement.K6</td>
+  <td class="dep">✓</td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Measurement.DotnetCounters -->
+<tr>
+  <td class="row-header">Hone.Measurement.DotnetCounters</td>
+  <td class="dep">✓</td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- SourceControl.Git -->
+<tr>
+  <td class="row-header">Hone.SourceControl.Git</td>
+  <td class="dep">✓</td><td></td><td></td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Agents.Loop -->
+<tr>
+  <td class="row-header">Hone.Agents.Loop</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td><td></td>
+</tr>
+<!-- Agents.Preparation -->
+<tr>
+  <td class="row-header">Hone.Agents.Preparation</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td><td></td>
+</tr>
+<!-- Agents.CopilotCli -->
+<tr>
+  <td class="row-header">Hone.Agents.CopilotCli</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td><td></td>
+</tr>
+<!-- Orchestration -->
+<tr>
+  <td class="row-header">Hone.Orchestration</td>
+  <td class="dep">✓</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td>—</td><td></td>
+</tr>
+<!-- Cli -->
+<tr>
+  <td class="row-header">Hone.Cli</td>
+  <td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td class="dep">✓</td><td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<!-- ════════ 4. Build Infrastructure ════════ -->
+<h2>4. Build Infrastructure</h2>
+
+<div class="build-grid">
+
+  <div class="build-card">
+    <h3><code>Directory.Build.props</code></h3>
+    <ul>
+      <li><code>TreatWarningsAsErrors</code> — all warnings are errors</li>
+      <li><code>AnalysisLevel = latest-all</code> — maximum analyzer coverage</li>
+      <li><code>Nullable = enable</code> — nullable reference types enforced</li>
+    </ul>
+  </div>
+
+  <div class="build-card">
+    <h3><code>Directory.Packages.props</code></h3>
+    <ul>
+      <li>Central package version management</li>
+      <li>Single source of truth for all NuGet versions</li>
+      <li>Projects use <code>&lt;PackageReference&gt;</code> without <code>Version</code></li>
+    </ul>
+  </div>
+
+  <div class="build-card">
+    <h3><code>.editorconfig</code></h3>
+    <ul>
+      <li><strong>PascalCase</strong> — public members &amp; types</li>
+      <li><strong>_camelCase</strong> — private fields (underscore prefix)</li>
+      <li><strong>Allman</strong> braces — opening brace on new line</li>
+    </ul>
+  </div>
+
+  <div class="build-card">
+    <h3><code>BannedSymbols.txt</code></h3>
+    <ul>
+      <li><code>DateTime</code> → use <code>DateTimeOffset</code></li>
+      <li>Synchronous <code>File</code> I/O — banned (use async)</li>
+      <li><code>ArrayList</code> / <code>Hashtable</code> — banned (use generics)</li>
+    </ul>
+  </div>
+
+  <div class="build-card">
+    <h3>Analyzers</h3>
+    <ul>
+      <li><strong>Meziantou.Analyzer</strong> — best-practice rules</li>
+      <li><strong>Microsoft.VisualStudio.Threading.Analyzers</strong> — async/threading</li>
+      <li><strong>Microsoft.CodeAnalysis.BannedApiAnalyzers</strong> — enforces <code>BannedSymbols.txt</code></li>
+    </ul>
+  </div>
+
+</div>
+
+</div><!-- /.container -->
+</body>
+</html>

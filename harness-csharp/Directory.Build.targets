@@ -1,0 +1,5 @@
+<Project>
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" Condition="Exists('$(MSBuildThisFileDirectory)BannedSymbols.txt')" />
+  </ItemGroup>
+</Project>

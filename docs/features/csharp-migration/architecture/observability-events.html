@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Observability &amp; Events — Hone C# Migration Architecture</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#2563eb;--primary-light:#dbeafe;
+    --secondary:#16a34a;--secondary-light:#dcfce7;
+    --accent:#ea580c;--accent-light:#fff7ed;
+    --neutral:#64748b;--neutral-light:#f1f5f9;
+    --bg:#f8fafc;--card:#ffffff;--text:#1e293b;
+    --blue:#2563eb;--blue-bg:#eff6ff;
+    --green:#16a34a;--green-bg:#f0fdf4;
+    --amber:#d97706;--amber-bg:#fffbeb;
+    --orange:#ea580c;--orange-bg:#fff7ed;
+    --slate:#475569;--slate-bg:#f8fafc;
+    --rose:#e11d48;--rose-bg:#fff1f2;
+    --radius:8px;--shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+    --shadow-md:0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.05);
+  }
+  html{font-size:16px;scroll-behavior:smooth}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;padding:0}
+  code,pre,.mono{font-family:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,"Courier New",monospace}
+
+  /* NAV */
+  nav{background:var(--card);border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:100;box-shadow:var(--shadow)}
+  .nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;gap:6px;padding:12px 24px;flex-wrap:wrap}
+  .nav-brand{font-weight:700;font-size:1.05rem;color:var(--primary);margin-right:16px;white-space:nowrap}
+  nav a{text-decoration:none;font-size:.85rem;padding:5px 10px;border-radius:6px;color:var(--neutral);transition:background .15s,color .15s;white-space:nowrap}
+  nav a:hover{background:var(--primary-light);color:var(--primary)}
+  nav a.active{background:var(--primary);color:#fff;font-weight:600}
+
+  /* LAYOUT */
+  .container{max-width:1200px;margin:0 auto;padding:32px 24px 64px}
+  h1{font-size:2rem;font-weight:800;color:var(--text);margin-bottom:8px}
+  .subtitle{font-size:1.1rem;color:var(--neutral);margin-bottom:32px}
+  h2{font-size:1.45rem;font-weight:700;color:var(--text);margin:48px 0 16px;padding-bottom:8px;border-bottom:2px solid var(--primary-light)}
+  h3{font-size:1.15rem;font-weight:700;margin:28px 0 12px;color:var(--text)}
+  p{margin-bottom:12px}
+
+  /* CARDS */
+  .card{background:var(--card);border:1px solid #e2e8f0;border-radius:var(--radius);padding:24px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .event-card{border-left:4px solid var(--neutral);position:relative}
+  .event-card.blue{border-left-color:var(--blue)}
+  .event-card.green{border-left-color:var(--green)}
+  .event-card.amber{border-left-color:var(--amber)}
+  .event-card.orange{border-left-color:var(--orange)}
+  .event-card.slate-c{border-left-color:var(--slate)}
+  .event-card.rose{border-left-color:var(--rose)}
+  .event-card-title{font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .event-badge{font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:12px;text-transform:uppercase;letter-spacing:.04em}
+  .badge-blue{background:var(--blue-bg);color:var(--blue)}
+  .badge-green{background:var(--green-bg);color:var(--green)}
+  .badge-amber{background:var(--amber-bg);color:var(--amber)}
+  .badge-orange{background:var(--orange-bg);color:var(--orange)}
+  .badge-slate{background:var(--slate-bg);color:var(--slate)}
+  .badge-rose{background:var(--rose-bg);color:var(--rose)}
+  .field-list{margin:8px 0 12px;padding-left:20px}
+  .field-list li{margin-bottom:4px;font-size:.92rem}
+  .field-list code{background:var(--neutral-light);padding:1px 5px;border-radius:4px;font-size:.83rem}
+  .console-preview{background:#1e293b;color:#e2e8f0;padding:10px 14px;border-radius:6px;font-size:.85rem;margin:8px 0;overflow-x:auto;white-space:pre}
+  .label{font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--neutral);margin-bottom:4px}
+
+  /* CODE */
+  pre{background:var(--neutral-light);border:1px solid #e2e8f0;border-radius:6px;padding:16px;overflow-x:auto;font-size:.84rem;line-height:1.55;margin:8px 0 16px}
+  code{font-size:.84rem}
+  pre code{background:none;padding:0}
+
+  /* TABLE */
+  .table-wrap{overflow-x:auto;margin:16px 0}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{background:var(--primary);color:#fff;text-align:left;padding:10px 14px;font-weight:600;white-space:nowrap}
+  td{padding:10px 14px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+  tr:nth-child(even){background:var(--neutral-light)}
+  tr:hover{background:var(--primary-light)}
+
+  /* DETAILS */
+  details{margin:8px 0}
+  summary{cursor:pointer;font-weight:600;font-size:.92rem;color:var(--primary);padding:6px 0;user-select:none}
+  summary:hover{text-decoration:underline}
+  details[open] summary{margin-bottom:8px}
+
+  /* SVG WRAPPER */
+  .svg-wrap{overflow-x:auto;margin:24px 0;text-align:center}
+  .svg-wrap svg{max-width:100%;height:auto}
+
+  /* GRID */
+  .card-grid{display:grid;gap:20px}
+
+  /* SECTION-NOTE */
+  .note{background:#fffbeb;border:1px solid #fde68a;border-radius:var(--radius);padding:14px 18px;font-size:.9rem;margin:16px 0}
+  .note strong{color:var(--amber)}
+
+  /* PRINT */
+  @media print{
+    nav{position:static;box-shadow:none;border-bottom:1px solid #ccc}
+    .container{padding:16px}
+    .card,.event-card{box-shadow:none;break-inside:avoid}
+    .svg-wrap svg{max-width:100%}
+    pre,.console-preview{white-space:pre-wrap;word-break:break-all}
+    body{font-size:11pt}
+  }
+  @media(max-width:768px){
+    .container{padding:20px 12px}
+    h1{font-size:1.5rem}
+    .nav-inner{gap:4px;padding:10px 12px}
+    nav a{font-size:.78rem;padding:4px 7px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ NAVIGATION ════════════════ -->
+<nav>
+  <div class="nav-inner">
+    <span class="nav-brand">Hone Architecture</span>
+    <a href="index.html">Overview</a>
+    <a href="solution-structure.html">Solution Structure</a>
+    <a href="core-domain.html">Core Domain</a>
+    <a href="data-flows.html">Data Flows</a>
+    <a href="interfaces-contracts.html">Interfaces &amp; Contracts</a>
+    <a href="phase-map.html">Phase Map</a>
+    <a href="observability-events.html" class="active">Observability</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<!-- ════════════════ HEADER ════════════════ -->
+<h1>Observability &amp; Event System</h1>
+<p class="subtitle">Structured event hierarchy, pipeline architecture, sink contracts, and thread-safety model for the Hone C# migration.</p>
+
+<!-- ════════════════ 1. EVENT TYPE HIERARCHY ════════════════ -->
+<h2 id="event-hierarchy">1. Event Type Hierarchy</h2>
+<p>All observability flows through a single abstract base class. Each concrete subtype captures one semantic concern and is color-coded by category.</p>
+
+<div class="svg-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 620" width="920" height="620" role="img" aria-label="Event type inheritance tree">
+  <defs>
+    <filter id="ds" x="-2%" y="-2%" width="104%" height="108%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="none" stroke="#94a3b8" stroke-width="1.2"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="920" height="620" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+
+  <!-- Title -->
+  <text x="460" y="30" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="700" fill="#1e293b">HoneEvent Inheritance Hierarchy</text>
+
+  <!-- BASE CLASS -->
+  <rect x="290" y="48" width="340" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2" filter="url(#ds)"/>
+  <text x="460" y="70" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="14" font-weight="700" fill="#1e293b">HoneEvent</text>
+  <text x="460" y="86" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b" font-style="italic">abstract base</text>
+  <text x="460" y="103" text-anchor="middle" font-family="Consolas,Courier New,monospace" font-size="10" fill="#475569">DateTimeOffset Timestamp, int? Experiment</text>
+
+  <!-- Trunk line -->
+  <line x1="460" y1="112" x2="460" y2="152" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- Horizontal connector -->
+  <line x1="100" y1="152" x2="820" y2="152" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- Branch lines down -->
+  <line x1="100" y1="152" x2="100" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="220" y1="152" x2="220" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="340" y1="152" x2="340" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="460" y1="152" x2="460" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="580" y1="152" x2="580" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="700" y1="152" x2="700" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="820" y1="152" x2="820" y2="172" stroke="#94a3b8" stroke-width="1.5"/>
+
+  <!-- 1. PhaseStarted (Blue) -->
+  <rect x="20" y="172" width="160" height="60" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="100" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#2563eb">PhaseStarted</text>
+  <text x="100" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">string Phase</text>
+  <rect x="58" y="222" width="84" height="14" rx="7" fill="#2563eb"/>
+  <text x="100" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">PHASE</text>
+
+  <!-- 2. PhaseCompleted (Blue) -->
+  <rect x="140" y="172" width="160" height="60" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="220" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#2563eb">PhaseCompleted</text>
+  <text x="220" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">Phase, Duration, Success</text>
+  <rect x="178" y="222" width="84" height="14" rx="7" fill="#2563eb"/>
+  <text x="220" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">PHASE</text>
+
+  <!-- 3. MetricSnapshot (Green) -->
+  <rect x="260" y="172" width="160" height="60" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="340" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#16a34a">MetricSnapshot</text>
+  <text x="340" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">MetricSet Metrics</text>
+  <rect x="298" y="222" width="84" height="14" rx="7" fill="#16a34a"/>
+  <text x="340" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">METRIC</text>
+
+  <!-- 4. AgentInvoked (Amber) -->
+  <rect x="380" y="172" width="160" height="60" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="460" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#d97706">AgentInvoked</text>
+  <text x="460" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">AgentName, Model, Duration</text>
+  <rect x="418" y="222" width="84" height="14" rx="7" fill="#d97706"/>
+  <text x="460" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">AGENT</text>
+
+  <!-- 5. ExperimentOutcomeEvent (Orange) -->
+  <rect x="500" y="172" width="160" height="60" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="580" y="189" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ea580c">Experiment</text>
+  <text x="580" y="201" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#ea580c">OutcomeEvent</text>
+  <text x="580" y="216" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">Outcome, Details</text>
+  <rect x="538" y="222" width="84" height="14" rx="7" fill="#ea580c"/>
+  <text x="580" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">DECISION</text>
+
+  <!-- 6. StatusMessage (Slate) -->
+  <rect x="620" y="172" width="160" height="60" rx="8" fill="#f8fafc" stroke="#475569" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="700" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#475569">StatusMessage</text>
+  <text x="700" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">Message, Level</text>
+  <rect x="658" y="222" width="84" height="14" rx="7" fill="#475569"/>
+  <text x="700" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">STATUS</text>
+
+  <!-- 7. DiagnosticProgress (Rose) -->
+  <rect x="740" y="172" width="160" height="60" rx="8" fill="#fff1f2" stroke="#e11d48" stroke-width="1.5" filter="url(#ds)"/>
+  <text x="820" y="194" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#e11d48">DiagnosticProgress</text>
+  <text x="820" y="210" text-anchor="middle" font-family="Consolas,monospace" font-size="9" fill="#475569">CollectorName, Stage</text>
+  <rect x="778" y="222" width="84" height="14" rx="7" fill="#e11d48"/>
+  <text x="820" y="232" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="8" font-weight="600" fill="#fff">DIAGNOSTIC</text>
+
+  <!-- LEGEND -->
+  <rect x="20" y="270" width="880" height="40" rx="8" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="40" y="294" font-family="-apple-system,sans-serif" font-size="10" font-weight="600" fill="#64748b">LEGEND:</text>
+  <!-- Blue -->
+  <rect x="105" y="283" width="10" height="10" rx="2" fill="#2563eb"/>
+  <text x="120" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Phase</text>
+  <!-- Green -->
+  <rect x="175" y="283" width="10" height="10" rx="2" fill="#16a34a"/>
+  <text x="190" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Metric</text>
+  <!-- Amber -->
+  <rect x="250" y="283" width="10" height="10" rx="2" fill="#d97706"/>
+  <text x="265" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Agent</text>
+  <!-- Orange -->
+  <rect x="320" y="283" width="10" height="10" rx="2" fill="#ea580c"/>
+  <text x="335" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Decision</text>
+  <!-- Slate -->
+  <rect x="405" y="283" width="10" height="10" rx="2" fill="#475569"/>
+  <text x="420" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Status</text>
+  <!-- Rose -->
+  <rect x="480" y="283" width="10" height="10" rx="2" fill="#e11d48"/>
+  <text x="495" y="293" font-family="-apple-system,sans-serif" font-size="10" fill="#475569">Diagnostic</text>
+
+  <!-- DETAIL BOXES -->
+  <!-- PhaseStarted detail -->
+  <rect x="20" y="330" width="420" height="120" rx="8" fill="#ffffff" stroke="#e2e8f0" filter="url(#ds)"/>
+  <rect x="20" y="330" width="4" height="120" rx="2" fill="#2563eb"/>
+  <text x="40" y="352" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#2563eb">PhaseStarted</text>
+  <text x="40" y="370" font-family="Consolas,monospace" font-size="9.5" fill="#475569">string Phase</text>
+  <text x="40" y="386" font-family="-apple-system,sans-serif" font-size="9.5" fill="#64748b">Emitted at the start of each experiment phase</text>
+  <text x="40" y="404" font-family="Consolas,monospace" font-size="9" fill="#94a3b8">[14:32:01] ▶ Build (experiment 3)</text>
+  <text x="40" y="436" font-family="-apple-system,sans-serif" font-size="9" fill="#64748b">Phases: Build, Verify, Measure, Analyze, Classify,</text>
+  <text x="40" y="448" font-family="-apple-system,sans-serif" font-size="9" fill="#64748b">Implement, Compare, Publish</text>
+
+  <!-- PhaseCompleted detail -->
+  <rect x="20" y="460" width="420" height="100" rx="8" fill="#ffffff" stroke="#e2e8f0" filter="url(#ds)"/>
+  <rect x="20" y="460" width="4" height="100" rx="2" fill="#2563eb"/>
+  <text x="40" y="482" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#2563eb">PhaseCompleted</text>
+  <text x="40" y="500" font-family="Consolas,monospace" font-size="9.5" fill="#475569">string Phase, TimeSpan Duration, bool Success</text>
+  <text x="40" y="516" font-family="-apple-system,sans-serif" font-size="9.5" fill="#64748b">Emitted at the end of each experiment phase</text>
+  <text x="40" y="534" font-family="Consolas,monospace" font-size="9" fill="#94a3b8">[14:32:08] ✓ Build completed (7.2s)</text>
+
+  <!-- MetricSnapshot detail -->
+  <rect x="480" y="330" width="420" height="120" rx="8" fill="#ffffff" stroke="#e2e8f0" filter="url(#ds)"/>
+  <rect x="480" y="330" width="4" height="120" rx="2" fill="#16a34a"/>
+  <text x="500" y="352" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#16a34a">MetricSnapshot</text>
+  <text x="500" y="370" font-family="Consolas,monospace" font-size="9.5" fill="#475569">MetricSet Metrics</text>
+  <text x="500" y="386" font-family="-apple-system,sans-serif" font-size="9.5" fill="#64748b">After each measured load test run</text>
+  <text x="500" y="404" font-family="Consolas,monospace" font-size="9" fill="#94a3b8">[14:33:15] 📊 Run 2/5: p95=42.3ms</text>
+  <text x="500" y="422" font-family="-apple-system,sans-serif" font-size="9" fill="#64748b">MetricSet: Timestamp, Experiment, Run,</text>
+  <text x="500" y="434" font-family="-apple-system,sans-serif" font-size="9" fill="#64748b">HttpReqDuration, HttpReqs, HttpReqFailed, SummaryPath</text>
+
+  <!-- AgentInvoked detail -->
+  <rect x="480" y="460" width="420" height="100" rx="8" fill="#ffffff" stroke="#e2e8f0" filter="url(#ds)"/>
+  <rect x="480" y="460" width="4" height="100" rx="2" fill="#d97706"/>
+  <text x="500" y="482" font-family="-apple-system,sans-serif" font-size="11" font-weight="700" fill="#d97706">AgentInvoked</text>
+  <text x="500" y="500" font-family="Consolas,monospace" font-size="9.5" fill="#475569">string AgentName, string Model, TimeSpan Duration</text>
+  <text x="500" y="516" font-family="-apple-system,sans-serif" font-size="9.5" fill="#64748b">After each AI agent invocation completes</text>
+  <text x="500" y="534" font-family="Consolas,monospace" font-size="9" fill="#94a3b8">[14:34:22] 🤖 AnalysisAgent (claude-opus-4.6) 45.3s</text>
+
+  <!-- Bottom row callout -->
+  <text x="460" y="595" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#94a3b8" font-style="italic">See per-event-type cards below for full details, fields, and JSON examples.</text>
+</svg>
+</div>
+
+<!-- ════════════════ 2. EVENT PIPELINE ════════════════ -->
+<h2 id="event-pipeline">2. Event Pipeline</h2>
+<p>Events flow from emitting sources through a centralized bus to all registered sinks. The bus is the single broadcast point; sinks are decoupled consumers.</p>
+
+<div class="svg-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 420" width="940" height="420" role="img" aria-label="Event pipeline from sources through bus to sinks">
+  <defs>
+    <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="none" stroke="#64748b" stroke-width="1.5"/>
+    </marker>
+    <marker id="arrBlue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6" fill="none" stroke="#2563eb" stroke-width="1.5"/>
+    </marker>
+  </defs>
+
+  <rect width="940" height="420" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+
+  <!-- Column headers -->
+  <text x="130" y="30" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#64748b" letter-spacing="0.08em">EVENT SOURCES</text>
+  <text x="470" y="30" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#64748b" letter-spacing="0.08em">BUS</text>
+  <text x="770" y="30" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#64748b" letter-spacing="0.08em">SINKS</text>
+
+  <!-- SOURCE 1: HoneLoopRunner -->
+  <rect x="30" y="55" width="200" height="56" rx="8" fill="#ffffff" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="130" y="76" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#1e293b">HoneLoopRunner</text>
+  <text x="130" y="94" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">(orchestration)</text>
+
+  <!-- SOURCE 2: LifecycleHook Dispatcher -->
+  <rect x="30" y="127" width="200" height="56" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="130" y="148" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#1e293b">LifecycleHook</text>
+  <text x="130" y="166" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">Dispatcher</text>
+
+  <!-- SOURCE 3: Agent Runners -->
+  <rect x="30" y="199" width="200" height="56" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="130" y="220" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#1e293b">Agent Runners</text>
+  <text x="130" y="238" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">(Analysis, etc.)</text>
+
+  <!-- SOURCE 4: ScaleTest Orchestrator -->
+  <rect x="30" y="271" width="200" height="56" rx="8" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="130" y="292" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#1e293b">ScaleTest</text>
+  <text x="130" y="310" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">Orchestrator</text>
+
+  <!-- Emit arrows to collector point -->
+  <line x1="230" y1="83" x2="310" y2="190" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="230" y1="155" x2="310" y2="190" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="230" y1="227" x2="310" y2="200" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="230" y1="299" x2="310" y2="210" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+
+  <!-- "emit" labels -->
+  <text x="265" y="128" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8" font-style="italic">emit</text>
+  <text x="265" y="170" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8" font-style="italic">emit</text>
+  <text x="265" y="220" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8" font-style="italic">emit</text>
+  <text x="265" y="265" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8" font-style="italic">emit</text>
+
+  <!-- Collector dot -->
+  <circle cx="320" cy="200" r="6" fill="#2563eb"/>
+
+  <!-- Line to bus -->
+  <line x1="326" y1="200" x2="370" y2="200" stroke="#2563eb" stroke-width="2" marker-end="url(#arrBlue)"/>
+
+  <!-- BUS -->
+  <rect x="378" y="108" width="184" height="190" rx="12" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/>
+  <text x="470" y="148" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="14" font-weight="800" fill="#2563eb">HoneEventBus</text>
+  <line x1="400" y1="158" x2="540" y2="158" stroke="#93c5fd" stroke-width="1"/>
+  <text x="470" y="180" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#3b82f6">thread-safe broadcaster</text>
+  <text x="470" y="200" text-anchor="middle" font-family="Consolas,monospace" font-size="10" fill="#1d4ed8">void Emit(HoneEvent)</text>
+  <text x="470" y="220" text-anchor="middle" font-family="Consolas,monospace" font-size="10" fill="#1d4ed8">void Register(IHoneEventSink)</text>
+  <line x1="400" y1="235" x2="540" y2="235" stroke="#93c5fd" stroke-width="1"/>
+  <text x="470" y="255" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#60a5fa">🔒 System.Threading.Lock</text>
+  <text x="470" y="272" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#60a5fa">Copy-on-iterate pattern</text>
+  <text x="470" y="289" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#60a5fa">Fail-silent per sink</text>
+
+  <!-- Fan-out arrows -->
+  <line x1="562" y1="165" x2="640" y2="100" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrBlue)"/>
+  <line x1="562" y1="200" x2="640" y2="200" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrBlue)"/>
+  <line x1="562" y1="235" x2="640" y2="305" stroke="#2563eb" stroke-width="1.5" marker-end="url(#arrBlue)"/>
+
+  <!-- SINK 1: ConsoleEventSink -->
+  <rect x="650" y="60" width="250" height="80" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="775" y="82" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#16a34a">ConsoleEventSink</text>
+  <text x="775" y="100" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">Human-readable, timestamped</text>
+  <text x="775" y="118" text-anchor="middle" font-family="Consolas,monospace" font-size="10" fill="#475569">→ stdout (TextWriter)</text>
+  <text x="775" y="134" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">Emoji prefixes, box-drawing preserved</text>
+
+  <!-- SINK 2: JsonLogEventSink -->
+  <rect x="650" y="163" width="250" height="80" rx="8" fill="#ffffff" stroke="#ea580c" stroke-width="1.5"/>
+  <text x="775" y="185" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#ea580c">JsonLogEventSink</text>
+  <text x="775" y="203" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#64748b">Structured JSONL, rotated</text>
+  <text x="775" y="221" text-anchor="middle" font-family="Consolas,monospace" font-size="10" fill="#475569">→ .jsonl file</text>
+  <text x="775" y="237" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">MaxFileSizeMB = 50 (default)</text>
+
+  <!-- SINK 3: Future sinks -->
+  <rect x="650" y="270" width="250" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <text x="775" y="292" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="12" font-weight="700" fill="#94a3b8">(Future Sinks)</text>
+  <text x="775" y="310" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#94a3b8">TUI dashboard, GUI, webhook</text>
+  <text x="775" y="328" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" fill="#94a3b8">Prometheus, OpenTelemetry</text>
+  <text x="775" y="344" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9" fill="#cbd5e1">Implement IHoneEventSink</text>
+
+  <!-- Interface contract note -->
+  <rect x="300" y="360" width="340" height="44" rx="8" fill="#fffbeb" stroke="#fde68a" stroke-width="1"/>
+  <text x="470" y="380" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="10" font-weight="600" fill="#d97706">IHoneEventSink</text>
+  <text x="470" y="396" text-anchor="middle" font-family="Consolas,monospace" font-size="10" fill="#92400e">void Emit(HoneEvent honeEvent)</text>
+</svg>
+</div>
+
+<!-- ════════════════ 3. PER-EVENT-TYPE CARDS ════════════════ -->
+<h2 id="event-types">3. Per-Event-Type Reference</h2>
+<p>Each card describes when the event fires, its fields, console appearance, and structured JSON shape.</p>
+
+<div class="card-grid">
+
+  <!-- PhaseStarted -->
+  <div class="card event-card blue">
+    <div class="event-card-title">
+      PhaseStarted
+      <span class="event-badge badge-blue">Phase</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>At the start of each experiment phase — Build, Verify, Measure, Analyze, Classify, Implement, Compare, Publish.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>string Phase</code> — name of the phase starting</li>
+      <li><code>DateTimeOffset Timestamp</code> <em>(inherited)</em></li>
+      <li><code>int? Experiment</code> <em>(inherited)</em></li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:32:01] ▶ Build (experiment 3)</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "PhaseStarted",
+  "phase": "Build",
+  "timestamp": "2026-04-05T14:32:01.000Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- PhaseCompleted -->
+  <div class="card event-card blue">
+    <div class="event-card-title">
+      PhaseCompleted
+      <span class="event-badge badge-blue">Phase</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>At the end of each experiment phase, recording duration and success/failure.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>string Phase</code> — name of the completed phase</li>
+      <li><code>TimeSpan Duration</code> — wall-clock time for the phase</li>
+      <li><code>bool Success</code> — whether the phase succeeded</li>
+      <li><code>DateTimeOffset Timestamp</code> <em>(inherited)</em></li>
+      <li><code>int? Experiment</code> <em>(inherited)</em></li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:32:08] ✓ Build completed (7.2s)</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "PhaseCompleted",
+  "phase": "Build",
+  "duration": "00:00:07.2",
+  "success": true,
+  "timestamp": "2026-04-05T14:32:08.200Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- MetricSnapshot -->
+  <div class="card event-card green">
+    <div class="event-card-title">
+      MetricSnapshot
+      <span class="event-badge badge-green">Metric</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>After each measured load test run, carrying the full metric set for that run.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>MetricSet Metrics</code> — contains:
+        <ul class="field-list" style="margin-top:4px">
+          <li><code>DateTimeOffset Timestamp</code></li>
+          <li><code>int Experiment</code>, <code>int Run</code></li>
+          <li><code>HttpReqDuration</code> — avg, p50, p90, p95, p99, max</li>
+          <li><code>HttpReqs</code> — count, rate</li>
+          <li><code>HttpReqFailed</code> — count, rate</li>
+          <li><code>string? SummaryPath</code></li>
+        </ul>
+      </li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:33:15] 📊 Run 2/5: p95=42.3ms, RPS=1250, errors=0.0%</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "MetricSnapshot",
+  "metrics": {
+    "timestamp": "2026-04-05T14:33:15Z",
+    "experiment": 3,
+    "run": 2,
+    "httpReqDuration": {
+      "avg": 28.1, "p50": 25.0, "p90": 38.2,
+      "p95": 42.3, "p99": 55.1, "max": 120.5
+    },
+    "httpReqs":    { "count": 12500, "rate": 1250.0 },
+    "httpReqFailed": { "count": 0, "rate": 0.0 }
+  },
+  "timestamp": "2026-04-05T14:33:15Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- AgentInvoked -->
+  <div class="card event-card amber">
+    <div class="event-card-title">
+      AgentInvoked
+      <span class="event-badge badge-amber">Agent</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>After each AI agent invocation completes, whether it succeeded or failed.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>string AgentName</code> — e.g. <code>"AnalysisAgent"</code></li>
+      <li><code>string Model</code> — e.g. <code>"claude-opus-4.6"</code></li>
+      <li><code>TimeSpan Duration</code> — round-trip time</li>
+      <li><code>bool Success</code></li>
+      <li><code>DateTimeOffset Timestamp</code> <em>(inherited)</em></li>
+      <li><code>int? Experiment</code> <em>(inherited)</em></li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:34:22] 🤖 AnalysisAgent (claude-opus-4.6) completed in 45.3s</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "AgentInvoked",
+  "agentName": "AnalysisAgent",
+  "model": "claude-opus-4.6",
+  "duration": "00:00:45.3",
+  "success": true,
+  "timestamp": "2026-04-05T14:34:22Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- ExperimentOutcomeEvent -->
+  <div class="card event-card orange">
+    <div class="event-card-title">
+      ExperimentOutcomeEvent
+      <span class="event-badge badge-orange">Decision</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>After metric comparison determines the experiment result — the key accept/reject decision point.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>ExperimentOutcome Outcome</code> — enum: Improved, Regressed, Inconclusive, etc.</li>
+      <li><code>ComparisonResult Details</code> — contains:
+        <ul class="field-list" style="margin-top:4px">
+          <li><code>bool Accepted</code></li>
+          <li><code>ExperimentOutcome Outcome</code></li>
+          <li><code>double ImprovementPct</code></li>
+          <li><code>double RegressionPct</code></li>
+          <li><code>List&lt;string&gt; Details</code></li>
+        </ul>
+      </li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:35:00] 🎯 Experiment 3: Improved (+12.5% p95, -8.2% RPS regression)</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "ExperimentOutcomeEvent",
+  "outcome": "Improved",
+  "details": {
+    "accepted": true,
+    "outcome": "Improved",
+    "improvementPct": 12.5,
+    "regressionPct": 8.2,
+    "details": ["p95 improved by 12.5%", "RPS regressed by 8.2%"]
+  },
+  "timestamp": "2026-04-05T14:35:00Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- StatusMessage -->
+  <div class="card event-card slate-c">
+    <div class="event-card-title">
+      StatusMessage
+      <span class="event-badge badge-slate">Status</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>Throughout execution for user-facing status updates at various log levels.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>string Message</code> — human-readable status text</li>
+      <li><code>LogLevel Level</code> — <code>Verbose</code> | <code>Info</code> | <code>Warning</code> | <code>Error</code></li>
+      <li><code>DateTimeOffset Timestamp</code> <em>(inherited)</em></li>
+      <li><code>int? Experiment</code> <em>(inherited)</em></li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:35:01] Creating branch hone/experiment-3...</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "StatusMessage",
+  "message": "Creating branch hone/experiment-3...",
+  "level": "Info",
+  "timestamp": "2026-04-05T14:35:01Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+  <!-- DiagnosticProgress -->
+  <div class="card event-card rose">
+    <div class="event-card-title">
+      DiagnosticProgress
+      <span class="event-badge badge-rose">Diagnostic</span>
+    </div>
+    <p class="label">When emitted</p>
+    <p>During diagnostic profiling phases, tracking each collector through its lifecycle stages.</p>
+    <p class="label">Fields</p>
+    <ul class="field-list">
+      <li><code>string CollectorName</code> — e.g. <code>"perfview-cpu"</code></li>
+      <li><code>string Stage</code> — <code>Starting</code> | <code>Collecting</code> | <code>Exporting</code> | <code>Complete</code></li>
+      <li><code>DateTimeOffset Timestamp</code> <em>(inherited)</em></li>
+      <li><code>int? Experiment</code> <em>(inherited)</em></li>
+    </ul>
+    <p class="label">Console output</p>
+    <div class="console-preview">[14:36:00] 🔬 perfview-cpu: Collecting...</div>
+    <details>
+      <summary>Example JSON</summary>
+      <pre><code>{
+  "$type": "DiagnosticProgress",
+  "collectorName": "perfview-cpu",
+  "stage": "Collecting",
+  "timestamp": "2026-04-05T14:36:00Z",
+  "experiment": 3
+}</code></pre>
+    </details>
+  </div>
+
+</div><!-- /card-grid -->
+
+<!-- ════════════════ 4. SINK COMPARISON ════════════════ -->
+<h2 id="sink-comparison">4. Sink Comparison</h2>
+<p>The two built-in sinks serve complementary roles: one for humans, one for machines.</p>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>ConsoleEventSink</th>
+      <th>JsonLogEventSink</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Format</strong></td>
+      <td>Human-readable timestamps</td>
+      <td>Structured JSONL</td>
+    </tr>
+    <tr>
+      <td><strong>Output</strong></td>
+      <td>stdout (<code>TextWriter</code>)</td>
+      <td>File (<code>.jsonl</code>)</td>
+    </tr>
+    <tr>
+      <td><strong>Rotation</strong></td>
+      <td>N/A</td>
+      <td>At <code>MaxFileSizeMB</code> (default 50)</td>
+    </tr>
+    <tr>
+      <td><strong>Enum format</strong></td>
+      <td>Display strings</td>
+      <td><code>JsonStringEnumConverter</code></td>
+    </tr>
+    <tr>
+      <td><strong>Null handling</strong></td>
+      <td>Omitted</td>
+      <td><code>WhenWritingNull</code></td>
+    </tr>
+    <tr>
+      <td><strong>Box-drawing</strong></td>
+      <td>Preserved (no timestamp prefix)</td>
+      <td>N/A</td>
+    </tr>
+    <tr>
+      <td><strong>Thread safety</strong></td>
+      <td>Via <code>HoneEventBus</code></td>
+      <td>Via <code>HoneEventBus</code></td>
+    </tr>
+    <tr>
+      <td><strong>Use case</strong></td>
+      <td>Developer console</td>
+      <td>Log analysis, dashboards</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ════════════════ 5. THREAD-SAFETY MODEL ════════════════ -->
+<h2 id="thread-safety">5. Thread-Safety Model</h2>
+
+<div class="card">
+  <h3 style="margin-top:0">Lock Strategy</h3>
+  <p><code>HoneEventBus</code> uses <code>System.Threading.Lock</code> — the modern .NET lock type — to protect the internal sink list. The pattern is <strong>copy-on-iterate</strong>:</p>
+  <ol style="padding-left:20px;margin:12px 0">
+    <li>Acquire lock → copy the sink list to a local array</li>
+    <li>Release lock</li>
+    <li>Iterate the local copy, calling <code>Emit</code> on each sink outside the lock</li>
+  </ol>
+  <p>This eliminates deadlock risk: no user code runs while the lock is held.</p>
+
+  <h3>Fail-Silent Per Sink</h3>
+  <p>Each sink's <code>Emit</code> call is wrapped in a <code>try/catch</code>. If one sink throws, the exception is swallowed and the remaining sinks still receive the event. One bad sink never breaks the pipeline.</p>
+
+  <h3>Synchronous Emission</h3>
+  <p>The <code>void Emit(HoneEvent)</code> signature is intentionally synchronous. This keeps ordering guarantees simple — events arrive in the order they were emitted, with no interleaving from concurrent async completions.</p>
+
+  <div class="note">
+    <strong>⚠ Future consideration:</strong> If async sinks are needed (e.g., HTTP webhook, database writes), the recommended pattern is a <code>System.Threading.Channels.Channel&lt;HoneEvent&gt;</code> buffer per sink, with a dedicated consumer task draining the channel. This preserves the synchronous <code>Emit</code> contract while allowing sinks to process asynchronously.
+  </div>
+
+  <details>
+    <summary>Pseudocode: HoneEventBus.Emit</summary>
+    <pre><code>public void Emit(HoneEvent honeEvent)
+{
+    IHoneEventSink[] snapshot;
+    lock (_lock)
+    {
+        snapshot = _sinks.ToArray();
+    }
+
+    foreach (var sink in snapshot)
+    {
+        try
+        {
+            sink.Emit(honeEvent);
+        }
+        catch
+        {
+            // Swallowed — fail-silent per sink
+        }
+    }
+}</code></pre>
+  </details>
+</div>
+
+<!-- ════════════════ 6. EXTENSIBILITY ════════════════ -->
+<h2 id="extensibility">6. Extensibility — Adding a New Sink</h2>
+
+<div class="card">
+  <h3 style="margin-top:0">Three Steps</h3>
+  <ol style="padding-left:20px;margin:12px 0;line-height:2">
+    <li><strong>Implement <code>IHoneEventSink</code></strong> — single method: <code>void Emit(HoneEvent honeEvent)</code></li>
+    <li><strong>Register</strong> with <code>HoneEventBus.Register(sink)</code></li>
+    <li><strong>Pattern-match</strong> on <code>HoneEvent</code> subtypes in your implementation</li>
+  </ol>
+
+  <h3>Implementation Template</h3>
+  <pre><code>public class MyCustomSink : IHoneEventSink
+{
+    public void Emit(HoneEvent honeEvent)
+    {
+        switch (honeEvent)
+        {
+            case PhaseStarted ps:
+                // handle phase start
+                break;
+            case PhaseCompleted pc:
+                // handle phase completion
+                break;
+            case MetricSnapshot ms:
+                // handle metrics
+                break;
+            case AgentInvoked ai:
+                // handle agent invocation
+                break;
+            case ExperimentOutcomeEvent eo:
+                // handle experiment outcome
+                break;
+            case StatusMessage sm:
+                // handle status message
+                break;
+            case DiagnosticProgress dp:
+                // handle diagnostic progress
+                break;
+        }
+    }
+}</code></pre>
+
+  <h3>Future Sink Ideas</h3>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+    <span class="event-badge badge-blue">TUI Dashboard</span>
+    <span class="event-badge badge-green">GUI (WPF / Avalonia)</span>
+    <span class="event-badge badge-amber">Webhook (HTTP POST)</span>
+    <span class="event-badge badge-orange">Prometheus Metrics</span>
+    <span class="event-badge badge-rose">OpenTelemetry Spans</span>
+  </div>
+
+  <div class="note" style="margin-top:16px">
+    <strong>💡 Tip:</strong> Because the bus fans out to all registered sinks, you can combine sinks freely — e.g., console + JSONL + Prometheus all at once. Each sink is independent and isolated by the fail-silent pattern.
+  </div>
+</div>
+
+</div><!-- /container -->
+</body>
+</html>

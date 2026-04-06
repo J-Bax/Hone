@@ -1,0 +1,19 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!-- Allow underscores in test method names (e.g. Method_Should_Behavior) -->
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+    <!-- Allow namespace segments that match language keywords (e.g. Loop) -->
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
+    <!-- Allow internal test classes — xUnit discovers them via reflection -->
+    <NoWarn>$(NoWarn);xUnit1000</NoWarn>
+    <!-- Internal test classes appear "never instantiated" to analyzers -->
+    <NoWarn>$(NoWarn);CA1812</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.analyzers" PrivateAssets="all" />
+    <PackageReference Include="NSubstitute.Analyzers.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

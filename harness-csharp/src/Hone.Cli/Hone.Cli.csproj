@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hone.Integration.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
+    <ProjectReference Include="..\Hone.Agents.CopilotCli\Hone.Agents.CopilotCli.csproj" />
+    <ProjectReference Include="..\Hone.Agents.Loop\Hone.Agents.Loop.csproj" />
+    <ProjectReference Include="..\Hone.Agents.Preparation\Hone.Agents.Preparation.csproj" />
+    <ProjectReference Include="..\Hone.Core\Hone.Core.csproj" />
+    <ProjectReference Include="..\Hone.Diagnostics\Hone.Diagnostics.csproj" />
+    <ProjectReference Include="..\Hone.Lifecycle\Hone.Lifecycle.csproj" />
+    <ProjectReference Include="..\Hone.Measurement\Hone.Measurement.csproj" />
+    <ProjectReference Include="..\Hone.Measurement.DotnetCounters\Hone.Measurement.DotnetCounters.csproj" />
+    <ProjectReference Include="..\Hone.Measurement.K6\Hone.Measurement.K6.csproj" />
+    <ProjectReference Include="..\Hone.Orchestration\Hone.Orchestration.csproj" />
+    <ProjectReference Include="..\Hone.Reporting\Hone.Reporting.csproj" />
+    <ProjectReference Include="..\Hone.SourceControl\Hone.SourceControl.csproj" />
+    <ProjectReference Include="..\Hone.SourceControl.Git\Hone.SourceControl.Git.csproj" />
+  </ItemGroup>
+
+</Project>

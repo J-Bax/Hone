@@ -1,0 +1,37 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hone.Agents.CopilotCli/Hone.Agents.CopilotCli.csproj" />
+    <Project Path="src/Hone.Agents.Core/Hone.Agents.Core.csproj" />
+    <Project Path="src/Hone.Agents.Loop/Hone.Agents.Loop.csproj" />
+    <Project Path="src/Hone.Agents.Preparation/Hone.Agents.Preparation.csproj" />
+    <Project Path="src/Hone.Cli/Hone.Cli.csproj" />
+    <Project Path="src/Hone.Core/Hone.Core.csproj" />
+    <Project Path="src/Hone.Diagnostics/Hone.Diagnostics.csproj" />
+    <Project Path="src/Hone.Lifecycle/Hone.Lifecycle.csproj" />
+    <Project Path="src/Hone.Measurement.DotnetCounters/Hone.Measurement.DotnetCounters.csproj" />
+    <Project Path="src/Hone.Measurement.K6/Hone.Measurement.K6.csproj" />
+    <Project Path="src/Hone.Measurement/Hone.Measurement.csproj" />
+    <Project Path="src/Hone.Orchestration/Hone.Orchestration.csproj" />
+    <Project Path="src/Hone.Reporting/Hone.Reporting.csproj" />
+    <Project Path="src/Hone.SourceControl.Git/Hone.SourceControl.Git.csproj" />
+    <Project Path="src/Hone.SourceControl/Hone.SourceControl.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hone.Agents.CopilotCli.Tests/Hone.Agents.CopilotCli.Tests.csproj" />
+    <Project Path="tests/Hone.Agents.Core.Tests/Hone.Agents.Core.Tests.csproj" />
+    <Project Path="tests/Hone.Agents.Loop.Tests/Hone.Agents.Loop.Tests.csproj" />
+    <Project Path="tests/Hone.Agents.Preparation.Tests/Hone.Agents.Preparation.Tests.csproj" />
+    <Project Path="tests/Hone.Core.Tests/Hone.Core.Tests.csproj" />
+    <Project Path="tests/Hone.Diagnostics.Tests/Hone.Diagnostics.Tests.csproj" />
+    <Project Path="tests/Hone.Integration.Tests/Hone.Integration.Tests.csproj" />
+    <Project Path="tests/Hone.Lifecycle.Tests/Hone.Lifecycle.Tests.csproj" />
+    <Project Path="tests/Hone.Measurement.DotnetCounters.Tests/Hone.Measurement.DotnetCounters.Tests.csproj" />
+    <Project Path="tests/Hone.Measurement.K6.Tests/Hone.Measurement.K6.Tests.csproj" />
+    <Project Path="tests/Hone.Measurement.Tests/Hone.Measurement.Tests.csproj" />
+    <Project Path="tests/Hone.Orchestration.Tests/Hone.Orchestration.Tests.csproj" />
+    <Project Path="tests/Hone.Reporting.Tests/Hone.Reporting.Tests.csproj" />
+    <Project Path="tests/Hone.SourceControl.Git.Tests/Hone.SourceControl.Git.Tests.csproj" />
+    <Project Path="tests/Hone.SourceControl.Tests/Hone.SourceControl.Tests.csproj" />
+    <Project Path="tests/Hone.TestInfrastructure/Hone.TestInfrastructure.csproj" />
+  </Folder>
+</Solution>
