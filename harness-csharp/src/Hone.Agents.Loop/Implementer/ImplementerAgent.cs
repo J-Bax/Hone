@@ -8,7 +8,6 @@ namespace Hone.Agents.Loop.Implementer;
 
 /// <summary>
 /// Invokes the hone-fixer AI agent to generate optimized file content.
-/// Ports the behaviour of the PowerShell <c>Invoke-FixAgent.ps1</c>.
 /// </summary>
 public sealed class ImplementerAgent(AgentInvoker agentInvoker)
 {
@@ -29,12 +28,20 @@ public sealed class ImplementerAgent(AgentInvoker agentInvoker)
         ArgumentException.ThrowIfNullOrEmpty(filePath);
         ArgumentException.ThrowIfNullOrEmpty(explanation);
 
+        if (string.IsNullOrEmpty(rootCauseDocument))
+        {
+            throw new InvalidOperationException(
+                "RCA document is required but was not provided. " +
+                "The analysis agent must produce an RCA document before implementation begins. " +
+                $"FilePath: '{filePath}', Explanation: '{explanation}', Attempt: {attempt}.");
+        }
+
         string prompt = BuildPrompt(filePath, explanation, targetLabel, attempt, previousErrors, currentFileContent, rootCauseDocument);
 
         AgentInvocationOptions options = new(
             AgentName: "hone-fixer",
             Prompt: prompt,
-            ModelConfigKey: "FixModel",
+            ModelConfigKey: "ImplementerModel",
             DefaultModel: ModelDefaults.Implementation,
             WorkingDirectory: workingDirectory);
 
@@ -96,13 +103,10 @@ public sealed class ImplementerAgent(AgentInvoker agentInvoker)
         sb.AppendLine("## Optimization to Apply");
         sb.AppendLine(explanation);
 
-        if (rootCauseDocument is not null)
-        {
-            sb.AppendLine();
-            sb.AppendLine("## Root Cause Analysis");
-            sb.AppendLine();
-            sb.AppendLine(rootCauseDocument);
-        }
+        sb.AppendLine();
+        sb.AppendLine("## Root Cause Analysis");
+        sb.AppendLine();
+        sb.AppendLine(rootCauseDocument);
 
         if (attempt > 1 || previousErrors is not null || currentFileContent is not null)
         {

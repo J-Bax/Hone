@@ -9,8 +9,6 @@ namespace Hone.Diagnostics.Measurement;
 /// <summary>
 /// Orchestrates the full diagnostic profiling lifecycle: multi-pass collection
 /// (per group) followed by analyzer execution on merged data.
-/// Replaces harness/Invoke-DiagnosticMeasurement.ps1 (collection + analysis coordination)
-/// and harness/Invoke-DiagnosticAnalysis.ps1 (analyzer execution).
 /// </summary>
 /// <remarks>
 /// This orchestrator does NOT manage lifecycle hooks (API start/stop, database reset).
@@ -195,12 +193,13 @@ public sealed class DiagnosticMeasurementOrchestrator
                 continue;
             }
 
-            // Resolve plugin
+            // Resolve plugin — a missing plugin is a configuration bug; fail loudly.
             if (!_analyzerPlugins.TryGetValue(analyzer.Name, out IAnalyzerPlugin? plugin))
             {
-                EmitStatus($"Analyzer '{analyzer.Name}' has no registered plugin — skipping");
-                allSuccess = false;
-                continue;
+                throw new InvalidOperationException(
+                    $"Analyzer '{analyzer.Name}' has no registered plugin. " +
+                    "This is a configuration bug — all discovered analyzers must have a corresponding plugin registration. " +
+                    $"Registered plugins: [{string.Join(", ", _analyzerPlugins.Keys)}].");
             }
 
             string analyzerOutputDir = Path.Combine(outputDir, analyzer.Name);

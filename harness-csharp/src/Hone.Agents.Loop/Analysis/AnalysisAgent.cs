@@ -8,7 +8,6 @@ namespace Hone.Agents.Loop.Analysis;
 
 /// <summary>
 /// Invokes the hone-analyst AI agent to identify optimization opportunities.
-/// Ports the behaviour of the PowerShell <c>Invoke-AnalysisAgent.ps1</c>.
 /// </summary>
 public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 {
@@ -132,16 +131,33 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 
         foreach (OpportunityDto dto in dtos)
         {
-            string filePath = dto.FilePath ?? string.Empty;
-            string title = dto.Title ?? dto.Explanation ?? string.Empty;
-            string explanation = dto.Explanation ?? dto.Title ?? string.Empty;
+            if (string.IsNullOrEmpty(dto.FilePath))
+            {
+                throw new InvalidOperationException(
+                    "Analysis agent returned an opportunity with no FilePath. " +
+                    $"Title: '{dto.Title}', Explanation: '{dto.Explanation}'.");
+            }
 
-            OpportunityScope scope = Enum.TryParse(dto.Scope, ignoreCase: true, out OpportunityScope parsed)
-                ? parsed
-                : OpportunityScope.Narrow;
+            if (string.IsNullOrEmpty(dto.Title) && string.IsNullOrEmpty(dto.Explanation))
+            {
+                throw new InvalidOperationException(
+                    "Analysis agent returned an opportunity with neither Title nor Explanation. " +
+                    $"FilePath: '{dto.FilePath}'.");
+            }
+
+            if (!Enum.TryParse(dto.Scope, ignoreCase: true, out OpportunityScope scope))
+            {
+                throw new InvalidOperationException(
+                    $"Analysis agent returned an opportunity with invalid Scope '{dto.Scope}'. " +
+                    $"FilePath: '{dto.FilePath}', Title: '{dto.Title}'. " +
+                    "Expected 'Narrow' or 'Architecture'.");
+            }
+
+            string title = dto.Title ?? dto.Explanation!;
+            string explanation = dto.Explanation ?? dto.Title!;
 
             result.Add(new Opportunity(
-                FilePath: filePath,
+                FilePath: dto.FilePath,
                 Title: title,
                 Explanation: explanation,
                 Scope: scope,

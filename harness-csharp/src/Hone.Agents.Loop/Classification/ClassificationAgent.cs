@@ -8,7 +8,6 @@ namespace Hone.Agents.Loop.Classification;
 /// <summary>
 /// Invokes the hone-classifier AI agent to determine whether a proposed
 /// optimization is narrow (single-file) or architectural (cross-cutting).
-/// Ports the behaviour of the PowerShell <c>Invoke-ClassificationAgent.ps1</c>.
 /// </summary>
 public sealed class ClassificationAgent(AgentInvoker agentInvoker)
 {
@@ -45,24 +44,25 @@ public sealed class ClassificationAgent(AgentInvoker agentInvoker)
             .InvokeAgentAsync<ClassificationResponse>(options, ct)
             .ConfigureAwait(false);
 
-        if (result.ParsedResult?.Scope is not null)
+        if (result.ParsedResult?.Scope is null)
         {
-            OpportunityScope scope = string.Equals(result.ParsedResult.Scope, "narrow", StringComparison.OrdinalIgnoreCase)
-                ? OpportunityScope.Narrow
-                : OpportunityScope.Architecture;
-
-            return new ClassificationResult(
-                Success: result.Success,
-                Scope: scope,
-                Reasoning: result.ParsedResult.Reasoning,
-                Response: result.RawOutput);
+            throw new InvalidOperationException(
+                "Classification agent failed to return a valid scope. " +
+                "This indicates a bug in the classification pipeline. " +
+                $"FilePath: '{filePath}', Explanation: '{explanation}', " +
+                $"AgentSuccess: {result.Success}, ExitCode: {result.ExitCode}, " +
+                $"ParsedResult was {(result.ParsedResult is null ? "null" : "non-null with null Scope")}, " +
+                $"RawOutput: '{result.RawOutput}'.");
         }
 
-        // Classification failed — default to architecture (safe fallback)
+        OpportunityScope scope = string.Equals(result.ParsedResult.Scope, "narrow", StringComparison.OrdinalIgnoreCase)
+            ? OpportunityScope.Narrow
+            : OpportunityScope.Architecture;
+
         return new ClassificationResult(
-            Success: false,
-            Scope: OpportunityScope.Architecture,
-            Reasoning: string.Format(CultureInfo.InvariantCulture, "Classification failed: {0}", result.RawOutput),
+            Success: result.Success,
+            Scope: scope,
+            Reasoning: result.ParsedResult.Reasoning,
             Response: result.RawOutput);
     }
 

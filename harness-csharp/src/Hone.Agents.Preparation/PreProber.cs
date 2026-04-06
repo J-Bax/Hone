@@ -163,12 +163,14 @@ internal static class PreProber
                     }
                 }
             }
-#pragma warning disable CA1031 // Resilience: skip inaccessible directories
-            catch (Exception)
+            catch (IOException)
             {
-                // Silently ignore — matches PS -ErrorAction SilentlyContinue
+                // Expected: inaccessible or missing directories during filesystem enumeration
             }
-#pragma warning restore CA1031
+            catch (UnauthorizedAccessException)
+            {
+                // Expected: insufficient permissions for filesystem enumeration
+            }
 
             if (hits.Count > 0)
             {
@@ -207,12 +209,14 @@ internal static class PreProber
                 }
             }
         }
-#pragma warning disable CA1031 // Resilience: skip inaccessible directories
-        catch (Exception)
+        catch (IOException)
         {
-            // Silently ignore
+            // Expected: inaccessible or missing directories during filesystem enumeration
         }
-#pragma warning restore CA1031
+        catch (UnauthorizedAccessException)
+        {
+            // Expected: insufficient permissions for filesystem enumeration
+        }
 
         return dirs;
     }
@@ -241,12 +245,14 @@ internal static class PreProber
                 }
             }
         }
-#pragma warning disable CA1031 // Resilience: skip inaccessible directories
-        catch (Exception)
+        catch (IOException)
         {
-            // Silently ignore
+            // Expected: inaccessible or missing files during filesystem enumeration
         }
-#pragma warning restore CA1031
+        catch (UnauthorizedAccessException)
+        {
+            // Expected: insufficient permissions for filesystem enumeration
+        }
 
         return files;
     }
@@ -264,12 +270,14 @@ internal static class PreProber
                 contents.Add(relative);
             }
         }
-#pragma warning disable CA1031 // Resilience: skip inaccessible paths
-        catch (Exception)
+        catch (IOException)
         {
-            // Silently ignore
+            // Expected: inaccessible or missing paths during filesystem enumeration
         }
-#pragma warning restore CA1031
+        catch (UnauthorizedAccessException)
+        {
+            // Expected: insufficient permissions for filesystem enumeration
+        }
 
         return contents;
     }
