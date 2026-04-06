@@ -5,14 +5,12 @@ namespace Hone.Core.Config;
 /// <summary>
 /// Merges engine defaults, target overrides, and optional CLI overrides
 /// into a single <see cref="HoneConfig"/>.
-/// Replaces <c>Merge-HoneConfig</c> from HoneHelpers.psm1.
 /// </summary>
 public static class ConfigMerger
 {
     /// <summary>
     /// Merges engine defaults + target overrides + optional CLI overrides.
-    /// Mirrors <c>Merge-HoneConfig</c> semantics: section-level merge for objects,
-    /// scalar override for primitives.
+    /// Section-level merge for objects, scalar override for primitives.
     /// </summary>
     /// <param name="engine">Base engine configuration with defaults.</param>
     /// <param name="target">Target-specific overrides (non-default values win).</param>
@@ -46,7 +44,7 @@ public static class ConfigMerger
     /// For reference-type collection properties (e.g. <c>IReadOnlyList&lt;string&gt;</c>),
     /// the comparison uses <see cref="object.Equals(object?, object?)"/> which is reference equality.
     /// This means collection properties from the target section always win, even if they carry
-    /// default content. This is an acceptable Phase 1 limitation since target configs should
+    /// default content. This is acceptable since target configs should
     /// only specify sections they intend to override.
     /// </remarks>
     internal static T MergeSection<T>(T engine, T target)

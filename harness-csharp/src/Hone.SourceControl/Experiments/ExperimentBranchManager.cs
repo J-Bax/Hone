@@ -5,7 +5,6 @@ namespace Hone.SourceControl.Experiments;
 /// <summary>
 /// Manages experiment branches — creating branches with applied suggestions and
 /// reverting experiments back to their original state.
-/// Replaces <c>Apply-Suggestion.ps1</c> and <c>Revert-ExperimentCode.ps1</c>.
 /// </summary>
 public sealed class ExperimentBranchManager(IVersionControl versionControl)
 {
@@ -28,9 +27,6 @@ public sealed class ExperimentBranchManager(IVersionControl versionControl)
             string commitMessage = $"hone(experiment-{options.Experiment}): {options.Description}";
 
             // 1. Ensure we're on the base branch (clean starting point)
-            // TODO(phase-7+): Preserve runtime state (results directory) across branch
-            // switches — matches Get-PreservedRuntimeState / Restore-PreservedRuntimeState
-            // in Apply-Suggestion.ps1.
             await versionControl.CheckoutAsync(
                 options.WorkingDir, options.BaseBranch, create: false, ct).ConfigureAwait(false);
 
@@ -42,14 +38,12 @@ public sealed class ExperimentBranchManager(IVersionControl versionControl)
             await File.WriteAllTextAsync(options.TargetFilePath, options.SuggestionContent, ct).ConfigureAwait(false);
 
             // 4. Commit the change
-            // TODO(phase-7+): Stage experiment artifacts (analysis, iterations, metrics)
-            // before committing — matches Stage-ExperimentArtifacts.ps1 behavior.
             await versionControl.CommitAsync(
                 options.WorkingDir, commitMessage, [options.TargetFilePath], ct).ConfigureAwait(false);
 
             return new ApplySuggestionResult(Success: true, BranchName: branchName, ErrorMessage: null);
         }
-#pragma warning disable CA1031 // Catch general exception — PS parity: scripts return error objects instead of throwing
+#pragma warning disable CA1031 // Catch general exception — return error result instead of throwing
         catch (Exception ex)
 #pragma warning restore CA1031
         {
@@ -99,7 +93,7 @@ public sealed class ExperimentBranchManager(IVersionControl versionControl)
 
             return new RevertExperimentResult(Success: true, ErrorMessage: null);
         }
-#pragma warning disable CA1031 // Catch general exception — PS parity: scripts return error objects instead of throwing
+#pragma warning disable CA1031 // Catch general exception — return error result instead of throwing
         catch (Exception ex)
 #pragma warning restore CA1031
         {
@@ -109,8 +103,7 @@ public sealed class ExperimentBranchManager(IVersionControl versionControl)
 
     /// <summary>
     /// Guards against path traversal by verifying <paramref name="filePath"/> resolves
-    /// within <paramref name="rootDir"/>.  Reproduces the protection from
-    /// <c>Apply-Suggestion.ps1</c>.
+    /// within <paramref name="rootDir"/>.
     /// </summary>
     private static void ThrowIfPathOutsideRoot(string filePath, string rootDir)
     {

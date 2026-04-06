@@ -6,20 +6,16 @@ namespace Hone.Measurement.DotnetCounters;
 /// <see cref="IRuntimeMetricsCollector"/> implementation using <c>dotnet-counters</c>.
 /// </summary>
 /// <remarks>
-/// Phase 2 boundary: <see cref="StartAsync"/> prepares the collection handle (output path
-/// and process ID) but does <b>not</b> start the <c>dotnet-counters</c> process itself.
-/// Background process lifecycle management will be added in the orchestration layer (Phase 7+).
-/// <see cref="StopAndParseAsync"/> reads and parses the CSV that was written by the
-/// externally-managed <c>dotnet-counters</c> process.
+/// <see cref="StartAsync"/> prepares the collection handle (output path
+/// and process ID). <see cref="StopAndParseAsync"/> reads and parses the CSV
+/// that was written by the <c>dotnet-counters</c> process.
 /// </remarks>
 /// <param name="processRunner">
-/// Process runner for executing <c>dotnet-counters</c>. Reserved for Phase 7+
-/// when background process management is implemented.
+/// Process runner for executing <c>dotnet-counters</c>.
 /// </param>
 public sealed class DotnetCountersCollector(IProcessRunner processRunner) : IRuntimeMetricsCollector
 {
-    // Will be used in Phase 7+ for background process management.
-#pragma warning disable IDE0052, CA1823 // Reserved for Phase 7+ orchestration layer
+#pragma warning disable IDE0052, CA1823 // Field is injected for future background process management
     private readonly IProcessRunner _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
 #pragma warning restore IDE0052, CA1823
 

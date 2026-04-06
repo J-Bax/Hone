@@ -8,7 +8,6 @@ namespace Hone.Diagnostics.Collectors;
 
 /// <summary>
 /// Collector plugin for dotnet-counters.
-/// Replaces <c>harness/collectors/dotnet-counters/</c>.
 /// Collects runtime metrics via <c>dotnet-counters collect</c>.
 /// </summary>
 internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
@@ -204,7 +203,7 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
 
     /// <summary>
     /// Builds a human-readable summary string from counter metrics.
-    /// Matches the PowerShell format: "CPU avg: X% | GC heap max: Y MB | ..."
+    /// Format: "CPU avg: X% | GC heap max: Y MB | ..."
     /// </summary>
     internal static string BuildSummary(JsonElement? metrics)
     {
@@ -258,8 +257,7 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
     }
 
     /// <summary>
-    /// Parses dotnet-counters CSV into the structured JSON format matching
-    /// the PowerShell Stop-DotnetCounters.ps1 output.
+    /// Parses dotnet-counters CSV into the structured JSON format.
     /// </summary>
     private static JsonElement? ParseCountersCsv(string csvContent)
     {
@@ -304,7 +302,7 @@ internal sealed class DotnetCountersCollectorPlugin : ICollectorPlugin
             return null;
         }
 
-        // Build the metrics structure matching PS output
+        // Build the metrics structure
         var metricsDict = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["TotalSamples"] = rows.Count,

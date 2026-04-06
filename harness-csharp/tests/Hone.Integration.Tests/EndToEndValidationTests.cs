@@ -18,7 +18,7 @@ using Xunit.Abstractions;
 namespace Hone.Integration.Tests;
 
 /// <summary>
-/// Phase 10.2 — E2E validation tests that exercise the full pipeline
+/// E2E validation tests that exercise the full pipeline
 /// with real YAML config files, real comparison logic, and the integration
 /// test harness.
 /// </summary>
