@@ -78,22 +78,20 @@ public sealed class ClassificationAgentTests(ITestOutputHelper output) : HoneTes
     // ── JsonParseFailure_DefaultsToArchitecture ─────────────────────────
 
     [Fact]
-    public async Task ClassificationAgent_JsonParseFailure_DefaultsToArchitecture()
+    public async Task ClassificationAgent_JsonParseFailure_ThrowsInvalidOperationException()
     {
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
             .Returns(OkResult("This is not valid JSON at all"));
 
         ClassificationAgent sut = CreateSut();
 
-        ClassificationResult result = await sut.ClassifyAsync(
+        Func<Task> act = () => sut.ClassifyAsync(
             filePath: "Controllers/ItemsController.cs",
             explanation: "Optimize endpoint",
             targetLabel: "SampleApi",
             workingDirectory: null);
 
-        _ = result.Success.Should().BeFalse();
-        _ = result.Scope.Should().Be(OpportunityScope.Architecture);
-        _ = result.Reasoning.Should().Contain("Classification failed");
+        _ = await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
     // ── UsesCorrectAgentConfig ──────────────────────────────────────────
@@ -101,8 +99,10 @@ public sealed class ClassificationAgentTests(ITestOutputHelper output) : HoneTes
     [Fact]
     public async Task ClassificationAgent_UsesCorrectAgentConfig()
     {
+        string json = System.Text.Json.JsonSerializer.Serialize(new { scope = "narrow", reasoning = "test" });
+
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
-            .Returns(OkResult("{}"));
+            .Returns(OkResult(json));
 
         AgentConfig config = new(ClassificationModel: "custom-classification-model");
         ClassificationAgent sut = CreateSut(config);
@@ -131,7 +131,7 @@ public sealed class ClassificationAgentTests(ITestOutputHelper output) : HoneTes
             .Returns(callInfo =>
             {
                 capturedInvocation = callInfo.Arg<AgentInvocation>();
-                return OkResult("{}");
+                return OkResult(System.Text.Json.JsonSerializer.Serialize(new { scope = "narrow", reasoning = "test" }));
             });
 
         ClassificationAgent sut = CreateSut();

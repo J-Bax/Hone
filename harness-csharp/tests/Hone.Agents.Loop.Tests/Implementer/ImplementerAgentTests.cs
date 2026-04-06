@@ -43,7 +43,8 @@ public sealed class ImplementerAgentTests(ITestOutputHelper output) : HoneTestBa
             filePath: "Controllers/ItemsController.cs",
             explanation: "Add response caching",
             targetLabel: "SampleApi",
-            workingDirectory: null);
+            workingDirectory: null,
+            rootCauseDocument: "## RCA\nMissing response caching causes repeated DB queries.");
 
         _ = result.Success.Should().BeTrue();
         _ = result.CodeBlock.Should().Be(Code);
@@ -103,7 +104,8 @@ public sealed class ImplementerAgentTests(ITestOutputHelper output) : HoneTestBa
             workingDirectory: null,
             attempt: 2,
             previousErrors: "CS1002: ; expected",
-            currentFileContent: "public class Broken {");
+            currentFileContent: "public class Broken {",
+            rootCauseDocument: "## RCA\nMissing cache layer.");
 
         _ = capturedInvocation.Should().NotBeNull();
         string prompt = capturedInvocation!.Prompt;
@@ -132,17 +134,18 @@ public sealed class ImplementerAgentTests(ITestOutputHelper output) : HoneTestBa
             filePath: "NonExistent.cs",
             explanation: "Optimize something",
             targetLabel: "SampleApi",
-            workingDirectory: null);
+            workingDirectory: null,
+            rootCauseDocument: "## RCA\nFile needs optimization.");
 
         _ = result.Success.Should().BeFalse();
         _ = result.CodeBlock.Should().BeNull();
         _ = result.Response.Should().Contain("couldn't make the change");
     }
 
-    // ── UsesFixModelConfig ──────────────────────────────────────────────
+    // ── UsesImplementerModelConfig ──────────────────────────────────────
 
     [Fact]
-    public async Task ImplementerAgent_UsesFixModelConfig()
+    public async Task ImplementerAgent_UsesImplementerModelConfig()
     {
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
             .Returns(OkResult("```\ncode\n```"));
@@ -154,7 +157,8 @@ public sealed class ImplementerAgentTests(ITestOutputHelper output) : HoneTestBa
             filePath: "Controllers/ItemsController.cs",
             explanation: "Optimize endpoint",
             targetLabel: "SampleApi",
-            workingDirectory: null);
+            workingDirectory: null,
+            rootCauseDocument: "## RCA\nEndpoint is slow.");
 
         _ = await _runner.Received(1).InvokeAsync(
             Arg.Is<AgentInvocation>(inv =>

@@ -46,7 +46,7 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
 
         List<string> args = CopilotCliAgentRunner.BuildArguments(invocation);
 
-        _ = args.Should().ContainInOrder("--model", "claude-sonnet-4-20250514");
+        _ = args.Should().ContainInOrder("--model", "claude-sonnet-4.6");
     }
 
     [Fact]

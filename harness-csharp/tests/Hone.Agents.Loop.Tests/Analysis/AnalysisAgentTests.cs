@@ -146,10 +146,8 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
     [Fact]
     public async Task AnalysisAgent_NoOpportunities_ReturnsFailure()
     {
-        string json = JsonSerializer.Serialize(new { opportunities = Array.Empty<object>() });
-
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
-            .Returns(OkResult(json));
+            .Returns(OkResult("{}"));
 
         AnalysisAgent sut = CreateSut();
 
@@ -245,7 +243,7 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
     // ── Scope defaults to Narrow ────────────────────────────────────────
 
     [Fact]
-    public async Task AnalysisAgent_MissingScope_DefaultsToNarrow()
+    public async Task AnalysisAgent_MissingScope_ThrowsInvalidOperationException()
     {
         string json = MakeAgentJson(
             new
@@ -260,11 +258,11 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
 
         AnalysisAgent sut = CreateSut();
 
-        AnalysisResult result = await sut.AnalyzeAsync(
+        Func<Task> act = () => sut.AnalyzeAsync(
             MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
             experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
 
-        _ = result.Opportunities[0].Scope.Should().Be(OpportunityScope.Narrow);
+        _ = await act.Should().ThrowAsync<InvalidOperationException>();
     }
 
     // ── Title falls back to explanation ──────────────────────────────────
@@ -277,6 +275,7 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
             {
                 filePath = "Controllers/ItemsController.cs",
                 explanation = "Slow DB queries cause high latency",
+                scope = "narrow",
             });
 
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
