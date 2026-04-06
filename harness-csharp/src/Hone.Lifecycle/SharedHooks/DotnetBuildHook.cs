@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that builds a .NET solution.
-/// Replaces <c>hooks/dotnet-build.ps1</c>.
 /// </summary>
 public sealed class DotnetBuildHook(IProcessRunner processRunner) : ILifecycleHook
 {
@@ -27,7 +26,7 @@ public sealed class DotnetBuildHook(IProcessRunner processRunner) : ILifecycleHo
 
         List<string> artifacts = [];
 
-        // PS parity: save build output when running under an experiment
+        // Save build output when running under an experiment
         if (context.Experiment > 0)
         {
             string logDir = Path.Combine(context.TargetPath, context.Config.Api.ResultsPath,

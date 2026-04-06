@@ -8,7 +8,6 @@ namespace Hone.Diagnostics.Analyzers;
 /// <summary>
 /// Analyzes CPU sampling stacks by building a prompt with folded-stack data
 /// and performance metrics, then calling the <c>hone-cpu-profiler</c> AI agent.
-/// Ports <c>harness/analyzers/cpu-hotspots/Invoke-Analyzer.ps1</c>.
 /// </summary>
 internal sealed class CpuHotspotsAnalyzer : IAnalyzerPlugin
 {

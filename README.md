@@ -74,17 +74,26 @@ All diffs include a detailed root-cause analysis and explanation of fix — see 
 
 ## Prerequisites
 
+### Harness
+
 | Tool | Version | Install |
 |------|---------|---------|
 | .NET SDK | 10.0 | `winget install Microsoft.DotNet.SDK.10` |
-| .NET SDK | 6.0 | `winget install Microsoft.DotNet.SDK.6` (for sample-api) |
-| SQL Server LocalDB | 2019+ | Included with Visual Studio or `winget install Microsoft.SQLServer.2019.LocalDB` |
 | k6 | Latest | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `winget install GitHub.cli` |
 | GitHub Copilot CLI | Latest | [Install standalone `copilot` CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — separate from `gh` |
-| PerfView | Latest | Download from [Microsoft/perfview](https://github.com/microsoft/perfview/releases) |
+| PerfView (Windows) | Latest | Download from [Microsoft/perfview](https://github.com/microsoft/perfview/releases) |
 
 > **Note:** PerfView requires **Administrator privileges** for kernel-level CPU sampling. Run the harness in an elevated terminal when diagnostic profiling is enabled.
+
+### Sample API (reference only)
+
+These are only needed if you're using the included sample API as your optimization target:
+
+| Tool | Version | Install |
+|------|---------|---------|
+| .NET SDK | 6.0 | `winget install Microsoft.DotNet.SDK.6` |
+| SQL Server LocalDB | 2019+ | Included with Visual Studio or `winget install Microsoft.SQLServer.2019.LocalDB` |
 
 ## Quick Start
 
@@ -123,7 +132,6 @@ See [docs/configuration.md](docs/configuration.md) for the full schema and runti
 - [Adapter Contracts](docs/adapter-contracts.md) — `.hone/` directory specification for target projects
 - [Plugin Contracts](docs/plugin-contracts.md) — C# interfaces for collector and analyzer plugins
 - [Future Extensions](docs/future-extensions.md) — Design ideas: actor-critic implementer, correction of error, optimization knowledge base
-- [C# Migration Summary](docs/features/csharp-migration/migration-summary.md) — Overview of the PowerShell → C# migration
 
 ## License
 

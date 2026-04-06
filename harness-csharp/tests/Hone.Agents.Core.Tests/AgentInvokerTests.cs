@@ -88,27 +88,6 @@ public sealed class AgentInvokerTests(ITestOutputHelper output) : HoneTestBase(o
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task AgentInvoker_ModelResolution_FixModelMapsToImplementerModel()
-    {
-        var config = new AgentConfig(ImplementerModel: "implementer-model");
-        AgentInvoker sut = CreateSut(config);
-
-        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
-            .Returns(Ok());
-
-        var options = new AgentInvocationOptions(
-            AgentName: "test-agent",
-            Prompt: "test prompt",
-            ModelConfigKey: "FixModel");
-
-        _ = await sut.InvokeAgentAsync<object>(options);
-
-        _ = await _runner.Received(1).InvokeAsync(
-            Arg.Is<AgentInvocation>(inv => inv.Model == "implementer-model"),
-            Arg.Any<CancellationToken>());
-    }
-
     // ── JSON extraction / sanitization ──────────────────────────────────
 
     [Fact]

@@ -2,7 +2,7 @@ namespace Hone.Measurement.Comparison;
 
 /// <summary>
 /// Structured .NET runtime counter data used by the efficiency tiebreaker
-/// and included in comparison output for parity with PowerShell results.
+/// and included in comparison output.
 /// </summary>
 public sealed record RuntimeCounterMetrics(
     CounterStatistic CpuUsage,

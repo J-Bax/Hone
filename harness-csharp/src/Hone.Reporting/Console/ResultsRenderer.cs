@@ -6,7 +6,7 @@ namespace Hone.Reporting.Console;
 
 /// <summary>
 /// Renders performance results as a formatted console table.
-/// Pure renderer — no file I/O. Replaces <c>Show-Results.ps1</c>.
+/// Pure renderer — no file I/O.
 /// </summary>
 public static class ResultsRenderer
 {

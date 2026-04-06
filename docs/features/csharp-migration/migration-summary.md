@@ -2,7 +2,7 @@
 
 > **Status:** Complete (Phase 10.3 — Documentation Updates)
 > **Migration started:** 2026-04-04
-> **Migration completed:** 2026-07-21 (Phase 10 — Target Migration & Cutover)
+> **Migration completed:** 2026-04-05 (Phase 10 — Target Migration & Cutover)
 > **Test coverage:** 629+ tests across 15+1 projects
 
 ---
@@ -11,7 +11,7 @@
 
 The Hone harness has been fully migrated from PowerShell 7.2+ scripts to a C# / .NET 10 solution (`harness-csharp/Hone.slnx`). The migration maintained full behavioral fidelity with the original PowerShell implementation while adding strong typing, a structured observability pipeline, an iterative implementer loop, and a proper CLI host.
 
-The PowerShell harness (`harness/`) remains in place as a reference implementation and is immediately runnable. The C# harness is now the primary implementation.
+The PowerShell harness (`harness-legacy*`) remains in place as a reference implementation and is immediately runnable. The C# harness is now the primary implementation.
 
 ---
 

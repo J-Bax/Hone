@@ -1,7 +1,6 @@
 # Phase 4 Implementation Record: Source Control
 
 > **Status:** Complete
-> **Date:** 2025-07-18
 > **Phase:** 4 — Source Control
 > **Migration Plan Reference:** [phased-plan.md](phased-plan.md) §Phase 4
 

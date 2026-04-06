@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interfaces &amp; Contracts — Hone C# Migration Architecture</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#2563eb;--primary-light:#dbeafe;--primary-dark:#1d4ed8;
+    --secondary:#16a34a;--secondary-light:#dcfce7;
+    --accent:#ea580c;--accent-light:#ffedd5;
+    --neutral:#64748b;--neutral-light:#e2e8f0;
+    --bg:#f8fafc;--card:#ffffff;--text:#1e293b;--text-muted:#475569;
+    --code-bg:#f1f5f9;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+    --shadow-md:0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.06);
+    --radius:8px;
+  }
+  html{font-size:16px;scroll-behavior:smooth}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.65;-webkit-font-smoothing:antialiased}
+
+  /* NAV */
+  nav{background:var(--primary);position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+  nav .nav-inner{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;padding:.5rem 1.5rem;gap:.25rem .5rem}
+  nav a{color:#fff;text-decoration:none;font-size:.85rem;padding:.4rem .75rem;border-radius:4px;white-space:nowrap;transition:background .15s}
+  nav a:hover{background:rgba(255,255,255,.18)}
+  nav a.current{background:rgba(255,255,255,.25);font-weight:600}
+  nav .brand{font-weight:700;font-size:1rem;margin-right:auto;letter-spacing:-.02em}
+
+  /* LAYOUT */
+  .container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem 4rem}
+  h1{font-size:2rem;font-weight:800;color:var(--primary-dark);margin-bottom:.25rem;letter-spacing:-.03em}
+  .subtitle{color:var(--text-muted);font-size:1.05rem;margin-bottom:2.5rem}
+  h2{font-size:1.45rem;font-weight:700;color:var(--text);margin:2.5rem 0 1rem;padding-bottom:.4rem;border-bottom:2px solid var(--primary-light)}
+  h3{font-size:1.15rem;font-weight:600;color:var(--primary-dark);margin:1.5rem 0 .5rem}
+
+  /* CARD */
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.5rem;margin-bottom:1.5rem}
+
+  /* SVG WRAPPER */
+  .svg-wrap{overflow-x:auto;margin:1.5rem 0}
+  .svg-wrap svg{display:block;margin:0 auto}
+
+  /* CALLOUT */
+  .callout{background:var(--primary-light);border-left:4px solid var(--primary);border-radius:0 var(--radius) var(--radius) 0;padding:1rem 1.25rem;margin:1.25rem 0;font-size:.92rem;color:var(--text)}
+  .callout strong{color:var(--primary-dark)}
+
+  /* DETAILS / PANELS */
+  details{background:var(--card);border:1px solid var(--neutral-light);border-radius:var(--radius);margin-bottom:.75rem;box-shadow:var(--shadow);transition:box-shadow .2s}
+  details[open]{box-shadow:var(--shadow-md)}
+  summary{cursor:pointer;padding:1rem 1.25rem;font-weight:600;font-size:1.05rem;color:var(--primary-dark);
+    list-style:none;display:flex;align-items:center;gap:.6rem;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸";font-size:1.1rem;transition:transform .2s;flex-shrink:0;color:var(--primary)}
+  details[open]>summary::before{transform:rotate(90deg)}
+  summary:hover{background:var(--primary-light);border-radius:var(--radius) var(--radius) 0 0}
+  details .panel{padding:.25rem 1.25rem 1.25rem}
+
+  /* META TABLE */
+  .meta{display:grid;grid-template-columns:160px 1fr;gap:.35rem .75rem;font-size:.9rem;margin-bottom:1rem}
+  .meta dt{font-weight:600;color:var(--text-muted)}
+  .meta dd{margin:0}
+
+  /* CODE */
+  code{font-family:"Cascadia Code","Fira Code",Consolas,"Courier New",monospace;font-size:.87em;background:var(--code-bg);padding:.15em .35em;border-radius:3px}
+  pre{background:var(--code-bg);border-radius:var(--radius);padding:1rem 1.25rem;overflow-x:auto;font-size:.85rem;line-height:1.55;margin:.75rem 0}
+  pre code{background:none;padding:0}
+
+  /* BADGES */
+  .badge{display:inline-block;font-size:.72rem;font-weight:600;padding:.2em .55em;border-radius:4px;letter-spacing:.02em;vertical-align:middle}
+  .badge-impl{background:var(--accent-light);color:var(--accent)}
+  .badge-consumer{background:var(--secondary-light);color:var(--secondary)}
+  .badge-core{background:var(--primary-light);color:var(--primary)}
+
+  /* PATTERN LIST */
+  .pattern-list{list-style:none;padding:0}
+  .pattern-list li{padding:.65rem .85rem;border-left:3px solid var(--primary);background:var(--card);margin-bottom:.5rem;border-radius:0 var(--radius) var(--radius) 0;box-shadow:var(--shadow);font-size:.93rem}
+  .pattern-list li strong{color:var(--primary-dark)}
+
+  /* PRINT */
+  @media print{
+    nav{position:static;box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    details{break-inside:avoid}
+    details[open]>summary~*{break-inside:avoid}
+    .svg-wrap{overflow:visible}
+    body{background:#fff}
+    .card,details{box-shadow:none;border:1px solid #ddd}
+  }
+
+  /* RESPONSIVE */
+  @media(max-width:768px){
+    .container{padding:1.25rem 1rem 3rem}
+    h1{font-size:1.55rem}
+    .meta{grid-template-columns:1fr;gap:.25rem 0}
+    .meta dt{margin-top:.35rem}
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ NAVIGATION ═══════════════ -->
+<nav>
+  <div class="nav-inner">
+    <span class="brand">Hone C# Architecture</span>
+    <a href="index.html">Overview</a>
+    <a href="solution-structure.html">Solution Structure</a>
+    <a href="core-domain.html">Core Domain</a>
+    <a href="data-flows.html">Data Flows</a>
+    <a href="interfaces-contracts.html" class="current">Interfaces &amp; Contracts</a>
+    <a href="phase-map.html">Phase Map</a>
+    <a href="observability-events.html">Observability</a>
+  </div>
+</nav>
+
+<div class="container">
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<h1>Interfaces &amp; Contracts</h1>
+<p class="subtitle">The 9 port interfaces in <code>Hone.Core</code> that decouple every assembly in the solution.</p>
+
+<!-- ═══════════════ 1. SEAM DIAGRAM ═══════════════ -->
+<h2 id="seam-diagram">1 &middot; Seam Diagram — Why Contracts Live in Core</h2>
+
+<div class="card">
+<div class="svg-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" width="960" height="620" role="img" aria-label="Hexagonal architecture seam diagram showing Hone.Core interfaces with consumers on the left and implementations on the right">
+  <defs>
+    <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6Z" fill="#16a34a"/></marker>
+    <marker id="arr-orange" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto"><path d="M8,0 L0,3 L8,6Z" fill="#ea580c"/></marker>
+    <filter id="shadow-f" x="-4%" y="-4%" width="108%" height="108%"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity=".12"/></filter>
+  </defs>
+
+  <!-- Column labels -->
+  <text x="120" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700" fill="#16a34a" letter-spacing=".05em">CONSUMERS</text>
+  <text x="480" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700" fill="#2563eb" letter-spacing=".05em">HONE.CORE</text>
+  <text x="840" y="32" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif" font-size="13" font-weight="700" fill="#ea580c" letter-spacing=".05em">IMPLEMENTATIONS</text>
+
+  <!-- Central Core box -->
+  <rect x="360" y="46" width="240" height="560" rx="12" fill="#2563eb" filter="url(#shadow-f)" opacity=".08"/>
+  <rect x="362" y="48" width="236" height="556" rx="11" fill="none" stroke="#2563eb" stroke-width="2"/>
+
+  <!-- Interface rows — y positions: 68, 128, 188, 248, 308, 368, 428, 488, 548 (spacing 60) -->
+  <!-- Row 1: IAgentRunner -->
+  <rect x="374" y="58" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="79" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">IAgentRunner</text>
+  <text x="480" y="96" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">AI agent invocation</text>
+
+  <!-- Row 2: IAnalyzerPlugin -->
+  <rect x="374" y="118" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="139" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">IAnalyzerPlugin</text>
+  <text x="480" y="156" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Diagnostic analysis</text>
+
+  <!-- Row 3: ICodeHost -->
+  <rect x="374" y="178" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="199" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">ICodeHost</text>
+  <text x="480" y="216" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Code hosting platform</text>
+
+  <!-- Row 4: ICollectorPlugin -->
+  <rect x="374" y="238" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="259" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">ICollectorPlugin</text>
+  <text x="480" y="276" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Profiling data collection</text>
+
+  <!-- Row 5: ILifecycleHook -->
+  <rect x="374" y="298" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="319" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">ILifecycleHook</text>
+  <text x="480" y="336" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Lifecycle stage execution</text>
+
+  <!-- Row 6: ILoadTestRunner -->
+  <rect x="374" y="358" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="379" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">ILoadTestRunner</text>
+  <text x="480" y="396" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Load test execution</text>
+
+  <!-- Row 7: IProcessRunner -->
+  <rect x="374" y="418" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="439" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">IProcessRunner</text>
+  <text x="480" y="456" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Subprocess management</text>
+
+  <!-- Row 8: IRuntimeMetricsCollector -->
+  <rect x="374" y="478" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="497" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="11.5" font-weight="700" fill="#1d4ed8">IRuntimeMetricsCollector</text>
+  <text x="480" y="516" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">Runtime perf metrics</text>
+
+  <!-- Row 9: IVersionControl -->
+  <rect x="374" y="538" width="212" height="48" rx="6" fill="#dbeafe"/>
+  <text x="480" y="559" text-anchor="middle" font-family='Cascadia Code,Fira Code,Consolas,monospace' font-size="12.5" font-weight="700" fill="#1d4ed8">IVersionControl</text>
+  <text x="480" y="576" text-anchor="middle" font-family="-apple-system,sans-serif" font-size="9.5" fill="#475569">VCS operations</text>
+
+  <!-- ═══ CONSUMER ARROWS (left → right, green) ═══ -->
+  <!-- IAgentRunner consumers -->
+  <text x="210" y="72" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Orchestration</text>
+  <line x1="216" y1="70" x2="370" y2="76" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="210" y="90" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Agents.Loop</text>
+  <line x1="216" y1="88" x2="370" y2="84" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- IAnalyzerPlugin consumers -->
+  <text x="210" y="142" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Diagnostics</text>
+  <line x1="216" y1="140" x2="370" y2="142" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ICodeHost consumers -->
+  <text x="210" y="198" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Orchestration</text>
+  <line x1="216" y1="196" x2="370" y2="200" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ICollectorPlugin consumers -->
+  <text x="210" y="262" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Diagnostics</text>
+  <line x1="216" y1="260" x2="370" y2="262" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ILifecycleHook consumers -->
+  <text x="210" y="316" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Lifecycle</text>
+  <line x1="216" y1="314" x2="370" y2="320" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="210" y="334" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Orchestration</text>
+  <line x1="216" y1="332" x2="370" y2="326" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ILoadTestRunner consumers -->
+  <text x="210" y="382" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Measurement</text>
+  <line x1="216" y1="380" x2="370" y2="382" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- IProcessRunner consumers -->
+  <text x="210" y="442" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">(many projects)</text>
+  <line x1="216" y1="440" x2="370" y2="442" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- IRuntimeMetricsCollector consumers -->
+  <text x="210" y="502" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Measurement</text>
+  <line x1="216" y1="500" x2="370" y2="502" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- IVersionControl consumers -->
+  <text x="210" y="556" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.SourceControl</text>
+  <line x1="216" y1="554" x2="370" y2="560" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+  <text x="210" y="574" text-anchor="end" font-family="-apple-system,sans-serif" font-size="10" fill="#15803d">Hone.Orchestration</text>
+  <line x1="216" y1="572" x2="370" y2="566" stroke="#16a34a" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+  <!-- ═══ IMPLEMENTATION ARROWS (right → left, orange) ═══ -->
+  <!-- IAgentRunner impl -->
+  <text x="750" y="80" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">Hone.Agents.CopilotCli</text>
+  <line x1="744" y1="78" x2="590" y2="80" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <!-- IAnalyzerPlugin impl -->
+  <text x="750" y="136" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">CpuHotspots, MemoryGc</text>
+  <line x1="744" y1="134" x2="590" y2="142" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="152" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.Diagnostics)</text>
+
+  <!-- ICodeHost impl -->
+  <text x="750" y="198" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">GitHubCodeHost</text>
+  <line x1="744" y1="196" x2="590" y2="200" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="214" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.SourceControl.Git)</text>
+
+  <!-- ICollectorPlugin impl -->
+  <text x="750" y="254" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">PerfView*, DotnetCounters</text>
+  <line x1="744" y1="252" x2="590" y2="260" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="270" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.Diagnostics)</text>
+
+  <!-- ILifecycleHook impl -->
+  <text x="750" y="318" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">Build/Start/Stop/Test hooks</text>
+  <line x1="744" y1="316" x2="590" y2="322" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="334" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.Lifecycle)</text>
+
+  <!-- ILoadTestRunner impl -->
+  <text x="750" y="378" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">K6LoadTestRunner</text>
+  <line x1="744" y1="376" x2="590" y2="382" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="394" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.Measurement.K6)</text>
+
+  <!-- IProcessRunner impl -->
+  <text x="750" y="442" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">(impl in Orchestration / injected)</text>
+  <line x1="744" y1="440" x2="590" y2="442" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+
+  <!-- IRuntimeMetricsCollector impl -->
+  <text x="750" y="498" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">DotnetCountersRuntimeMetrics</text>
+  <line x1="744" y1="496" x2="590" y2="502" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="514" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.Measurement.DotnetCounters)</text>
+
+  <!-- IVersionControl impl -->
+  <text x="750" y="560" text-anchor="start" font-family="-apple-system,sans-serif" font-size="10" fill="#c2410c">GitVersionControl</text>
+  <line x1="744" y1="558" x2="590" y2="562" stroke="#ea580c" stroke-width="1.5" marker-end="url(#arr-orange)"/>
+  <text x="750" y="576" text-anchor="start" font-family="-apple-system,sans-serif" font-size="9" fill="#94a3b8">(Hone.SourceControl.Git)</text>
+
+  <!-- Legend -->
+  <rect x="30" y="598" width="900" height="1" fill="#e2e8f0"/>
+  <circle cx="310" cy="614" r="5" fill="#16a34a"/>
+  <text x="320" y="618" font-family="-apple-system,sans-serif" font-size="10.5" fill="#475569">Consumer dependency</text>
+  <circle cx="500" cy="614" r="5" fill="#ea580c"/>
+  <text x="510" y="618" font-family="-apple-system,sans-serif" font-size="10.5" fill="#475569">Implementation</text>
+  <rect x="640" y="608" width="14" height="12" rx="2" fill="#dbeafe" stroke="#2563eb" stroke-width="1"/>
+  <text x="660" y="618" font-family="-apple-system,sans-serif" font-size="10.5" fill="#475569">Interface port (Hone.Core)</text>
+</svg>
+</div>
+
+<div class="callout">
+  <strong>Why do contracts live in Hone.Core?</strong> &nbsp;To prevent circular dependencies. Both consumers
+  (Orchestration, Agents, Lifecycle) and implementers (K6, Git, CopilotCli) reference <code>Hone.Core</code>
+  without knowing about each other. This is the classic <em>Dependency Inversion Principle</em>&nbsp;&mdash;&nbsp;high-level
+  policy depends on abstractions, and low-level details depend on the same abstractions. The DI container wires
+  concrete implementations at composition root (<code>Hone.Host</code>).
+</div>
+</div>
+
+<!-- ═══════════════ 2. PER-INTERFACE REFERENCE ═══════════════ -->
+<h2 id="interface-reference">2 &middot; Per-Interface Reference</h2>
+
+<!-- ── IAgentRunner ────────────────────────── -->
+<details id="iagentrunner">
+  <summary>
+    <code>IAgentRunner</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; AI agent invocation
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Generic abstraction for AI agent invocation</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/IAgentRunner.cs</code></dd>
+    </dl>
+
+    <h3>Method</h3>
+    <pre><code>Task&lt;AgentRunResult&gt; InvokeAsync(AgentInvocation invocation, CancellationToken ct)</code></pre>
+
+    <h3>Input DTO</h3>
+    <pre><code>record AgentInvocation(
+    string   AgentName,
+    string   Prompt,
+    string?  Model,
+    TimeSpan? Timeout,
+    string?  WorkingDirectory
+);</code></pre>
+
+    <h3>Output DTO</h3>
+    <pre><code>record AgentRunResult(
+    bool   Success,
+    string Output,
+    bool   TimedOut,
+    int    ExitCode
+);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>CopilotCliAgentRunner</code> &mdash; Hone.Agents.CopilotCli</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> Hone.Orchestration &nbsp;|&nbsp;
+       <span class="badge badge-consumer">consumer</span> Hone.Agents.Loop (AnalysisAgent, ClassificationAgent, ImplementerAgent)</p>
+
+    <div class="callout">
+      <strong>Design note:</strong> Single method, tool-agnostic. Supports timeout and cancellation.
+      Future: could swap to direct API calls without changing consumers.
+    </div>
+  </div>
+</details>
+
+<!-- ── IAnalyzerPlugin ─────────────────────── -->
+<details id="ianalyzerplugin">
+  <summary>
+    <code>IAnalyzerPlugin</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Diagnostic data analysis
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Diagnostic data analysis plugin (profiling results → recommendations)</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/IAnalyzerPlugin.cs</code></dd>
+    </dl>
+
+    <h3>Properties</h3>
+    <pre><code>string Name { get; }
+IReadOnlyList&lt;string&gt; RequiredCollectors { get; }</code></pre>
+
+    <h3>Method</h3>
+    <pre><code>Task&lt;AnalyzerResult&gt; AnalyzeAsync(AnalyzerContext context, CancellationToken ct)</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>CpuHotspotsAnalyzer</code> &mdash; Hone.Diagnostics<br/>
+       <span class="badge badge-impl">impl</span> <code>MemoryGcAnalyzer</code> &mdash; Hone.Diagnostics</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> DiagnosticCollectionOrchestrator (Hone.Diagnostics)</p>
+
+    <div class="callout">
+      <strong>Design note:</strong> <code>RequiredCollectors</code> declares data dependencies, ensuring the right
+      collectors run <em>before</em> analyzers. The orchestrator reads this property to build the execution plan.
+    </div>
+  </div>
+</details>
+
+<!-- ── ICodeHost ────────────────────────────── -->
+<details id="icodehost">
+  <summary>
+    <code>ICodeHost</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Code hosting platform
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Code hosting platform abstraction (GitHub, Azure DevOps)</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/ICodeHost.cs</code></dd>
+    </dl>
+
+    <h3>Methods</h3>
+    <pre><code>Task&lt;PushResult&gt; PushBranchAsync(
+    string workingDir, string branch, CancellationToken ct);
+
+Task&lt;PullRequestResult&gt; CreatePullRequestAsync(
+    CreatePrOptions options, CancellationToken ct);
+
+Task&lt;PullRequestStatus&gt; GetPullRequestStatusAsync(
+    int prNumber, CancellationToken ct);</code></pre>
+
+    <h3>Input DTO</h3>
+    <pre><code>record CreatePrOptions(
+    string  Title,
+    string  Body,
+    string  Head,
+    string  Base,
+    string  WorkingDir,
+    IReadOnlyList&lt;string&gt;? Labels,
+    bool    Draft
+);</code></pre>
+
+    <h3>Output DTOs</h3>
+    <pre><code>record PushResult(bool Success, string? RemoteUrl);
+
+record PullRequestResult(
+    bool    Success,
+    int?    Number,
+    Uri?    Url,
+    string? Error
+);
+
+record PullRequestStatus(
+    bool    Merged,
+    bool    Open,
+    string? MergeableState
+);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>GitHubCodeHost</code> &mdash; Hone.SourceControl.Git</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> ExperimentBranchManager (Hone.SourceControl) &nbsp;|&nbsp;
+       <span class="badge badge-consumer">consumer</span> PullRequestManager (Hone.SourceControl)</p>
+  </div>
+</details>
+
+<!-- ── ICollectorPlugin ────────────────────── -->
+<details id="icollectorplugin">
+  <summary>
+    <code>ICollectorPlugin</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Profiling data collection
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Diagnostic profiling data collection (CPU, GC, counters)</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/ICollectorPlugin.cs</code></dd>
+      <dt>Lifecycle</dt>
+      <dd><strong>Start → Stop → Export</strong></dd>
+    </dl>
+
+    <h3>Properties</h3>
+    <pre><code>string Name { get; }</code></pre>
+
+    <h3>Methods</h3>
+    <pre><code>Task&lt;CollectorStartResult&gt; StartAsync(
+    int processId, string outputDir,
+    CollectorSettings settings, CancellationToken ct);
+
+Task&lt;CollectorArtifacts&gt; StopAsync(
+    object handle, CancellationToken ct);
+
+Task&lt;CollectorExportResult&gt; ExportAsync(
+    IReadOnlyList&lt;string&gt; artifactPaths, string outputDir,
+    string processName, CollectorSettings settings,
+    CancellationToken ct);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>PerfViewCpuCollector</code> &mdash; Hone.Diagnostics<br/>
+       <span class="badge badge-impl">impl</span> <code>PerfViewGcCollector</code> &mdash; Hone.Diagnostics<br/>
+       <span class="badge badge-impl">impl</span> <code>DotnetCountersCollectorPlugin</code> &mdash; Hone.Diagnostics</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> DiagnosticCollectionOrchestrator (Hone.Diagnostics)</p>
+  </div>
+</details>
+
+<!-- ── ILifecycleHook ──────────────────────── -->
+<details id="ilifecyclehook">
+  <summary>
+    <code>ILifecycleHook</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Lifecycle stage execution
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Experiment lifecycle stage execution</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/ILifecycleHook.cs</code></dd>
+    </dl>
+
+    <h3>Method</h3>
+    <pre><code>Task&lt;HookResult&gt; ExecuteAsync(HookContext context, CancellationToken ct)</code></pre>
+
+    <h3>Output DTO</h3>
+    <pre><code>record HookResult(
+    bool   Success,
+    string? Message,
+    TimeSpan Duration,
+    IReadOnlyList&lt;string&gt; Artifacts,
+    Uri?   BaseUrl
+);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>DotnetBuildHook</code> &mdash; Hone.Lifecycle<br/>
+       <span class="badge badge-impl">impl</span> <code>DotnetStartHook</code> &mdash; Hone.Lifecycle<br/>
+       <span class="badge badge-impl">impl</span> <code>DotnetStopHook</code> &mdash; Hone.Lifecycle<br/>
+       <span class="badge badge-impl">impl</span> <code>DotnetTestHook</code> &mdash; Hone.Lifecycle<br/>
+       <span class="badge badge-impl">impl</span> <code>HealthPollHook</code> &mdash; Hone.Lifecycle<br/>
+       <span class="badge badge-impl">impl</span> <code>K6RunHook</code> &mdash; Hone.Lifecycle</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> LifecycleHookDispatcher (Hone.Lifecycle) &nbsp;|&nbsp;
+       <span class="badge badge-consumer">consumer</span> HoneLoopRunner (Hone.Orchestration)</p>
+
+    <div class="callout">
+      <strong>Design note:</strong> <code>HookResolver</code> maps stage names (e.g.&nbsp;<code>"build"</code>,
+      <code>"start"</code>) to concrete hook instances at runtime, keeping the dispatcher generic.
+    </div>
+  </div>
+</details>
+
+<!-- ── ILoadTestRunner ─────────────────────── -->
+<details id="iloadtestrunner">
+  <summary>
+    <code>ILoadTestRunner</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Load test execution
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Load test execution abstraction</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/ILoadTestRunner.cs</code></dd>
+    </dl>
+
+    <h3>Method</h3>
+    <pre><code>Task&lt;LoadTestResult&gt; RunAsync(LoadTestOptions options, CancellationToken ct)</code></pre>
+
+    <h3>Input DTO</h3>
+    <pre><code>record LoadTestOptions(
+    string  ScenarioPath,
+    string  BaseUrl,
+    string  OutputDir,
+    int     Experiment,
+    int     Run,
+    TimeSpan? Timeout,
+    IReadOnlyDictionary&lt;string, string&gt;? EnvironmentVars
+);</code></pre>
+
+    <h3>Output DTO</h3>
+    <pre><code>record LoadTestResult(
+    bool       Success,
+    MetricSet? Metrics,
+    string?    SummaryPath,
+    string?    Output
+);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>K6LoadTestRunner</code> &mdash; Hone.Measurement.K6</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> ScaleTestOrchestrator (Hone.Measurement)</p>
+  </div>
+</details>
+
+<!-- ── IProcessRunner ──────────────────────── -->
+<details id="iprocessrunner">
+  <summary>
+    <code>IProcessRunner</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Subprocess management
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>External process execution (subprocess management)</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/IProcessRunner.cs</code></dd>
+    </dl>
+
+    <h3>Method</h3>
+    <pre><code>Task&lt;ProcessResult&gt; RunAsync(
+    string executable,
+    IEnumerable&lt;string&gt; arguments,
+    string? workingDir,
+    TimeSpan? timeout,
+    CancellationToken ct
+)</code></pre>
+
+    <h3>Output DTO</h3>
+    <pre><code>record ProcessResult(
+    bool   Success,
+    string Output,
+    int    ExitCode,
+    bool   TimedOut
+);</code></pre>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> Nearly all projects &mdash; builds, tests, git operations,
+      k6, dotnet-counters, PerfView</p>
+
+    <div class="callout">
+      <strong>Design note:</strong> Central abstraction for <em>all</em> subprocess calls across the entire solution.
+      This makes every external tool call mockable in unit/integration tests without touching the file system.
+    </div>
+  </div>
+</details>
+
+<!-- ── IRuntimeMetricsCollector ─────────────── -->
+<details id="iruntimemetricscollector">
+  <summary>
+    <code>IRuntimeMetricsCollector</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; Runtime perf metrics
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Runtime performance metrics collection during load tests</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/IRuntimeMetricsCollector.cs</code></dd>
+    </dl>
+
+    <h3>Methods</h3>
+    <pre><code>Task&lt;MetricsCollectionHandle&gt; StartAsync(
+    int processId,
+    RuntimeMetricsOptions options,
+    CancellationToken ct);
+
+Task&lt;RuntimeMetricsResult&gt; StopAndParseAsync(
+    MetricsCollectionHandle handle,
+    CancellationToken ct);</code></pre>
+
+    <h3>DTOs</h3>
+    <pre><code>record RuntimeMetricsOptions(
+    IReadOnlyList&lt;string&gt;? Providers,
+    int? RefreshIntervalSeconds
+);
+
+record MetricsCollectionHandle(
+    bool    Success,
+    object? Handle
+);
+
+record RuntimeMetricsResult(
+    bool   Success,
+    IReadOnlyDictionary&lt;string, double&gt;? Metrics
+);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>DotnetCountersRuntimeMetricsCollector</code> &mdash; Hone.Measurement.DotnetCounters</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> ScaleTestOrchestrator (Hone.Measurement)</p>
+  </div>
+</details>
+
+<!-- ── IVersionControl ─────────────────────── -->
+<details id="iversioncontrol">
+  <summary>
+    <code>IVersionControl</code>
+    <span class="badge badge-core">Hone.Core</span>
+    &mdash; VCS operations
+  </summary>
+  <div class="panel">
+    <dl class="meta">
+      <dt>Purpose</dt>
+      <dd>Abstract version-control system operations</dd>
+      <dt>Defined in</dt>
+      <dd><code>Hone.Core/Contracts/IVersionControl.cs</code></dd>
+    </dl>
+
+    <h3>Methods</h3>
+    <pre><code>Task&lt;string&gt; GetCurrentBranchAsync(
+    string workingDir, CancellationToken ct);
+
+Task CheckoutAsync(
+    string workingDir, string branch, bool create,
+    CancellationToken ct);
+
+Task CommitAsync(
+    string workingDir, string message,
+    IEnumerable&lt;string&gt;? paths, CancellationToken ct);
+
+Task&lt;string&gt; GetDiffAsync(
+    string workingDir, string? baseBranch,
+    CancellationToken ct);
+
+Task RevertLastCommitAsync(
+    string workingDir, CancellationToken ct);</code></pre>
+
+    <h3>Implementations</h3>
+    <p><span class="badge badge-impl">impl</span> <code>GitVersionControl</code> &mdash; Hone.SourceControl.Git</p>
+
+    <h3>Consumers</h3>
+    <p><span class="badge badge-consumer">consumer</span> ExperimentBranchManager (Hone.SourceControl) &nbsp;|&nbsp;
+       <span class="badge badge-consumer">consumer</span> HoneLoopRunner (Hone.Orchestration)</p>
+  </div>
+</details>
+
+<!-- ═══════════════ 3. CROSS-CUTTING PATTERNS ═══════════════ -->
+<h2 id="cross-cutting">3 &middot; Cross-Cutting Patterns</h2>
+
+<div class="card">
+<p style="margin-bottom:.75rem;color:var(--text-muted);font-size:.92rem">
+  Conventions shared by every interface and DTO in <code>Hone.Core/Contracts</code>:
+</p>
+
+<ul class="pattern-list">
+  <li>
+    <strong>CancellationToken on every async method</strong> &mdash;
+    All interface methods accept a trailing <code>CancellationToken ct</code> parameter.
+    Cooperative cancellation flows from the host down through orchestrators to leaf operations.
+  </li>
+  <li>
+    <strong>Immutable records for all DTOs</strong> &mdash;
+    Every input, output, and option type is a C#&nbsp;positional <code>record</code>.
+    Immutability eliminates shared-state bugs and makes concurrency safe by default.
+  </li>
+  <li>
+    <strong>IReadOnlyList / IReadOnlyDictionary for collections</strong> &mdash;
+    No mutable <code>List&lt;T&gt;</code> or <code>Dictionary&lt;K,V&gt;</code> in public contracts.
+    Consumers cannot accidentally mutate data owned by the caller.
+  </li>
+  <li>
+    <strong>Nullable reference types</strong> &mdash;
+    All optional fields are explicitly <code>T?</code>.
+    The project compiles with <code>&lt;Nullable&gt;enable&lt;/Nullable&gt;</code>, so the compiler enforces null-safety.
+  </li>
+  <li>
+    <strong>No exceptions for expected failures</strong> &mdash;
+    Result records carry a <code>bool Success</code> property.
+    Exceptions are reserved for truly unexpected errors (I/O failures, bugs).
+    This keeps error handling explicit and avoids costly exception-driven control flow.
+  </li>
+  <li>
+    <strong>async Task throughout</strong> &mdash;
+    Every method returns <code>Task</code> or <code>Task&lt;T&gt;</code>.
+    There is zero sync-over-async (<code>.Result</code>, <code>.Wait()</code>) anywhere in the contract surface.
+  </li>
+</ul>
+</div>
+
+</div><!-- /.container -->
+</body>
+</html>

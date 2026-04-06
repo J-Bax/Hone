@@ -5,7 +5,6 @@ namespace Hone.SourceControl.PullRequests;
 
 /// <summary>
 /// Builds a markdown "stack note" showing the chain of PRs in a stacked-diff series.
-/// Replaces <c>Build-StackNote</c> from HoneHelpers.psm1.
 /// </summary>
 public static class StackNoteBuilder
 {

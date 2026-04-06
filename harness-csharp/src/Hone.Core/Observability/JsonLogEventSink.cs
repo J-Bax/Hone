@@ -7,12 +7,11 @@ namespace Hone.Core.Observability;
 /// <summary>
 /// Appends each <see cref="HoneEvent"/> as a single JSON line to a log file.
 /// Rotates the log file when it exceeds the configured maximum size.
-/// Replaces PowerShell <c>Write-HoneLog.ps1</c>.
 /// </summary>
 /// <param name="logPath">Absolute path to the JSONL log file.</param>
 /// <param name="maxFileSizeBytes">
 /// Maximum file size in bytes before rotation.
-/// Defaults to 50 MB (matching the PowerShell baseline default).
+/// Defaults to 50 MB.
 /// </param>
 public sealed class JsonLogEventSink(string logPath, long maxFileSizeBytes = 50L * 1024 * 1024) : IHoneEventSink
 {
@@ -35,7 +34,7 @@ public sealed class JsonLogEventSink(string logPath, long maxFileSizeBytes = 50L
 
         lock (_lock)
         {
-            // Ensure directory exists (matches PS: New-Item -ItemType Directory -Force)
+            // Ensure directory exists
             string? dir = Path.GetDirectoryName(_logPath);
             if (!string.IsNullOrEmpty(dir))
             {

@@ -2,7 +2,7 @@ namespace Hone.Core.Config;
 
 /// <summary>
 /// Root configuration for the Hone optimization harness.
-/// Aggregates all configuration sections with defaults matching <c>config.psd1</c>.
+/// Aggregates all configuration sections with defaults.
 /// </summary>
 public sealed record HoneConfig(
     ApiConfig? Api = null,

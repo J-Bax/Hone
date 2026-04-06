@@ -6,7 +6,6 @@ namespace Hone.Reporting.PullRequest;
 /// <summary>
 /// Builds PR body markdown for accepted or rejected experiments.
 /// Pure template — no I/O, no file system access.
-/// Replaces <c>Build-PRBody.ps1</c>.
 /// </summary>
 internal static class PrBodyBuilder
 {

@@ -1,7 +1,7 @@
 namespace Hone.Core.Utilities;
 
 /// <summary>
-/// String manipulation helpers that replicate PowerShell HoneHelpers behaviour.
+/// String manipulation helpers.
 /// </summary>
 public static class StringUtils
 {
@@ -9,8 +9,7 @@ public static class StringUtils
 
     /// <summary>
     /// Truncates a string at the last word boundary before <paramref name="maxLength"/>,
-    /// appending "\u2026" when truncated.  Reproduces the <c>Limit-String</c> function
-    /// from HoneHelpers.psm1.
+    /// appending "\u2026" when truncated.
     /// </summary>
     /// <remarks>
     /// The ellipsis is appended <em>after</em> the truncation point, so the returned

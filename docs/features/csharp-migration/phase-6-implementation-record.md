@@ -1,8 +1,7 @@
 # Phase 6 Implementation Record — Diagnostic Profiling
 
 > **Status:** Complete  
-> **Date:** 2025-07-17  
-> **Phase:** 6 — Diagnostic Profiling (`Hone.Diagnostics`)  
+> **Phase:** 6 — Diagnostic Profiling (`Hone.Diagnostics`)
 > **Baseline:** 373 tests → 466 tests (+93 new, 69 in Hone.Diagnostics.Tests)  
 > **Build:** 0 warnings, 0 errors  
 

@@ -8,7 +8,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that starts a .NET API as a background process.
-/// Replaces <c>hooks/dotnet-start.ps1</c>.
 /// </summary>
 public sealed class DotnetStartHook(HttpClient httpClient) : ILifecycleHook
 {
@@ -143,7 +142,7 @@ public sealed class DotnetStartHook(HttpClient httpClient) : ILifecycleHook
         }
         catch (System.ComponentModel.Win32Exception)
         {
-            // Insufficient privileges — PS parity: silently ignored
+            // Insufficient privileges — silently ignored
         }
     }
 

@@ -2,7 +2,6 @@ namespace Hone.Lifecycle.Hooks;
 
 /// <summary>
 /// Resolves a hook definition from target configuration into an executable descriptor.
-/// Replaces the PowerShell <c>Resolve-Hook</c> function in HoneHelpers.psm1.
 /// </summary>
 public static class HookResolver
 {

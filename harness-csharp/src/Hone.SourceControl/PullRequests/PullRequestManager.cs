@@ -7,7 +7,6 @@ namespace Hone.SourceControl.PullRequests;
 
 /// <summary>
 /// Creates experiment pull requests on a code host.
-/// Replaces <c>New-ExperimentPR</c> from HoneHelpers.psm1.
 /// </summary>
 public sealed class PullRequestManager(ICodeHost codeHost)
 {

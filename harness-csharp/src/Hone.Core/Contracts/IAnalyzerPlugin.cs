@@ -4,7 +4,6 @@ namespace Hone.Core.Contracts;
 
 /// <summary>
 /// Contract for analysis plugins that process collected diagnostic data.
-/// Mirrors the PowerShell Invoke-Analyzer pattern.
 /// </summary>
 public interface IAnalyzerPlugin
 {

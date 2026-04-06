@@ -8,7 +8,6 @@ namespace Hone.Diagnostics.Collection;
 /// <summary>
 /// Manages the lifecycle of diagnostic collectors: discovering groups,
 /// starting, stopping, and exporting collector data.
-/// Replaces harness/Invoke-DiagnosticCollection.ps1.
 /// </summary>
 public sealed class DiagnosticCollectionOrchestrator
 {

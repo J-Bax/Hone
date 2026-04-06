@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase Map — Hone C# Migration Architecture</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#2563eb;--secondary:#16a34a;--accent:#ea580c;
+    --bg:#f8fafc;--card:#ffffff;--text:#1e293b;
+    --border:#e2e8f0;--text-muted:#64748b;
+    --phase0:#94a3b8;--phase1:#2563eb;--phase2:#16a34a;--phase3:#7c3aed;
+    --phase4:#0d9488;--phase5:#d97706;--phase6:#e11d48;--phase7:#4f46e5;
+    --phase8:#ea580c;--phase9:#475569;--phase10:#71717a;
+    --font-sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:"Cascadia Code","Fira Code","JetBrains Mono",Consolas,"Courier New",monospace;
+  }
+  html{font-size:16px;scroll-behavior:smooth}
+  body{font-family:var(--font-sans);background:var(--bg);color:var(--text);line-height:1.65}
+
+  /* NAV */
+  nav{background:var(--text);position:sticky;top:0;z-index:100;padding:.5rem 1rem;display:flex;flex-wrap:wrap;gap:.35rem .75rem;align-items:center}
+  nav a{color:#cbd5e1;text-decoration:none;font-size:.82rem;padding:.25rem .55rem;border-radius:4px;transition:background .15s,color .15s;white-space:nowrap}
+  nav a:hover{background:rgba(255,255,255,.12);color:#f1f5f9}
+  nav a[aria-current=page]{background:var(--primary);color:#fff;font-weight:600}
+
+  /* LAYOUT */
+  .container{max-width:1200px;margin:0 auto;padding:2rem 1.5rem 4rem}
+  h1{font-size:1.85rem;font-weight:700;margin-bottom:.25rem}
+  .subtitle{color:var(--text-muted);font-size:1rem;margin-bottom:2rem}
+
+  /* SECTION */
+  section{margin-bottom:2.5rem}
+  section>h2{font-size:1.35rem;font-weight:700;border-bottom:2px solid var(--primary);padding-bottom:.35rem;margin-bottom:1rem}
+  section>h3{font-size:1.1rem;font-weight:600;margin:1.25rem 0 .5rem}
+
+  /* SVG CONTAINER */
+  .graph-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;overflow-x:auto;margin-bottom:1.5rem}
+  .graph-wrap svg{display:block;margin:0 auto}
+
+  /* DETAILS / SUMMARY */
+  details{background:var(--card);border:1px solid var(--border);border-radius:8px;margin-bottom:.75rem;overflow:hidden}
+  details[open]{box-shadow:0 2px 8px rgba(0,0,0,.06)}
+  summary{font-weight:600;font-size:1rem;padding:.85rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;gap:.6rem;user-select:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▶";font-size:.7rem;transition:transform .2s;flex-shrink:0}
+  details[open]>summary::before{transform:rotate(90deg)}
+  summary .phase-badge{display:inline-block;color:#fff;font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:4px;letter-spacing:.03em}
+  .details-body{padding:.75rem 1rem 1rem;border-top:1px solid var(--border);font-size:.92rem}
+  .details-body ul{margin:.35rem 0 .65rem 1.25rem}
+  .details-body li{margin-bottom:.3rem}
+  .details-body li code,.details-body p code{font-family:var(--font-mono);font-size:.84em;background:#f1f5f9;padding:.1em .35em;border-radius:3px}
+  .details-body strong{font-weight:600}
+  .details-body p{margin-bottom:.5rem}
+
+  /* TRANSITION TABLE */
+  .table-wrap{overflow-x:auto;margin-top:.75rem}
+  table.transition{border-collapse:collapse;width:100%;min-width:820px;font-size:.78rem}
+  table.transition th,table.transition td{border:1px solid var(--border);padding:.4rem .5rem;text-align:center;white-space:nowrap}
+  table.transition thead th{background:var(--text);color:#fff;font-weight:600;position:sticky;top:0}
+  table.transition thead th:first-child{text-align:left}
+  table.transition tbody td:first-child{text-align:left;font-weight:600;font-family:var(--font-mono);font-size:.76rem;background:#f8fafc}
+  .cell-scaffold{background:#f1f5f9;color:#94a3b8;font-size:.7rem}
+  .cell-real{color:#fff;font-weight:700;font-size:.72rem;letter-spacing:.02em}
+
+  /* LEGEND */
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem .85rem;margin:.75rem 0 .5rem;font-size:.8rem}
+  .legend span{display:inline-flex;align-items:center;gap:.3rem}
+  .legend .swatch{width:14px;height:14px;border-radius:3px;flex-shrink:0}
+
+  /* PRINT */
+  @media print{
+    nav{display:none}
+    body{background:#fff}
+    details{break-inside:avoid}
+    details[open]>summary~*{break-inside:avoid}
+    .graph-wrap{box-shadow:none;border:1px solid #ccc}
+  }
+
+  /* RESPONSIVE */
+  @media(max-width:768px){
+    .container{padding:1.25rem .75rem 3rem}
+    h1{font-size:1.45rem}
+    nav{padding:.4rem .5rem}
+    nav a{font-size:.75rem;padding:.2rem .4rem}
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── NAV ─── -->
+<nav>
+  <a href="index.html">Overview</a>
+  <a href="solution-structure.html">Solution Structure</a>
+  <a href="core-domain.html">Core Domain</a>
+  <a href="data-flows.html">Data Flows</a>
+  <a href="interfaces-contracts.html">Interfaces &amp; Contracts</a>
+  <a href="phase-map.html" aria-current="page">Phase Map</a>
+  <a href="observability-events.html">Observability</a>
+</nav>
+
+<div class="container">
+
+<h1>Phase-by-Phase Implementation Map</h1>
+<p class="subtitle">Directed dependency graph, per-phase deliverables, and project transition timeline for Phases&nbsp;0–10.</p>
+
+<!-- ════════════════════════════════════════════════════
+     1.  PHASE DEPENDENCY GRAPH (SVG)
+     ════════════════════════════════════════════════════ -->
+<section id="dependency-graph">
+<h2>Phase Dependency Graph</h2>
+
+<div class="legend">
+  <span><span class="swatch" style="background:#94a3b8"></span> P0 Scaffolding</span>
+  <span><span class="swatch" style="background:#2563eb"></span> P1 Foundation</span>
+  <span><span class="swatch" style="background:#16a34a"></span> P2 Measurement</span>
+  <span><span class="swatch" style="background:#7c3aed"></span> P3 Lifecycle</span>
+  <span><span class="swatch" style="background:#0d9488"></span> P4 Source Ctrl</span>
+  <span><span class="swatch" style="background:#d97706"></span> P5 Agents</span>
+  <span><span class="swatch" style="background:#e11d48"></span> P6 Diagnostics</span>
+  <span><span class="swatch" style="background:#4f46e5"></span> P7 Reporting</span>
+  <span><span class="swatch" style="background:#ea580c"></span> P8 Orchestration</span>
+  <span><span class="swatch" style="background:#475569"></span> P9 CLI</span>
+  <span><span class="swatch" style="background:#71717a"></span> P10 Cutover</span>
+</div>
+
+<div class="graph-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-label="Phase dependency graph showing phases 0 through 10 and their dependency edges">
+  <title>Phase Dependency Graph</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#94a3b8"/>
+    </marker>
+    <filter id="shadow" x="-10%" y="-10%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.12"/>
+    </filter>
+  </defs>
+
+  <!-- ── EDGES (drawn first, behind nodes) ── -->
+  <g fill="none" stroke="#cbd5e1" stroke-width="1.5" marker-end="url(#arrow)">
+    <!-- P0 → P1 -->
+    <path d="M145,260 L215,260"/>
+    <!-- P1 → P2 -->
+    <path d="M305,260 Q340,260 360,180 L415,180"/>
+    <!-- P1 → P3 -->
+    <path d="M305,260 L415,260"/>
+    <!-- P1 → P4 -->
+    <path d="M305,260 Q340,260 360,340 L415,340"/>
+    <!-- P2 → P5 -->
+    <path d="M505,180 Q540,180 550,200 L575,220"/>
+    <!-- P1 → P5 (long arc under P2/P3 row) -->
+    <path d="M305,275 Q350,310 450,290 Q530,270 575,245"/>
+    <!-- P2 → P6 -->
+    <path d="M505,180 Q560,180 600,180 Q640,180 665,195"/>
+    <!-- P5 → P6 -->
+    <path d="M665,240 L665,215"/>
+    <!-- P1 → P6 (long arc) -->
+    <path d="M290,280 Q290,400 460,410 Q630,410 670,270"/>
+    <!-- P2 → P7 -->
+    <path d="M505,165 Q580,130 700,130 Q750,130 770,155"/>
+    <!-- P1 → P7 -->
+    <path d="M290,245 Q290,120 530,110 Q700,110 770,155"/>
+    <!-- P1 → P8  (long bottom arc) -->
+    <path d="M280,280 Q280,440 500,460 Q720,460 820,310"/>
+    <!-- P2 → P8 -->
+    <path d="M505,195 Q560,220 640,280 Q720,340 790,310"/>
+    <!-- P3 → P8 -->
+    <path d="M505,260 Q600,260 700,280 Q760,290 790,295"/>
+    <!-- P4 → P8 -->
+    <path d="M505,340 Q600,340 700,330 Q760,320 790,305"/>
+    <!-- P5 → P8 -->
+    <path d="M665,250 Q720,270 790,290"/>
+    <!-- P6 → P8 -->
+    <path d="M735,210 Q770,240 800,275"/>
+    <!-- P7 → P8 -->
+    <path d="M840,180 Q850,220 840,270"/>
+    <!-- P8 → P9 -->
+    <path d="M865,300 L895,380 Q900,400 880,420 L870,430"/>
+    <!-- P9 → P10 -->
+    <path d="M810,450 L740,450"/>
+  </g>
+
+  <!-- ── NODES ── -->
+  <g font-family="system-ui,sans-serif" font-size="12" font-weight="700" text-anchor="middle" filter="url(#shadow)">
+
+    <!-- Phase 0 -->
+    <g transform="translate(100,260)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#94a3b8"/>
+      <text y="-6" fill="#fff">Phase 0</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Scaffolding</text>
+    </g>
+
+    <!-- Phase 1 -->
+    <g transform="translate(260,260)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#2563eb"/>
+      <text y="-6" fill="#fff">Phase 1</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Foundation</text>
+    </g>
+
+    <!-- Phase 2 -->
+    <g transform="translate(460,180)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#16a34a"/>
+      <text y="-6" fill="#fff">Phase 2</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Measurement</text>
+    </g>
+
+    <!-- Phase 3 -->
+    <g transform="translate(460,260)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#7c3aed"/>
+      <text y="-6" fill="#fff">Phase 3</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Lifecycle</text>
+    </g>
+
+    <!-- Phase 4 -->
+    <g transform="translate(460,340)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#0d9488"/>
+      <text y="-6" fill="#fff">Phase 4</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Source Ctrl</text>
+    </g>
+
+    <!-- Phase 5 -->
+    <g transform="translate(620,240)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#d97706"/>
+      <text y="-6" fill="#fff">Phase 5</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Agents</text>
+    </g>
+
+    <!-- Phase 6 -->
+    <g transform="translate(700,200)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#e11d48"/>
+      <text y="-6" fill="#fff">Phase 6</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Diagnostics</text>
+    </g>
+
+    <!-- Phase 7 -->
+    <g transform="translate(810,165)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#4f46e5"/>
+      <text y="-6" fill="#fff">Phase 7</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Reporting</text>
+    </g>
+
+    <!-- Phase 8 — convergence -->
+    <g transform="translate(830,295)">
+      <rect x="-50" y="-32" width="100" height="64" rx="12" fill="#ea580c" stroke="#c2410c" stroke-width="2"/>
+      <text y="-8" fill="#fff" font-size="13">Phase 8</text>
+      <text y="12" fill="rgba(255,255,255,.9)" font-size="9.5" font-weight="400">Orchestration</text>
+    </g>
+
+    <!-- Phase 9 -->
+    <g transform="translate(840,450)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#475569"/>
+      <text y="-6" fill="#fff">Phase 9</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">CLI Host</text>
+    </g>
+
+    <!-- Phase 10 -->
+    <g transform="translate(700,450)">
+      <rect x="-45" y="-28" width="90" height="56" rx="10" fill="#71717a"/>
+      <text y="-6" fill="#fff">Phase 10</text>
+      <text y="12" fill="rgba(255,255,255,.85)" font-size="9" font-weight="400">Cutover</text>
+    </g>
+
+  </g>
+
+  <!-- Parallel bracket annotation -->
+  <g font-family="system-ui,sans-serif" font-size="10" fill="#64748b">
+    <text x="460" y="130" text-anchor="middle" font-style="italic">Phases 2, 3, 4 — independent / parallelizable</text>
+    <line x1="415" y1="138" x2="505" y2="138" stroke="#cbd5e1" stroke-dasharray="3,3"/>
+  </g>
+
+  <!-- Convergence annotation -->
+  <g font-family="system-ui,sans-serif" font-size="10" fill="#64748b">
+    <text x="920" y="295" text-anchor="start" font-style="italic" font-size="9">convergence</text>
+    <text x="920" y="308" text-anchor="start" font-style="italic" font-size="9">point</text>
+  </g>
+</svg>
+</div>
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     2.  PER-PHASE EXPANDABLE SECTIONS
+     ════════════════════════════════════════════════════ -->
+<section id="phase-details">
+<h2>Per-Phase Deliverables</h2>
+
+<!-- Phase 0 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase0)">Phase 0</span>
+    Solution Scaffolding
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects created:</strong> All 15 src + 15 test + 1 shared test infra (31 total)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>Hone.slnx</code> — .NET 10 XML solution format</li>
+      <li><code>Directory.Build.props</code> — TreatWarningsAsErrors, AnalysisLevel=latest-all, nullable enabled, ImplicitUsings</li>
+      <li><code>Directory.Packages.props</code> — Central NuGet version management</li>
+      <li><code>.editorconfig</code> — Naming conventions, formatting rules, analyzer severities</li>
+      <li><code>BannedSymbols.txt</code> — DateTime→DateTimeOffset, sync File I/O banned</li>
+      <li><code>Placeholder.cs</code> in each non-Core project</li>
+    </ul>
+    <p><strong>Test infrastructure:</strong> HoneTestBase (TempDir, fixture copy, git repo init), GitTestRepo, TargetBuilder</p>
+    <p><strong>Validation:</strong> All builds zero-warning, 15 placeholder tests pass</p>
+    <p><strong>Files:</strong> ~72 files, ~2,000 lines</p>
+  </div>
+</details>
+
+<!-- Phase 1 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase1)">Phase 1</span>
+    Core Models, Config &amp; Observability
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Core (77 C# files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li>25 domain model records + 4 enums (<code>Models/</code>)</li>
+      <li>16 config records + ConfigLoader + ConfigMerger (<code>Config/</code>)</li>
+      <li>9 interfaces + 12 DTOs (<code>Contracts/</code>)</li>
+      <li>HoneEvent hierarchy (7 event types) + HoneEventBus + 2 sinks (<code>Observability/</code>)</li>
+      <li>JsonUtils + StringUtils (<code>Utilities/</code>)</li>
+    </ul>
+    <p><strong>Design decisions:</strong> Contracts in Core to prevent circular deps; YamlDotNet with custom <code>RecordAwareObjectFactory</code>; thread-safe HoneEventBus with <code>Lock</code></p>
+    <p><strong>Tests:</strong> 177 passing (93 model, 20 contract, 18 utility, 25 config, 21 observability)</p>
+    <p><strong>Files:</strong> ~68 files, ~3,500 lines</p>
+  </div>
+</details>
+
+<!-- Phase 2 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase2)">Phase 2</span>
+    Measurement &amp; Comparison
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Measurement (10 files), Hone.Measurement.K6 (5 files), Hone.Measurement.DotnetCounters (7 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>MetricComparer</code> — pure function comparing MetricSets with tolerance logic</li>
+      <li><code>K6LoadTestRunner</code> — wraps k6 CLI, parses JSON summary → MetricSet</li>
+      <li><code>K6SummaryParser</code> — handles NaN/Infinity edge cases</li>
+      <li><code>DotnetCountersRuntimeMetricsCollector</code> — wraps dotnet-counters CLI</li>
+      <li><code>ScaleTestOrchestrator</code> — warmup + N measured runs + median selection</li>
+      <li><code>BaselineMeasurer</code> — initial performance baseline capture</li>
+    </ul>
+    <p><strong>Tests:</strong> snapshot validation for metric comparison, k6 parsing edge cases</p>
+  </div>
+</details>
+
+<!-- Phase 3 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase3)">Phase 3</span>
+    Lifecycle &amp; Hooks
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Lifecycle (18 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>HookResolver</code> — maps stage names ("build", "start", "stop", "test") to <code>ILifecycleHook</code> implementations</li>
+      <li><code>LifecycleHookDispatcher</code> — executes hooks in order with timeout/cancellation</li>
+      <li><code>DotnetBuildHook</code> — <code>dotnet build</code> via IProcessRunner</li>
+      <li><code>DotnetStartHook</code> — <code>dotnet run</code> with process lifetime management, returns BaseUrl</li>
+      <li><code>DotnetStopHook</code> — graceful process shutdown</li>
+      <li><code>DotnetTestHook</code> — <code>dotnet test</code> with pass/fail parsing</li>
+      <li><code>HealthPollHook</code> — HTTP polling until health endpoint returns 200</li>
+      <li><code>K6RunHook</code> — k6 load test as a lifecycle hook</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 4 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase4)">Phase 4</span>
+    Source Control
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.SourceControl (16 files), Hone.SourceControl.Git (5 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>GitVersionControl</code> — <code>IVersionControl</code> implementation wrapping git CLI</li>
+      <li><code>GitHubCodeHost</code> — <code>ICodeHost</code> implementation using <code>gh</code> CLI</li>
+      <li><code>ExperimentBranchManager</code> — branch creation, naming (<code>hone/experiment-N</code>), stacked diffs</li>
+      <li><code>PullRequestManager</code> — PR creation with body generation, labels, draft support</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 5 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase5)">Phase 5</span>
+    AI Agent Integration
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Agents.Core (7 files), Hone.Agents.Loop (12 files), Hone.Agents.Preparation (8 files), Hone.Agents.CopilotCli (4 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>CopilotCliAgentRunner</code> — <code>IAgentRunner</code> impl invoking <code>copilot</code> CLI</li>
+      <li><code>ModelDefaults</code> — default model selection per agent role</li>
+      <li><code>AgentAnalysisContext</code> — shared context for agent invocations</li>
+      <li><code>AnalysisAgent</code> — generates <code>Opportunity[]</code> from perf data</li>
+      <li><code>ClassificationAgent</code> — scope classification (narrow vs architecture)</li>
+      <li><code>ImplementerAgent</code> — code change generation</li>
+      <li><code>CompatibilityAgent</code> — pre-probe compatibility checks</li>
+      <li><code>PreProber</code> — pre-experiment health checks</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 6 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase6)">Phase 6</span>
+    Diagnostic Profiling
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Diagnostics (29 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>PluginDiscoveryService</code> — discovers collector/analyzer plugins from YAML metadata files</li>
+      <li><code>DiagnosticCollectionOrchestrator</code> — coordinates collectors and analyzers</li>
+      <li><code>DiagnosticMeasurementOrchestrator</code> — diagnostic-mode measurement (collect during load test)</li>
+      <li><code>PerfViewCpuCollector</code>, <code>PerfViewGcCollector</code> — <code>ICollectorPlugin</code> impls using PerfView.exe</li>
+      <li><code>DotnetCountersCollectorPlugin</code> — <code>ICollectorPlugin</code> impl</li>
+      <li><code>CpuHotspotsAnalyzer</code> — <code>IAnalyzerPlugin</code> analyzing CPU traces</li>
+      <li><code>MemoryGcAnalyzer</code> — <code>IAnalyzerPlugin</code> analyzing GC traces</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 7 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase7)">Phase 7</span>
+    Reporting &amp; Export
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Reporting (19 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>HtmlDashboardGenerator</code> — generates HTML dashboard from RunMetadata</li>
+      <li><code>ResultsRenderer</code> — console table formatting for experiment results</li>
+      <li><code>ReportFormatter</code> — markdown report generation (RCA, PR body)</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 8 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase8)">Phase 8</span>
+    Orchestration
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Orchestration (21 files) — the largest phase</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>HoneLoopRunner</code> — main experiment loop controller</li>
+      <li><code>OptimizationQueueManager</code> — queue lifecycle (create, dequeue, update status)</li>
+      <li><code>IterativeImplementerRunner</code> — retry loop (implement → build → test → accept/retry/reject)</li>
+      <li><code>ExperimentRunContext</code> — per-experiment state container</li>
+      <li><code>ExperimentFailureHandler</code> — failure classification and recovery</li>
+      <li><code>ArtifactStager</code> — experiment artifact management</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 9 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase9)">Phase 9</span>
+    CLI Host &amp; Integration Tests
+  </summary>
+  <div class="details-body">
+    <p><strong>Projects implemented:</strong> Hone.Cli (9 files)</p>
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li><code>System.CommandLine</code> setup with commands: <code>run</code>, <code>validate</code>, <code>baseline</code>, <code>results</code>, <code>dashboard</code></li>
+      <li>DI container composition (wires all interfaces to implementations)</li>
+      <li>Common flags: <code>--target</code>, <code>--max-experiments</code>, <code>--dry-run</code>, <code>--model</code></li>
+      <li>Integration test fixtures</li>
+    </ul>
+  </div>
+</details>
+
+<!-- Phase 10 -->
+<details>
+  <summary>
+    <span class="phase-badge" style="background:var(--phase10)">Phase 10</span>
+    Target Migration &amp; Cutover
+  </summary>
+  <div class="details-body">
+    <p><strong>Key deliverables:</strong></p>
+    <ul>
+      <li>Convert sample-api <code>.psd1</code> → <code>.hone/config.yaml</code></li>
+      <li>Documentation updates</li>
+      <li>PowerShell harness archival</li>
+      <li>Final validation: C# harness produces identical results to PowerShell</li>
+    </ul>
+  </div>
+</details>
+
+</section>
+
+<!-- ════════════════════════════════════════════════════
+     3.  TRANSITION VISUALIZATION
+     ════════════════════════════════════════════════════ -->
+<section id="transition">
+<h2>Project Transition Timeline</h2>
+<p>Each project starts as a scaffold (placeholder) in Phase 0 and becomes <strong>real</strong> (fully implemented) at its designated phase.</p>
+
+<div class="table-wrap">
+<table class="transition">
+<thead>
+  <tr>
+    <th style="text-align:left">Project</th>
+    <th>P0</th><th>P1</th><th>P2</th><th>P3</th><th>P4</th><th>P5</th><th>P6</th><th>P7</th><th>P8</th><th>P9</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>Hone.Core</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td class="cell-real" style="background:#2563eb">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Measurement</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td>
+    <td class="cell-real" style="background:#16a34a">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Measurement.K6</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td>
+    <td class="cell-real" style="background:#16a34a">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Measurement.DC</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td>
+    <td class="cell-real" style="background:#16a34a">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Lifecycle</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td>
+    <td class="cell-real" style="background:#7c3aed">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.SourceControl</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td>
+    <td class="cell-real" style="background:#0d9488">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.SourceControl.Git</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td>
+    <td class="cell-real" style="background:#0d9488">★ REAL</td>
+    <td></td><td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Agents.Core</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#d97706">★ REAL</td>
+    <td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Agents.Loop</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#d97706">★ REAL</td>
+    <td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Agents.Prep</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#d97706">★ REAL</td>
+    <td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Agents.CopilotCli</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#d97706">★ REAL</td>
+    <td></td><td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Diagnostics</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#e11d48">★ REAL</td>
+    <td></td><td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Reporting</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#4f46e5">★ REAL</td>
+    <td></td><td></td>
+  </tr>
+  <tr>
+    <td>Hone.Orchestration</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#ea580c">★ REAL</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>Hone.Cli</td>
+    <td class="cell-scaffold">scaffold</td>
+    <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+    <td class="cell-real" style="background:#475569">★ REAL</td>
+  </tr>
+</tbody>
+</table>
+</div>
+</section>
+
+</div><!-- /.container -->
+</body>
+</html>

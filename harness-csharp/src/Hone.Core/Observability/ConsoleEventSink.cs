@@ -2,12 +2,10 @@ namespace Hone.Core.Observability;
 
 /// <summary>
 /// Writes harness events to a <see cref="TextWriter"/> with timestamped formatting.
-/// Replaces PowerShell <c>Write-Status</c>.
 /// </summary>
 /// <remarks>
 /// Box-drawing characters (━═─╔╚╗╝║╠╣╦╩) at the start of a message are passed
-/// through without a timestamp prefix, preserving visual formatting parity with
-/// the PowerShell baseline.
+/// through without a timestamp prefix, preserving visual formatting.
 /// </remarks>
 /// <param name="writer">Destination for formatted event output.</param>
 public sealed class ConsoleEventSink(TextWriter writer) : IHoneEventSink

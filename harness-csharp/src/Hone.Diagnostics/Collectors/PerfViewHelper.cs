@@ -68,7 +68,7 @@ internal static class PerfViewHelper
                 }
                 catch (UnauthorizedAccessException)
                 {
-                    // Best-effort cleanup — matches PowerShell's -ErrorAction SilentlyContinue
+                    // Best-effort cleanup
                 }
             }
         }
@@ -209,7 +209,7 @@ internal static class PerfViewHelper
 
         try
         {
-            // Match the PowerShell pattern: Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            // Pick the most recently written file matching the expected name pattern.
             return Directory.EnumerateFiles(perfViewTempDir, $"{baseName}*{fileSuffix}")
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();

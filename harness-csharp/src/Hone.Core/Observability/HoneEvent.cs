@@ -63,7 +63,6 @@ public sealed record ExperimentOutcomeEvent(
 
 /// <summary>
 /// A human-readable status message with severity level.
-/// Replaces PowerShell <c>Write-Status</c>.
 /// </summary>
 public sealed record StatusMessage(
     string Message,

@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that polls a health endpoint until healthy or timeout.
-/// Replaces <c>hooks/health-poll.ps1</c>.
 /// </summary>
 public sealed class HealthPollHook(HttpClient httpClient) : ILifecycleHook
 {
@@ -21,7 +20,7 @@ public sealed class HealthPollHook(HttpClient httpClient) : ILifecycleHook
 
         var stopwatch = Stopwatch.StartNew();
 
-        // PS parity: if no BaseUrl, fail immediately
+        // If no BaseUrl, fail immediately
         if (context.BaseUrl is null)
         {
             stopwatch.Stop();
@@ -33,7 +32,6 @@ public sealed class HealthPollHook(HttpClient httpClient) : ILifecycleHook
                 BaseUrl: null);
         }
 
-        // PS: $healthUrl = "$BaseUrl$($Config.Api.HealthEndpoint)"
         var healthUrl = new Uri(context.BaseUrl, context.Config.Api.HealthEndpoint);
         int timeoutSeconds = context.Config.Api.StartupTimeout;
         var timeout = TimeSpan.FromSeconds(timeoutSeconds);

@@ -6,10 +6,10 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 ## Tech Stack
 
-- **Harness**: C# / .NET 10 — solution at `harness-csharp/Hone.slnx` (15 source projects, 15+1 test projects)
+- **Harness**: C# / .NET 10 — solution at `harness-csharp/Hone.slnx`
 - **CLI entry point**: `Hone.Cli/Program.cs` using `System.CommandLine`
 - **Configuration**: YAML via `YamlDotNet` with PascalCase naming convention
-- **Target API**: .NET 6 Web API with Entity Framework Core 6 and SQL Server LocalDB
+- **Target API**: Blackbox — one sample-api is provided as reference. Expect a .NET-based API but it could be .NET Framework or newer .NET. May or may not have local DBs.
 - **Load Testing**: k6 (Grafana) with JavaScript scenario scripts
 - **E2E Testing**: xUnit with `Microsoft.AspNetCore.Mvc.Testing` (WebApplicationFactory)
 - **AI Agent**: GitHub Copilot CLI (standalone `copilot` command) for optimization analysis
@@ -19,14 +19,14 @@ Hone is an **agentic performance optimization harness** that automatically impro
 | Directory | Purpose |
 |-----------|---------|
 | `harness-csharp/` | C# harness — the core of the project |
-| `harness-csharp/src/` | 15 source projects across Core, Orchestration, Agents, Measurement, Lifecycle, SourceControl, Diagnostics, Reporting, Cli |
-| `harness-csharp/tests/` | 15+1 test projects (xUnit, NSubstitute, FluentAssertions) |
-| `harness-csharp/config.yaml` | Engine-wide default configuration |
-| `sample-api/SampleApi/` | .NET 6 Web API — the optimization target |
+| `harness-csharp/src/` | Source projects across Core, Orchestration, Agents, Measurement, Lifecycle, SourceControl, Diagnostics, Reporting, Cli |
+| `harness-csharp/tests/` | Test projects (xUnit, NSubstitute, FluentAssertions) |
+| `harness-csharp/config.yaml` | Engine-wide default configuration (overrideable by target API config) |
+| `sample-api/SampleApi/` | Sample .NET 6 Web API — provided as a reference for targeting new APIs, not the optimization target |
 | `sample-api/SampleApi.Tests/` | xUnit E2E tests — the regression gate |
 | `sample-api/scale-tests/` | k6 load test scenarios and thresholds |
 | `sample-api/.hone/` | Target Hone contract (config.yaml, scenarios) |
-| `sample-api/.hone/results/` | Generated output (gitignored) |
+| `sample-api/.hone/results/` | Generated output (gitignored). Stacked diffs for fixes should explicitly include result summaries. |
 | `docs/` | Architecture and usage documentation |
 
 ## C# Coding Conventions
@@ -36,13 +36,14 @@ Hone is an **agentic performance optimization harness** that automatically impro
 - **Async/await:** prefer throughout; never use `.Result` or `.Wait()`
 - **Records:** use `record` / `sealed record` for immutable data types (domain models, results, events)
 - **Sealed classes:** prefer `sealed` for non-abstract concrete classes
-- **Internal by default:** types are `internal` unless there is an explicit reason to make them `public`
+- **Visibility:** types are `internal` or `private` where appropriate. `public` only for explicit reasons.
+- **Readonly properties:** prefer `readonly` properties across shareable boundaries if they cannot be immutable
 - **Immutability:** prefer `init`-only properties on records; avoid mutable state
 - **Pattern matching:** prefer `switch` expressions and `is` patterns over chains of `if`/`else`
 - **Expression bodies:** use for single-expression members
 - **`var`:** only when the type is apparent from the right-hand side
 - **Accessibility:** always specify explicit access modifiers
-- **Banned APIs:** `DateTime` (use `DateTimeOffset`), `Thread.Sleep` (use `Task.Delay`), `File.ReadAllText` (use async overload), `ArrayList`/`Hashtable` (use generics) — enforced by `BannedSymbols.txt`
+- **Banned APIs:** extensive linting framework enforces code patterns and banned symbols — see `BannedSymbols.txt` and analyzer packages for details
 
 ### Naming Conventions
 
@@ -54,8 +55,8 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 ### Build Quality
 
-- `TreatWarningsAsErrors` — all warnings are errors; zero-warning policy enforced in CI
-- Third-party analyzers: `Meziantou.Analyzer`, `Microsoft.VisualStudio.Threading.Analyzers`, `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+- `TreatWarningsAsErrors` — zero-warning policy enforced in CI
+- Third-party analyzers enforce code patterns: `Meziantou.Analyzer`, `Microsoft.VisualStudio.Threading.Analyzers`, `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 - `dotnet format --verify-no-changes` is enforced in CI
 
 ### k6 (JavaScript)
@@ -66,8 +67,8 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 ## Agentic Loop Phases
 
-1. **Build** → `DotnetBuildHook` (`dotnet build`)
-2. **Verify** → `DotnetTestHook` (`dotnet test`, must pass 100%)
+1. **Build** → `BuildHook` (invokes the target API's build process)
+2. **Verify** → `TestHook` (invokes the target API's test suite, must pass 100%)
 3. **Measure** → `ScaleTestOrchestrator` + `K6LoadTestRunner` (capture p95 latency, RPS, error rate)
 4. **Analyze** → `AnalysisAgent` + `CpuHotspotsAnalyzer` + `MemoryGcAnalyzer` via `CopilotCliAgentRunner`
 5. **Classify** → `ClassificationAgent` (narrow vs. architecture scope gate)
@@ -90,7 +91,7 @@ Common flags: `--max-experiments N`, `--dry-run`, `--model <model>`
 
 ## Important Design Decisions
 
-- The sample API is the optimization target — the agentic loop discovers performance issues through measurement, not hints
+- The sample API is provided as a reference — the agentic loop discovers performance issues in any target API through measurement, not hints
 - E2E tests use `WebApplicationFactory` so they don't require a running server
 - Performance results are stored as JSON in `sample-api/.hone/results/` for comparison across experiments
 - Each optimization attempt is made on a separate git branch for easy rollback

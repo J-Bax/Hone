@@ -10,7 +10,6 @@ namespace Hone.Agents.Core;
 /// <summary>
 /// Generic AI agent invoker that handles model resolution, JSON extraction,
 /// retry logic, and timeout propagation.
-/// Ports the core behaviour of the PowerShell <c>Invoke-CopilotAgent.ps1</c>.
 /// </summary>
 public sealed class AgentInvoker
 {
@@ -32,13 +31,11 @@ public sealed class AgentInvoker
         _agentConfig = agentConfig;
 
         // Build a lookup of ModelConfigKey → AgentConfig property values.
-        // "FixModel" is a PS-era alias that maps to ImplementerModel in C#.
         _modelOverrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
         {
             ["AnalysisModel"] = agentConfig.AnalysisModel,
             ["ClassificationModel"] = agentConfig.ClassificationModel,
             ["ImplementerModel"] = agentConfig.ImplementerModel,
-            ["FixModel"] = agentConfig.ImplementerModel,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 

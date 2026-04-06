@@ -5,7 +5,6 @@ namespace Hone.Reporting.Console;
 
 /// <summary>
 /// All structured data needed to render the console results table.
-/// Replaces the file I/O in <c>Show-Results.ps1</c>.
 /// </summary>
 public sealed record ResultsViewModel(
     MetricSet Baseline,

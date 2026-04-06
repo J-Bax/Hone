@@ -5,7 +5,6 @@ namespace Hone.Measurement.K6;
 
 /// <summary>
 /// <see cref="ILoadTestRunner"/> implementation that invokes k6 via <see cref="IProcessRunner"/>.
-/// Replaces the k6 invocation logic from PowerShell <c>Invoke-ScaleTests.ps1</c>.
 /// </summary>
 public sealed class K6LoadTestRunner(IProcessRunner processRunner) : ILoadTestRunner
 {

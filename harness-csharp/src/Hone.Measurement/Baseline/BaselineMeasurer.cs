@@ -6,7 +6,6 @@ namespace Hone.Measurement.Baseline;
 
 /// <summary>
 /// Measures a performance baseline by running scale tests and optionally collecting runtime counter metrics.
-/// Replaces the measurement logic from <c>Get-PerformanceBaseline.ps1</c>.
 /// </summary>
 public sealed class BaselineMeasurer
 {
@@ -50,7 +49,7 @@ public sealed class BaselineMeasurer
             counterHandle = await activeCollector.StartAsync(processId, metricsOptions, ct).ConfigureAwait(false);
         }
 
-        // 2. Run scale tests (experiment 0 for baselines — PS parity)
+        // 2. Run scale tests (experiment 0 for baselines)
         ScaleTestResult scaleResult = await ScaleTestOrchestrator.RunAsync(
             scaleConfig, runner, baseUrl, outputDir, experiment: 0, ct).ConfigureAwait(false);
 

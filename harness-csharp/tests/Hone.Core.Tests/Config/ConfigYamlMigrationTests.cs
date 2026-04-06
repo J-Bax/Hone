@@ -8,7 +8,7 @@ namespace Hone.Core.Tests.Config;
 
 /// <summary>
 /// Validates that the migrated YAML config files load correctly and match
-/// the expected values from the original PowerShell config.psd1 sources.
+/// the expected values from the original config sources.
 /// </summary>
 public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTestBase(output)
 {
@@ -117,11 +117,10 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
 
         HoneConfig config = ConfigLoader.Load(path);
 
-        // PS Copilot.Model → C# Agents.DefaultModel
+        // Agents.DefaultModel (was Copilot.Model in original config)
         _ = config.Agents.DefaultModel.Should().Be("claude-sonnet-4.5");
         _ = config.Agents.AnalysisModel.Should().Be("claude-opus-4.6");
         _ = config.Agents.ClassificationModel.Should().Be("claude-opus-4.6");
-        // PS Copilot.FixModel → C# Agents.ImplementerModel
         _ = config.Agents.ImplementerModel.Should().Be("claude-sonnet-4.6");
         _ = config.Agents.AgentTimeoutSec.Should().Be(1800);
     }
@@ -133,7 +132,7 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
 
         HoneConfig config = ConfigLoader.Load(path);
 
-        // PS Fixer section → C# Implementer section
+        // Implementer section (was Fixer in original config)
         _ = config.Implementer.MaxAttempts.Should().Be(3);
         _ = config.Implementer.MaxDiffGrowthFactor.Should().Be(3.0);
         _ = config.Implementer.TestFileGuard.Should().BeTrue();

@@ -8,7 +8,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that runs .NET E2E tests as the regression gate.
-/// Replaces <c>hooks/dotnet-test.ps1</c>.
 /// </summary>
 public sealed partial class DotnetTestHook(IProcessRunner processRunner) : ILifecycleHook
 {
@@ -43,7 +42,7 @@ public sealed partial class DotnetTestHook(IProcessRunner processRunner) : ILife
 
         stopwatch.Stop();
 
-        // Parse test counts from output (PS parity)
+        // Parse test counts from output
         int totalTests = ParseCount(TotalTestsPattern(), result.Output);
         int passedTests = ParseCount(PassedTestsPattern(), result.Output);
         int failedTests = ParseCount(FailedTestsPattern(), result.Output);

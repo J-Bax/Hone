@@ -4,36 +4,33 @@
 
 Ensure the following tools are installed and available on your `PATH`:
 
-### Required
+### Harness
 
 | Tool | Minimum Version | Verify | Install |
 |------|----------------|--------|---------|
 | .NET SDK | 10.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.10` |
-| .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` (for sample-api) |
-| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` ¹ |
 | k6 | 0.47+ | `k6 version` | `winget install GrafanaLabs.k6` |
 | GitHub CLI | 2.0+ | `gh --version` | `winget install GitHub.cli` |
+| GitHub Copilot CLI | Latest | `copilot --version` | [Install standalone CLI](https://docs.github.com/copilot/how-tos/copilot-cli) — separate from `gh` |
 
-¹ There is no dedicated LocalDB winget package. SQL Server Express includes LocalDB, which is what the project uses via `(localdb)\MSSQLLocalDB`.
-
-### Required Tools
-
-The standalone GitHub Copilot CLI must be installed separately:
-
-```sh
-# Verify it's installed
-copilot --version
-```
-
-See https://docs.github.com/copilot/how-tos/copilot-cli for installation instructions.
-
-### Optional Tools
+### Optional Harness Tools
 
 | Tool | Purpose | Install |
 |------|---------|---------|
-| PerfView | Deep CPU/GC/memory diagnostic profiling | Download from [Microsoft/perfview releases](https://github.com/microsoft/perfview/releases) |
+| PerfView | Deep CPU/GC/memory diagnostic profiling (Windows) | Download from [Microsoft/perfview releases](https://github.com/microsoft/perfview/releases) |
 
 PerfView requires **Administrator privileges** at runtime for kernel-level ETW tracing. If you don't need diagnostic profiling, set `Diagnostics.Enabled: false` in `harness-csharp/config.yaml` or `.hone/config.yaml`.
+
+### Sample API (reference only)
+
+These are only needed if you're using the included sample API as your optimization target:
+
+| Tool | Minimum Version | Verify | Install |
+|------|----------------|--------|---------|
+| .NET SDK | 6.0 | `dotnet --version` | `winget install Microsoft.DotNet.SDK.6` |
+| SQL Server LocalDB | 2019 | `sqllocaldb info` | `winget install Microsoft.SQLServer.2019.Express` ¹ |
+
+¹ There is no dedicated LocalDB winget package. SQL Server Express includes LocalDB, which is what the project uses via `(localdb)\MSSQLLocalDB`.
 
 ### Verify Authentication
 

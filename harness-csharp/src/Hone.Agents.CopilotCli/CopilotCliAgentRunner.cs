@@ -7,7 +7,6 @@ namespace Hone.Agents.CopilotCli;
 
 /// <summary>
 /// Invokes the Copilot CLI as an external process.
-/// Replaces <c>Invoke-CopilotWithTimeout</c> from HoneHelpers.psm1.
 /// </summary>
 public sealed class CopilotCliAgentRunner : IAgentRunner
 {

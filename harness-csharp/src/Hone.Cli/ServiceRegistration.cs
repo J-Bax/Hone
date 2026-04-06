@@ -66,7 +66,7 @@ internal static class ServiceRegistration
         var prManager = new PullRequestManager(codeHost);
 
         // ── Lifecycle ────────────────────────────────────────────────────
-#pragma warning disable CA2000 // HttpClient lifetime is application-scoped; disposed at process exit
+#pragma warning disable CA2000 // HttpClient is intentionally process-scoped: the CLI is short-lived, only polls localhost health endpoints, and socket exhaustion / DNS staleness do not apply
         var httpClient = new HttpClient();
 #pragma warning restore CA2000
         var pluginDiscovery = new PluginDiscoveryService();

@@ -9,7 +9,6 @@ namespace Hone.Core.Config;
 
 /// <summary>
 /// Loads YAML configuration files and deserializes them into <see cref="HoneConfig"/>.
-/// Replaces <c>Get-HoneConfig</c> from HoneHelpers.psm1.
 /// </summary>
 public static class ConfigLoader
 {

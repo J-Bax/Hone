@@ -2,7 +2,7 @@ namespace Hone.Diagnostics.Collectors;
 
 /// <summary>
 /// Structured GC statistics report matching the JSON format produced by
-/// the PowerShell PerfView GC collector export.
+/// the PerfView GC collector export.
 /// </summary>
 internal sealed class GcReport
 {

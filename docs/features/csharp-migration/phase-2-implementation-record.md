@@ -1,8 +1,7 @@
 # Phase 2 Implementation Record: Measurement & Comparison
 
 > **Status:** Complete  
-> **Date:** 2026-06-14  
-> **Worker Agent:** `hone-migration-core`  
+> **Worker Agent:** `hone-migration-core`
 > **Orchestrator:** `hone-migration-orchestrator`
 
 ---

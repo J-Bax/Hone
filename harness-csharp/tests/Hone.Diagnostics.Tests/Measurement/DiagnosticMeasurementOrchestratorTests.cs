@@ -142,7 +142,7 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
             outputDir: outputDir,
             workload: () => Task.CompletedTask);
 
-        // Merge (caller responsibility, as in PS)
+        // Merge (caller responsibility)
         var merged = new Dictionary<string, CollectorExportResult>(pass1.CollectorData, StringComparer.Ordinal);
         foreach (KeyValuePair<string, CollectorExportResult> kvp in pass2.CollectorData)
         {

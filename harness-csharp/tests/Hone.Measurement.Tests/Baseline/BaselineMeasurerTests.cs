@@ -168,7 +168,7 @@ public sealed class BaselineMeasurerTests(ITestOutputHelper output) : HoneTestBa
             config, countersConfig, _runner, _collector,
             TestBaseUrl, TempDir, processId: 9999);
 
-        // Assert — success because metrics exist (counters are optional, PS parity)
+        // Assert — success because metrics exist (counters are optional)
         _ = result.Success.Should().BeTrue();
         _ = result.Metrics.Should().NotBeNull();
         _ = result.CounterMetrics.Should().BeNull();
@@ -177,7 +177,7 @@ public sealed class BaselineMeasurerTests(ITestOutputHelper output) : HoneTestBa
     [Fact]
     public async Task MeasureAsync_UsesExperimentZero()
     {
-        // Arrange: verify experiment=0 is passed (PS parity for baselines)
+        // Arrange: verify experiment=0 is passed for baselines
         var config = new ScaleTestConfig(
             WarmupEnabled: false,
             MeasuredRuns: 1,

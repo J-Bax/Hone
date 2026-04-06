@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that stops a .NET API process.
-/// Replaces <c>hooks/dotnet-stop.ps1</c>.
 /// </summary>
 public sealed class DotnetStopHook : ILifecycleHook
 {
@@ -107,7 +106,6 @@ public sealed class DotnetStopHook : ILifecycleHook
     /// <summary>
     /// Discovers processes related to the target API by matching executable paths
     /// against the project's <c>bin/</c> directory.
-    /// PS parity with <c>Get-TargetApiProcessCandidate</c>.
     /// </summary>
     internal static List<Process> FindTargetProcesses(string? projectPath)
     {
@@ -129,7 +127,7 @@ public sealed class DotnetStopHook : ILifecycleHook
                 {
                     bool matches = false;
 
-                    // PS parity: match by executable path under bin/ directory
+                    // Match by executable path under bin/ directory
                     try
                     {
                         string? exePath = proc.MainModule?.FileName;

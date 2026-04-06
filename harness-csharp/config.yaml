@@ -155,7 +155,7 @@ Loop:
   SkipClassification: false
 
 # ── AI Agents ────────────────────────────────────────────────────────────────
-# Mapped from the PowerShell Copilot section; renamed to be tool-agnostic.
+# AI agent configuration — tool-agnostic.
 Agents:
   # Default AI model for all agents
   DefaultModel: "claude-sonnet-4.5"
@@ -169,7 +169,7 @@ Agents:
   AgentTimeoutSec: 1800
 
 # ── Iterative Implementer ────────────────────────────────────────────────────
-# Mapped from the PowerShell Fixer section.
+# Iterative implementer configuration.
 Implementer:
   # Total implementer attempts per experiment (1 = single-shot behavior)
   MaxAttempts: 3

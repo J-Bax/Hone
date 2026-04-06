@@ -1,8 +1,7 @@
 # Phase 8 Implementation Record — Orchestration
 
 > **Status:** Complete  
-> **Date:** 2025-07-19  
-> **Phase:** 8 — Orchestration (`Hone.Orchestration`)  
+> **Phase:** 8 — Orchestration (`Hone.Orchestration`)
 > **Baseline:** 540 tests → 599 tests (+60 new in Hone.Orchestration.Tests, −1 placeholder)  
 > **Build:** 0 warnings, 0 errors  
 

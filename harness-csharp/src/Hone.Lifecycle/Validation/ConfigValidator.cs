@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.Validation;
 
 /// <summary>
 /// Validates harness and target configuration.
-/// Replaces <c>Test-HoneConfig.ps1</c>.
 /// </summary>
 public static class ConfigValidator
 {

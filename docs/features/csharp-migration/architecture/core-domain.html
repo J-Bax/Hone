@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hone.Core Deep Dive — C# Migration Architecture</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#2563eb;--secondary:#16a34a;--accent:#ea580c;
+    --neutral:#64748b;--bg:#f8fafc;--card:#ffffff;--text:#1e293b;
+    --blue:#2563eb;--green:#16a34a;--orange:#ea580c;--purple:#7c3aed;--gray:#64748b;
+    --type-string:#16a34a;--type-int:#2563eb;--type-bool:#7c3aed;
+    --type-double:#0d9488;--type-array:#ea580c;--type-nested:#1e293b;
+    --radius:8px;--shadow:0 1px 3px rgba(0,0,0,.1),0 1px 2px rgba(0,0,0,.06);
+    --shadow-md:0 4px 6px rgba(0,0,0,.07),0 2px 4px rgba(0,0,0,.06);
+  }
+  html{font-size:16px;scroll-behavior:smooth}
+  body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.6}
+  code,pre,.mono{font-family:"Cascadia Code","Fira Code",Consolas,"Courier New",monospace}
+
+  /* NAV */
+  nav{background:var(--text);color:#fff;padding:.75rem 1.5rem;position:sticky;top:0;z-index:100;
+    display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.25rem;box-shadow:var(--shadow-md)}
+  nav a{color:#cbd5e1;text-decoration:none;font-size:.875rem;transition:color .15s}
+  nav a:hover{color:#fff}
+  nav a.current{color:#fff;font-weight:700;border-bottom:2px solid var(--primary)}
+  nav .brand{font-weight:700;font-size:1rem;color:#fff;margin-right:auto}
+
+  /* LAYOUT */
+  .container{max-width:1200px;margin:0 auto;padding:1.5rem}
+  h1{font-size:2rem;margin-bottom:.25rem}
+  h2{font-size:1.5rem;margin:2.5rem 0 .75rem;padding-bottom:.5rem;border-bottom:2px solid var(--primary)}
+  h3{font-size:1.15rem;margin:1.5rem 0 .5rem;color:var(--primary)}
+  p{margin-bottom:.75rem}
+
+  /* CARDS */
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1.25rem;margin-bottom:1rem}
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
+
+  /* BADGES */
+  .badge{display:inline-block;font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;color:#fff;vertical-align:middle}
+  .badge-blue{background:var(--blue)}.badge-green{background:var(--green)}
+  .badge-orange{background:var(--orange)}.badge-purple{background:var(--purple)}
+  .badge-gray{background:var(--gray)}
+
+  /* COLLAPSIBLE */
+  details{margin-bottom:.75rem}
+  details>summary{cursor:pointer;font-weight:600;padding:.5rem .75rem;border-radius:var(--radius);
+    background:var(--card);box-shadow:var(--shadow);list-style:none;display:flex;align-items:center;gap:.5rem;user-select:none}
+  details>summary::-webkit-details-marker{display:none}
+  details>summary::before{content:"▶";font-size:.7rem;transition:transform .2s;flex-shrink:0}
+  details[open]>summary::before{transform:rotate(90deg)}
+  details>.content{padding:.75rem 1rem;margin-top:.25rem;background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+  /* TREE */
+  .tree{font-size:.85rem;line-height:1.8}
+  .tree ul{list-style:none;padding-left:1.5rem;border-left:1px solid #e2e8f0}
+  .tree li{position:relative}
+  .tree li::before{content:"";position:absolute;left:-1.5rem;top:.9em;width:1rem;border-bottom:1px solid #e2e8f0}
+  .tree .prop{font-weight:500}
+  .tree .t-str{color:var(--type-string)}.tree .t-int{color:var(--type-int)}
+  .tree .t-bool{color:var(--type-bool)}.tree .t-dbl{color:var(--type-double)}
+  .tree .t-arr{color:var(--type-array)}.tree .t-rec{color:var(--type-nested);font-weight:700}
+  .tree .default{color:var(--neutral);font-style:italic;font-size:.8rem}
+  .tree details>summary{background:none;box-shadow:none;padding:.1rem 0;font-size:.85rem}
+  .tree details>.content{box-shadow:none;padding:0 0 0 .5rem;margin:0}
+
+  /* MODEL CARDS */
+  .model-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.25rem;margin-bottom:.75rem;border-left:4px solid var(--primary)}
+  .model-card.experiment{border-left-color:var(--blue)}
+  .model-card.queue{border-left-color:var(--green)}
+  .model-card.metrics{border-left-color:var(--accent)}
+  .model-card.collection{border-left-color:var(--purple)}
+  .model-card.lifecycle{border-left-color:#0d9488}
+  .model-card.infra{border-left-color:var(--neutral)}
+  .model-card h4{font-size:.95rem;margin-bottom:.35rem;display:flex;align-items:center;gap:.5rem}
+  .model-card .purpose{font-size:.8rem;color:var(--neutral);margin-bottom:.5rem}
+  .model-card .params{font-size:.8rem;background:#f1f5f9;padding:.5rem .75rem;border-radius:4px;overflow-x:auto}
+  .model-card .params code{font-size:.78rem}
+  .enum-tag{background:#fef3c7;color:#92400e;font-size:.7rem;padding:.1rem .4rem;border-radius:4px;font-weight:600}
+
+  /* UTILITY CARDS */
+  .util-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem 1.25rem;margin-bottom:.75rem;border-left:4px solid var(--neutral)}
+  .util-card h4{margin-bottom:.35rem}
+  .util-card code{background:#f1f5f9;padding:.1rem .35rem;border-radius:3px;font-size:.82rem}
+
+  /* SVG STYLES */
+  .svg-wrap{overflow-x:auto;margin:1rem 0}
+  .svg-wrap svg{display:block;max-width:100%;height:auto}
+
+  /* LEGEND */
+  .legend{display:flex;flex-wrap:wrap;gap:.75rem;margin:.75rem 0;font-size:.8rem}
+  .legend-item{display:flex;align-items:center;gap:.35rem}
+  .legend-swatch{width:14px;height:14px;border-radius:3px}
+
+  /* PRINT */
+  @media print{
+    nav{position:static;background:#fff;color:#000;box-shadow:none}
+    nav a{color:#000}
+    .card,.model-card,.util-card,details>.content{box-shadow:none;border:1px solid #e2e8f0}
+    details[open]>summary~*{display:block!important}
+    body{font-size:12px}
+  }
+  @media(max-width:640px){
+    .container{padding:1rem}
+    .card-grid{grid-template-columns:1fr}
+    nav{gap:.35rem .75rem}
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── NAVIGATION ─── -->
+<nav>
+  <span class="brand">Hone C# Architecture</span>
+  <a href="index.html">Overview</a>
+  <a href="solution-structure.html">Solution Structure</a>
+  <a href="core-domain.html" class="current">Core Domain</a>
+  <a href="data-flows.html">Data Flows</a>
+  <a href="interfaces-contracts.html">Interfaces &amp; Contracts</a>
+  <a href="phase-map.html">Phase Map</a>
+  <a href="observability-events.html">Observability</a>
+</nav>
+
+<div class="container">
+
+<h1>Hone.Core Deep Dive</h1>
+<p>The shared kernel of the Hone system — configuration records, domain models, contracts, observability primitives, and utility helpers. Zero external dependencies; referenced by every other project.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     1. NAMESPACE MAP (inline SVG)
+     ═══════════════════════════════════════════════════════════════ -->
+<h2 id="namespace-map">1. Namespace Map</h2>
+<p>Hone.Core contains <strong>69 files</strong> across 5 namespaces. Each region below shows the key types it owns.</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--blue)"></div> Config (16)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--green)"></div> Contracts (21)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--orange)"></div> Models (25)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--purple)"></div> Observability (5)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:var(--gray)"></div> Utilities (2)</div>
+</div>
+
+<div class="svg-wrap">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" font-family="system-ui,sans-serif" font-size="11">
+  <defs>
+    <filter id="ds" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity=".1"/>
+    </filter>
+  </defs>
+
+  <!-- Config -->
+  <g filter="url(#ds)">
+    <rect x="10" y="10" width="460" height="210" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <rect x="10" y="10" width="460" height="28" rx="10" fill="#2563eb"/>
+    <rect x="10" y="28" width="460" height="10" fill="#2563eb"/>
+    <text x="24" y="30" fill="#fff" font-weight="700" font-size="13">Config/</text>
+    <text x="420" y="30" fill="#dbeafe" font-size="10">16 files</text>
+
+    <text x="24" y="58" font-weight="600" fill="#1e40af" font-size="10">RECORDS</text>
+    <text x="24" y="74" fill="#1e293b" font-size="10.5">HoneConfig · ApiConfig · TolerancesConfig · EfficiencyConfig</text>
+    <text x="24" y="90" fill="#1e293b" font-size="10.5">ScaleTestConfig · LoopConfig · AgentConfig · DiagnosticsConfig</text>
+    <text x="24" y="106" fill="#1e293b" font-size="10.5">LoggingConfig · ImplementerConfig · DotnetCountersConfig</text>
+    <text x="24" y="122" fill="#1e293b" font-size="10.5">CollectorSettingsEntry · AnalyzerSettingsEntry · CliOverrides</text>
+
+    <text x="24" y="148" font-weight="600" fill="#1e40af" font-size="10">SERVICES</text>
+    <text x="24" y="164" fill="#1e293b" font-size="10.5">ConfigLoader · ConfigMerger</text>
+  </g>
+
+  <!-- Contracts -->
+  <g filter="url(#ds)">
+    <rect x="490" y="10" width="460" height="210" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <rect x="490" y="10" width="460" height="28" rx="10" fill="#16a34a"/>
+    <rect x="490" y="28" width="460" height="10" fill="#16a34a"/>
+    <text x="504" y="30" fill="#fff" font-weight="700" font-size="13">Contracts/</text>
+    <text x="900" y="30" fill="#dcfce7" font-size="10">21 files</text>
+
+    <text x="504" y="58" font-weight="600" fill="#166534" font-size="10">INTERFACES</text>
+    <text x="504" y="74" fill="#1e293b" font-size="10.5">IAgentRunner · IAnalyzerPlugin · ICodeHost · ICollectorPlugin</text>
+    <text x="504" y="90" fill="#1e293b" font-size="10.5">ILifecycleHook · ILoadTestRunner · IProcessRunner</text>
+    <text x="504" y="106" fill="#1e293b" font-size="10.5">IRuntimeMetricsCollector · IVersionControl</text>
+
+    <text x="504" y="132" font-weight="600" fill="#166534" font-size="10">DTOs</text>
+    <text x="504" y="148" fill="#1e293b" font-size="10.5">AgentInvocation · AgentRunResult · CreatePrOptions</text>
+    <text x="504" y="164" fill="#1e293b" font-size="10.5">LoadTestOptions · LoadTestResult · MetricsCollectionHandle</text>
+    <text x="504" y="180" fill="#1e293b" font-size="10.5">PullRequestResult · PullRequestStatus · PushResult</text>
+    <text x="504" y="196" fill="#1e293b" font-size="10.5">RuntimeMetricsOptions · RuntimeMetricsResult</text>
+  </g>
+
+  <!-- Models -->
+  <g filter="url(#ds)">
+    <rect x="10" y="240" width="620" height="250" rx="10" fill="#ffedd5" stroke="#ea580c" stroke-width="1.5"/>
+    <rect x="10" y="240" width="620" height="28" rx="10" fill="#ea580c"/>
+    <rect x="10" y="258" width="620" height="10" fill="#ea580c"/>
+    <text x="24" y="260" fill="#fff" font-weight="700" font-size="13">Models/</text>
+    <text x="580" y="260" fill="#ffedd5" font-size="10">25 files</text>
+
+    <text x="24" y="290" font-weight="600" fill="#9a3412" font-size="10">EXPERIMENT</text>
+    <text x="24" y="306" fill="#1e293b" font-size="10.5">ExperimentMetadata · ExperimentOutcome · IterationAttempt · IterationLog · IterativeFixResult</text>
+
+    <text x="24" y="330" font-weight="600" fill="#9a3412" font-size="10">QUEUE</text>
+    <text x="24" y="346" fill="#1e293b" font-size="10.5">QueueItem · QueueItemStatus · OptimizationQueue · Opportunity · OpportunityScope</text>
+
+    <text x="24" y="370" font-weight="600" fill="#9a3412" font-size="10">METRICS</text>
+    <text x="24" y="386" fill="#1e293b" font-size="10.5">MetricSet · HttpReqDurationMetrics · HttpReqCountMetrics · HttpReqFailedMetrics</text>
+    <text x="24" y="402" fill="#1e293b" font-size="10.5">MetricComparison · ComparisonResult</text>
+
+    <text x="24" y="426" font-weight="600" fill="#9a3412" font-size="10">COLLECTION &amp; LIFECYCLE &amp; INFRA</text>
+    <text x="24" y="442" fill="#1e293b" font-size="10.5">CollectorHandle · CollectorArtifacts · CollectorExport · AnalyzerReport</text>
+    <text x="24" y="458" fill="#1e293b" font-size="10.5">HookResult · ProcessResult · RunMetadata · MachineInfo · LogLevel</text>
+  </g>
+
+  <!-- Observability -->
+  <g filter="url(#ds)">
+    <rect x="650" y="240" width="300" height="150" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <rect x="650" y="240" width="300" height="28" rx="10" fill="#7c3aed"/>
+    <rect x="650" y="258" width="300" height="10" fill="#7c3aed"/>
+    <text x="664" y="260" fill="#fff" font-weight="700" font-size="13">Observability/</text>
+    <text x="910" y="260" fill="#ede9fe" font-size="10">5 files</text>
+
+    <text x="664" y="290" font-weight="600" fill="#5b21b6" font-size="10">EVENTS</text>
+    <text x="664" y="306" fill="#1e293b" font-size="10.5">HoneEvent (abstract)</text>
+    <text x="664" y="322" fill="#1e293b" font-size="10.5">PhaseStarted · PhaseCompleted</text>
+    <text x="664" y="338" fill="#1e293b" font-size="10.5">MetricSnapshot · AgentInvoked</text>
+    <text x="664" y="354" fill="#1e293b" font-size="10.5">ExperimentOutcomeEvent</text>
+    <text x="664" y="370" fill="#1e293b" font-size="10.5">StatusMessage · DiagnosticProgress</text>
+  </g>
+
+  <!-- Observability - Bus & Sinks -->
+  <g filter="url(#ds)">
+    <rect x="650" y="400" width="300" height="90" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="664" y="422" font-weight="600" fill="#5b21b6" font-size="10">BUS &amp; SINKS</text>
+    <text x="664" y="440" fill="#1e293b" font-size="10.5">HoneEventBus · IHoneEventSink</text>
+    <text x="664" y="456" fill="#1e293b" font-size="10.5">ConsoleEventSink · JsonLogEventSink</text>
+  </g>
+
+  <!-- Utilities -->
+  <g filter="url(#ds)">
+    <rect x="10" y="510" width="940" height="100" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <rect x="10" y="510" width="940" height="28" rx="10" fill="#64748b"/>
+    <rect x="10" y="528" width="940" height="10" fill="#64748b"/>
+    <text x="24" y="530" fill="#fff" font-weight="700" font-size="13">Utilities/</text>
+    <text x="910" y="530" fill="#e2e8f0" font-size="10">2 files</text>
+
+    <text x="24" y="560" fill="#1e293b" font-size="10.5"><tspan font-weight="600">JsonUtils</tspan>  —  SanitizeNaN · ExtractJsonBlock · ExtractCodeBlock</text>
+    <text x="24" y="580" fill="#1e293b" font-size="10.5"><tspan font-weight="600">StringUtils</tspan>  —  Truncate</text>
+  </g>
+
+  <!-- Dependency arrows (namespace → namespace) -->
+  <defs>
+    <marker id="arr" viewBox="0 0 10 7" refX="10" refY="3.5" markerWidth="8" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 3.5 L0 7z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <!-- Contracts → Models -->
+  <line x1="620" y1="220" x2="620" y2="238" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+  <!-- Config → Models (used by default values) -->
+  <line x1="240" y1="220" x2="240" y2="238" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+  <!-- Observability → Models -->
+  <line x1="650" y1="360" x2="632" y2="380" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+</svg>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     2. CONFIGURATION TREE
+     ═══════════════════════════════════════════════════════════════ -->
+<h2 id="config-tree">2. Configuration Tree</h2>
+<p>The <code>HoneConfig</code> record is the root of all configuration. Loaded by <code>ConfigLoader</code> from YAML, merged with CLI overrides by <code>ConfigMerger</code>.</p>
+
+<div class="legend" style="margin-bottom:1rem">
+  <div class="legend-item"><span style="color:var(--type-string);font-weight:600">string</span></div>
+  <div class="legend-item"><span style="color:var(--type-int);font-weight:600">int</span></div>
+  <div class="legend-item"><span style="color:var(--type-bool);font-weight:600">bool</span></div>
+  <div class="legend-item"><span style="color:var(--type-double);font-weight:600">double</span></div>
+  <div class="legend-item"><span style="color:var(--type-array);font-weight:600">array</span></div>
+  <div class="legend-item"><span style="color:var(--type-nested);font-weight:700">nested record</span></div>
+</div>
+
+<div class="card tree" id="config-root">
+
+  <!-- HoneConfig root -->
+  <details open>
+    <summary><span class="prop t-rec">HoneConfig</span></summary>
+    <div class="content">
+      <ul>
+
+        <!-- Api -->
+        <li>
+          <details open>
+            <summary><span class="prop">Api</span>: <span class="t-rec">ApiConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">SolutionPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">ProjectPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">SourceCodePaths</span>: <span class="t-arr">string[]</span> <span class="default">= ["Controllers", "Data", "Models", "Pages"]</span></li>
+                <li><span class="prop">SourceFileGlob</span>: <span class="t-str">string</span> <span class="default">= "*.cs"</span></li>
+                <li><span class="prop">TestProjectPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">BaseUrl</span>: <span class="t-str">string</span> <span class="default">= "http://localhost:0"</span></li>
+                <li><span class="prop">HealthEndpoint</span>: <span class="t-str">string</span> <span class="default">= "/health"</span></li>
+                <li><span class="prop">GcEndpoint</span>: <span class="t-str">string</span> <span class="default">= "/diag/gc"</span></li>
+                <li><span class="prop">StartupTimeout</span>: <span class="t-int">int</span> <span class="default">= 90</span></li>
+                <li><span class="prop">ResultsPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">MetadataPath</span>: <span class="t-str">string</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Tolerances -->
+        <li>
+          <details open>
+            <summary><span class="prop">Tolerances</span>: <span class="t-rec">TolerancesConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">MaxRegressionPct</span>: <span class="t-dbl">double</span> <span class="default">= 0.10</span></li>
+                <li><span class="prop">MinAbsoluteP95DeltaMs</span>: <span class="t-dbl">double</span> <span class="default">= 5</span></li>
+                <li><span class="prop">MinAbsoluteRPSDelta</span>: <span class="t-dbl">double</span> <span class="default">= 5</span></li>
+                <li><span class="prop">MinAbsoluteErrorRateDelta</span>: <span class="t-dbl">double</span> <span class="default">= 0.005</span></li>
+                <li><span class="prop">MinImprovementPct</span>: <span class="t-dbl">double</span> <span class="default">= 0</span></li>
+                <li><span class="prop">StaleExperimentsBeforeStop</span>: <span class="t-int">int</span> <span class="default">= 2</span></li>
+                <li><span class="prop">MaxConsecutiveFailures</span>: <span class="t-int">int</span> <span class="default">= 10</span></li>
+                <li>
+                  <details>
+                    <summary><span class="prop">Efficiency</span>: <span class="t-rec">EfficiencyConfig</span></summary>
+                    <div class="content">
+                      <ul>
+                        <li><span class="prop">Enabled</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+                        <li><span class="prop">MinCpuReductionPct</span>: <span class="t-dbl">double</span> <span class="default">= 0.05</span></li>
+                        <li><span class="prop">MinWorkingSetReductionPct</span>: <span class="t-dbl">double</span> <span class="default">= 0.05</span></li>
+                      </ul>
+                    </div>
+                  </details>
+                </li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- ScaleTest -->
+        <li>
+          <details>
+            <summary><span class="prop">ScaleTest</span>: <span class="t-rec">ScaleTestConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">ScenarioPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">ScenarioRegistryPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">ExtraArgs</span>: <span class="t-arr">string[]</span> <span class="default">= []</span></li>
+                <li><span class="prop">WarmupEnabled</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+                <li><span class="prop">WarmupScenarioPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">MeasuredRuns</span>: <span class="t-int">int</span> <span class="default">= 5</span></li>
+                <li><span class="prop">CooldownSeconds</span>: <span class="t-int">int</span> <span class="default">= 3</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Loop -->
+        <li>
+          <details>
+            <summary><span class="prop">Loop</span>: <span class="t-rec">LoopConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">MaxExperiments</span>: <span class="t-int">int</span> <span class="default">= 999</span></li>
+                <li><span class="prop">BranchPrefix</span>: <span class="t-str">string</span> <span class="default">= "hone/experiment"</span></li>
+                <li><span class="prop">StackedDiffs</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+                <li><span class="prop">WaitForMerge</span>: <span class="t-bool">bool</span> <span class="default">= false</span></li>
+                <li><span class="prop">SkipClassification</span>: <span class="t-bool">bool</span> <span class="default">= false</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Agents -->
+        <li>
+          <details>
+            <summary><span class="prop">Agents</span>: <span class="t-rec">AgentConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">DefaultModel</span>: <span class="t-str">string</span> <span class="default">= "claude-sonnet-4.5"</span></li>
+                <li><span class="prop">AnalysisModel</span>: <span class="t-str">string?</span> <span class="default">→ DefaultModel</span></li>
+                <li><span class="prop">ClassificationModel</span>: <span class="t-str">string?</span> <span class="default">→ DefaultModel</span></li>
+                <li><span class="prop">ImplementerModel</span>: <span class="t-str">string?</span> <span class="default">→ DefaultModel</span></li>
+                <li><span class="prop">AgentTimeoutSec</span>: <span class="t-int">int</span> <span class="default">= 1800</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Diagnostics -->
+        <li>
+          <details>
+            <summary><span class="prop">Diagnostics</span>: <span class="t-rec">DiagnosticsConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">Enabled</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+                <li><span class="prop">CollectorsPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">AnalyzersPath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">PerfViewExePath</span>: <span class="t-str">string</span></li>
+                <li><span class="prop">DiagnosticScenarioPath</span>: <span class="t-str">string?</span></li>
+                <li><span class="prop">DiagnosticRuns</span>: <span class="t-int">int</span> <span class="default">= 1</span></li>
+                <li><span class="prop">K6TimeoutSec</span>: <span class="t-int">int</span> <span class="default">= 300</span></li>
+                <li><span class="prop">CollectorSettings</span>: <span class="t-arr">Dict&lt;string, CollectorSettingsEntry&gt;</span></li>
+                <li><span class="prop">AnalyzerSettings</span>: <span class="t-arr">Dict&lt;string, AnalyzerSettingsEntry&gt;</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Logging -->
+        <li>
+          <details>
+            <summary><span class="prop">Logging</span>: <span class="t-rec">LoggingConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">Level</span>: <span class="t-str">string</span> <span class="default">= "info"</span></li>
+                <li><span class="prop">MaxFileSizeMB</span>: <span class="t-int">int</span> <span class="default">= 50</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- Implementer -->
+        <li>
+          <details>
+            <summary><span class="prop">Implementer</span>: <span class="t-rec">ImplementerConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">MaxAttempts</span>: <span class="t-int">int</span> <span class="default">= 3</span></li>
+                <li><span class="prop">MaxDiffGrowthFactor</span>: <span class="t-dbl">double</span> <span class="default">= 3.0</span></li>
+                <li><span class="prop">TestFileGuard</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+        <!-- DotnetCounters -->
+        <li>
+          <details>
+            <summary><span class="prop">DotnetCounters</span>: <span class="t-rec">DotnetCountersConfig</span></summary>
+            <div class="content">
+              <ul>
+                <li><span class="prop">Enabled</span>: <span class="t-bool">bool</span> <span class="default">= true</span></li>
+                <li><span class="prop">Providers</span>: <span class="t-arr">string[]</span> <span class="default">= ["System.Runtime", "Microsoft.AspNetCore.Hosting", …]</span></li>
+              </ul>
+            </div>
+          </details>
+        </li>
+
+      </ul>
+    </div>
+  </details>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     3. DOMAIN MODELS
+     ═══════════════════════════════════════════════════════════════ -->
+<h2 id="domain-models">3. Domain Models</h2>
+<p>All 25 model types grouped by concern. Each is a C# <code>record</code> (or <code>enum</code>) in the <code>Hone.Core.Models</code> namespace.</p>
+
+<!-- ── Experiment Tracking ── -->
+<h3>Experiment Tracking</h3>
+
+<div class="model-card experiment">
+  <h4>ExperimentMetadata <span class="badge badge-blue">record</span></h4>
+  <div class="purpose">Tracks a single experiment's lifecycle — timing, outcome, branch, metrics, and PR linkage.</div>
+  <div class="params"><code>Experiment: <span style="color:var(--type-int)">int</span>, StartedAt: <span style="color:var(--type-string)">string</span>, CompletedAt: <span style="color:var(--type-string)">string?</span>, Outcome: <span style="color:var(--type-nested)">ExperimentOutcome?</span>, BranchName: <span style="color:var(--type-string)">string?</span>, BaseBranch: <span style="color:var(--type-string)">string?</span>, P95: <span style="color:var(--type-double)">double?</span>, RPS: <span style="color:var(--type-double)">double?</span>, PrNumber: <span style="color:var(--type-int)">int?</span>, PrUrl: <span style="color:var(--type-string)">Uri?</span>, StaleCount: <span style="color:var(--type-int)">int</span>, ConsecutiveFailures: <span style="color:var(--type-int)">int</span></code>
+  <br><em style="font-size:.75rem;color:var(--neutral)">+ JsonExtensionData for forward-compatible fields</em></div>
+</div>
+
+<div class="model-card experiment">
+  <h4>ExperimentOutcome <span class="enum-tag">enum</span></h4>
+  <div class="purpose">Discrete result of an experiment comparison.</div>
+  <div class="params"><code>Improved · Regressed · Stale · EfficiencyWin</code></div>
+</div>
+
+<div class="model-card experiment">
+  <h4>IterationAttempt <span class="badge badge-blue">record</span></h4>
+  <div class="purpose">One attempt within an iterative fix loop — stage, outcome, and diff size.</div>
+  <div class="params"><code>Attempt: <span style="color:var(--type-int)">int</span>, Stage: <span style="color:var(--type-string)">string</span>, Outcome: <span style="color:var(--type-string)">string</span>, DiffLines: <span style="color:var(--type-int)">int</span></code></div>
+</div>
+
+<div class="model-card experiment">
+  <h4>IterationLog <span class="badge badge-blue">record</span></h4>
+  <div class="purpose">Ordered collection of all attempts in an iterative fix run.</div>
+  <div class="params"><code>Attempts: <span style="color:var(--type-array)">IReadOnlyList&lt;IterationAttempt&gt;</span></code></div>
+</div>
+
+<div class="model-card experiment">
+  <h4>IterativeFixResult <span class="badge badge-blue">record</span></h4>
+  <div class="purpose">Final outcome of the iterative fix loop — success/failure with diagnostics.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, AttemptCount: <span style="color:var(--type-int)">int</span>, ExitReason: <span style="color:var(--type-string)">string</span>, FailureDetail: <span style="color:var(--type-string)">string?</span>, IterationLog: <span style="color:var(--type-nested)">IterationLog?</span>, IterationLogRelativePath: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<!-- ── Queue Management ── -->
+<h3>Queue Management</h3>
+
+<div class="model-card queue">
+  <h4>OptimizationQueue <span class="badge badge-green">record</span></h4>
+  <div class="purpose">Persistent queue of optimization opportunities, versioned by the experiment that generated it.</div>
+  <div class="params"><code>GeneratedByExperiment: <span style="color:var(--type-int)">int</span>, Items: <span style="color:var(--type-array)">IReadOnlyList&lt;QueueItem&gt;</span></code></div>
+</div>
+
+<div class="model-card queue">
+  <h4>QueueItem <span class="badge badge-green">record</span></h4>
+  <div class="purpose">A single optimization opportunity with status tracking.</div>
+  <div class="params"><code>Id: <span style="color:var(--type-string)">string</span>, FilePath: <span style="color:var(--type-string)">string</span>, Explanation: <span style="color:var(--type-string)">string</span>, Scope: <span style="color:var(--type-nested)">OpportunityScope</span>, Status: <span style="color:var(--type-nested)">QueueItemStatus</span>, TriedByExperiment: <span style="color:var(--type-int)">int?</span>, Outcome: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<div class="model-card queue">
+  <h4>QueueItemStatus <span class="enum-tag">enum</span></h4>
+  <div class="purpose">Lifecycle state of a queue item.</div>
+  <div class="params"><code>Pending · InProgress · Done · Skipped</code></div>
+</div>
+
+<div class="model-card queue">
+  <h4>Opportunity <span class="badge badge-green">record</span></h4>
+  <div class="purpose">A discovered optimization opportunity before it enters the queue.</div>
+  <div class="params"><code>FilePath: <span style="color:var(--type-string)">string</span>, Title: <span style="color:var(--type-string)">string</span>, Explanation: <span style="color:var(--type-string)">string</span>, Scope: <span style="color:var(--type-nested)">OpportunityScope</span>, RootCause: <span style="color:var(--type-string)">string?</span>, ImpactEstimate: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<div class="model-card queue">
+  <h4>OpportunityScope <span class="enum-tag">enum</span></h4>
+  <div class="purpose">Indicates whether an optimization is localized or cross-cutting.</div>
+  <div class="params"><code>Narrow · Architecture</code></div>
+</div>
+
+<!-- ── Metrics ── -->
+<h3>Metrics</h3>
+
+<div class="model-card metrics">
+  <h4>MetricSet <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">A complete snapshot of load-test metrics for one run of one experiment.</div>
+  <div class="params"><code>Timestamp: <span style="color:var(--type-string)">string</span>, Experiment: <span style="color:var(--type-int)">int</span>, Run: <span style="color:var(--type-int)">int</span>, HttpReqDuration: <span style="color:var(--type-nested)">HttpReqDurationMetrics</span>, HttpReqs: <span style="color:var(--type-nested)">HttpReqCountMetrics</span>, HttpReqFailed: <span style="color:var(--type-nested)">HttpReqFailedMetrics</span>, SummaryPath: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<div class="model-card metrics">
+  <h4>HttpReqDurationMetrics <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">Latency percentiles from k6 load test output.</div>
+  <div class="params"><code>Avg: <span style="color:var(--type-double)">double</span>, P50: <span style="color:var(--type-double)">double</span>, P90: <span style="color:var(--type-double)">double</span>, P95: <span style="color:var(--type-double)">double</span>, P99: <span style="color:var(--type-double)">double</span>, Max: <span style="color:var(--type-double)">double</span></code></div>
+</div>
+
+<div class="model-card metrics">
+  <h4>HttpReqCountMetrics <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">Request throughput — total count and requests per second.</div>
+  <div class="params"><code>Count: <span style="color:var(--type-int)">long</span>, Rate: <span style="color:var(--type-double)">double</span></code></div>
+</div>
+
+<div class="model-card metrics">
+  <h4>HttpReqFailedMetrics <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">Error rate — failed request count and failure ratio.</div>
+  <div class="params"><code>Count: <span style="color:var(--type-int)">long</span>, Rate: <span style="color:var(--type-double)">double</span></code></div>
+</div>
+
+<div class="model-card metrics">
+  <h4>MetricComparison <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">Single metric delta between current, previous, and optional baseline.</div>
+  <div class="params"><code>MetricName: <span style="color:var(--type-string)">string</span>, Current: <span style="color:var(--type-double)">double</span>, Previous: <span style="color:var(--type-double)">double</span>, Baseline: <span style="color:var(--type-double)">double?</span>, DeltaPct: <span style="color:var(--type-double)">double</span>, AbsoluteDelta: <span style="color:var(--type-double)">double</span>, Improved: <span style="color:var(--type-bool)">bool</span>, Regressed: <span style="color:var(--type-bool)">bool</span></code></div>
+</div>
+
+<div class="model-card metrics">
+  <h4>ComparisonResult <span class="badge badge-orange">record</span></h4>
+  <div class="purpose">Aggregated accept/reject decision with per-metric detail breakdowns.</div>
+  <div class="params"><code>Accepted: <span style="color:var(--type-bool)">bool</span>, Outcome: <span style="color:var(--type-nested)">ExperimentOutcome</span>, ImprovementPct: <span style="color:var(--type-double)">double</span>, RegressionPct: <span style="color:var(--type-double)">double</span>, Details: <span style="color:var(--type-array)">IReadOnlyList&lt;MetricComparison&gt;</span></code></div>
+</div>
+
+<!-- ── Collection & Analysis ── -->
+<h3>Collection &amp; Analysis</h3>
+
+<div class="model-card collection">
+  <h4>CollectorHandle <span class="badge badge-purple">record</span></h4>
+  <div class="purpose">Opaque handle returned when a collector starts — carries the collector-specific state object.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, Handle: <span style="color:var(--type-nested)">object?</span></code></div>
+</div>
+
+<div class="model-card collection">
+  <h4>CollectorArtifacts <span class="badge badge-purple">record</span></h4>
+  <div class="purpose">Paths to raw artifacts produced when a collector stops.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, ArtifactPaths: <span style="color:var(--type-array)">IReadOnlyList&lt;string&gt;</span></code></div>
+</div>
+
+<div class="model-card collection">
+  <h4>CollectorExport <span class="badge badge-purple">record</span></h4>
+  <div class="purpose">Post-processed export paths and optional summary text.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, ExportedPaths: <span style="color:var(--type-array)">IReadOnlyList&lt;string&gt;</span>, Summary: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<div class="model-card collection">
+  <h4>AnalyzerReport <span class="badge badge-purple">record</span></h4>
+  <div class="purpose">AI-generated analysis output with prompt/response paths for auditability.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, Report: <span style="color:var(--type-string)">string?</span>, Summary: <span style="color:var(--type-string)">string?</span>, PromptPath: <span style="color:var(--type-string)">string?</span>, ResponsePath: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<!-- ── Lifecycle & Process ── -->
+<h3>Lifecycle &amp; Process</h3>
+
+<div class="model-card lifecycle">
+  <h4>HookResult <span class="badge" style="background:#0d9488">record</span></h4>
+  <div class="purpose">Outcome of a lifecycle hook (e.g., app start/stop) — includes discovered artifacts and base URL.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, Message: <span style="color:var(--type-string)">string?</span>, Duration: <span style="color:var(--type-nested)">TimeSpan</span>, Artifacts: <span style="color:var(--type-array)">IReadOnlyList&lt;string&gt;</span>, BaseUrl: <span style="color:var(--type-string)">Uri?</span>, Process: <span style="color:var(--type-nested)">object?</span></code></div>
+</div>
+
+<div class="model-card lifecycle">
+  <h4>ProcessResult <span class="badge" style="background:#0d9488">record</span></h4>
+  <div class="purpose">Captured result of an external process execution.</div>
+  <div class="params"><code>Success: <span style="color:var(--type-bool)">bool</span>, Output: <span style="color:var(--type-string)">string</span>, ExitCode: <span style="color:var(--type-int)">int</span>, TimedOut: <span style="color:var(--type-bool)">bool</span></code></div>
+</div>
+
+<!-- ── Infrastructure ── -->
+<h3>Infrastructure</h3>
+
+<div class="model-card infra">
+  <h4>RunMetadata <span class="badge badge-gray">record</span></h4>
+  <div class="purpose">Top-level metadata for an entire Hone run — target, timing, machine info, and experiment list.</div>
+  <div class="params"><code>TargetName: <span style="color:var(--type-string)">string</span>, StartedAt: <span style="color:var(--type-string)">string</span>, MachineInfo: <span style="color:var(--type-nested)">MachineInfo?</span>, Experiments: <span style="color:var(--type-array)">IReadOnlyList&lt;ExperimentMetadata&gt;</span></code></div>
+</div>
+
+<div class="model-card infra">
+  <h4>MachineInfo <span class="badge badge-gray">record</span></h4>
+  <div class="purpose">Hardware and runtime environment snapshot for reproducibility.</div>
+  <div class="params"><code>CpuName: <span style="color:var(--type-string)">string?</span>, CpuCores: <span style="color:var(--type-int)">int?</span>, TotalRamGB: <span style="color:var(--type-double)">decimal?</span>, OsVersion: <span style="color:var(--type-string)">string?</span>, DotnetVersion: <span style="color:var(--type-string)">string?</span></code></div>
+</div>
+
+<div class="model-card infra">
+  <h4>LogLevel <span class="enum-tag">enum</span></h4>
+  <div class="purpose">Verbosity level for Hone's internal logging.</div>
+  <div class="params"><code>Verbose · Info · Warning · Error</code></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════
+     4. UTILITIES
+     ═══════════════════════════════════════════════════════════════ -->
+<h2 id="utilities">4. Utilities</h2>
+<p>Two small static utility classes — zero allocations where possible, source-generated regexes for performance.</p>
+
+<div class="card-grid">
+  <div class="util-card">
+    <h4>JsonUtils</h4>
+    <p style="font-size:.85rem;margin-bottom:.5rem">Handles JSON edge-cases produced by k6 and AI agents.</p>
+    <details open>
+      <summary style="font-size:.85rem">Methods</summary>
+      <div class="content" style="font-size:.85rem">
+        <p><code>SanitizeNaN(string json) → string</code><br>
+        Replaces <code>NaN</code>, <code>Infinity</code>, and <code>-Infinity</code> with <code>null</code> so the JSON is spec-compliant. Needed because k6 emits non-standard numeric values.</p>
+        <p><code>ExtractJsonBlock(string text) → string?</code><br>
+        Extracts the content inside <code>```json … ```</code> fences. Returns <code>null</code> if no block found. Uses source-generated regex.</p>
+        <p><code>ExtractCodeBlock(string text) → string?</code><br>
+        Extracts content inside <code>```csharp … ```</code> fences. Used to parse AI-generated code responses. Uses source-generated regex.</p>
+      </div>
+    </details>
+  </div>
+
+  <div class="util-card">
+    <h4>StringUtils</h4>
+    <p style="font-size:.85rem;margin-bottom:.5rem">String manipulation helpers — parity with PowerShell's original <code>Limit-String</code>.</p>
+    <details open>
+      <summary style="font-size:.85rem">Methods</summary>
+      <div class="content" style="font-size:.85rem">
+        <p><code>Truncate(string text, int maxLength) → string</code><br>
+        Truncates at a word boundary and appends <code>…</code> (ellipsis). If <code>text.Length &lt;= maxLength</code>, returns the original string unchanged. Mirrors the behavior of the PowerShell <code>Limit-String</code> utility from the original codebase.</p>
+      </div>
+    </details>
+  </div>
+</div>
+
+</div><!-- /.container -->
+
+<!-- ─── FOOTER ─── -->
+<footer style="text-align:center;padding:2rem 1rem;color:var(--neutral);font-size:.8rem;border-top:1px solid #e2e8f0;margin-top:2rem">
+  Hone C# Migration — Architecture Documentation
+</footer>
+
+</body>
+</html>

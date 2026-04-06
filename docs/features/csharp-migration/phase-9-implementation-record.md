@@ -1,8 +1,7 @@
 # Phase 9 Implementation Record — CLI Host & Integration Tests
 
 > **Status:** Complete  
-> **Date:** 2025-07-20  
-> **Phase:** 9 — CLI Host & Integration Tests (`Hone.Cli` and `Hone.Integration.Tests`)  
+> **Phase:** 9 — CLI Host & Integration Tests (`Hone.Cli` and `Hone.Integration.Tests`)
 > **Baseline:** 599 tests → 612 tests (+14 new in Hone.Integration.Tests, −1 placeholder)  
 > **Build:** 0 warnings, 0 errors  
 

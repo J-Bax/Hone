@@ -1,8 +1,7 @@
 # Phase 7 Implementation Record — Reporting & Export
 
 > **Status:** Complete  
-> **Date:** 2025-07-18  
-> **Phase:** 7 — Reporting & Export (`Hone.Reporting`)  
+> **Phase:** 7 — Reporting & Export (`Hone.Reporting`)
 > **Baseline:** 491 tests → 539 tests (+48 new in Hone.Reporting.Tests)  
 > **Build:** 0 warnings, 0 errors  
 

@@ -91,7 +91,7 @@ public sealed partial class DashboardExporterTests(ITestOutputHelper output) : H
     {
         string html = DashboardExporter.Build(CreateSampleData());
 
-        // The only acceptable external reference is the Chart.js CDN (inherited from PS).
+        // The only acceptable external reference is the Chart.js CDN.
         MatchCollection externalRefs = ExternalRefPattern().Matches(html);
 
         foreach (Match match in externalRefs)

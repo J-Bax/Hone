@@ -5,7 +5,6 @@ namespace Hone.SourceControl.PullRequests;
 
 /// <summary>
 /// Builds the markdown body for experiment pull requests.
-/// Replaces <c>Build-PRBody.ps1</c>.
 /// </summary>
 public static class PrBodyBuilder
 {

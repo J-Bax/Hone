@@ -12,7 +12,7 @@ namespace Hone.Orchestration.Failure;
 /// item done.
 /// </summary>
 /// <remarks>
-/// Mirrors <c>harness/Invoke-FailureHandler.ps1</c>.  Metadata recording is
+/// Metadata recording is
 /// delegated to the caller (the loop runner owns <c>run-metadata.json</c>)
 /// through an optional <see cref="Func{T, TResult}"/> callback.
 /// </remarks>

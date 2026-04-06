@@ -7,7 +7,6 @@ namespace Hone.Measurement.Orchestration;
 /// <summary>
 /// Orchestrates multi-run load testing: warmup → N measured runs → median selection.
 /// Uses <see cref="ILoadTestRunner"/> — doesn't know about k6 specifics.
-/// Replaces the multi-run orchestration from <c>Invoke-ScaleTests.ps1</c>.
 /// </summary>
 public sealed class ScaleTestOrchestrator
 {
@@ -91,7 +90,7 @@ public sealed class ScaleTestOrchestrator
         }
 
         // Sort by p95 and pick the median (middle) run.
-        // Integer division floors, matching PowerShell: [math]::Floor($sorted.Count / 2)
+        // Integer division floors to select the median element.
         List<MetricSet> sorted = [.. metrics.OrderBy(m => m.HttpReqDuration.P95)];
         int medianIndex = sorted.Count / 2;
         return sorted[medianIndex];

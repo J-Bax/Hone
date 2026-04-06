@@ -6,7 +6,6 @@ namespace Hone.Measurement.K6;
 
 /// <summary>
 /// Parses k6 JSON summary output into a <see cref="MetricSet"/>.
-/// Replaces PowerShell <c>Convert-HoneK6SummaryToMetricSet</c>.
 /// </summary>
 public sealed class K6SummaryParser
 {

@@ -6,7 +6,6 @@ namespace Hone.Lifecycle.SharedHooks;
 
 /// <summary>
 /// Built-in hook that runs k6 scale tests against the running API.
-/// Replaces <c>hooks/k6-run.ps1</c>.
 /// </summary>
 public sealed class K6RunHook(ILoadTestRunner loadTestRunner) : ILifecycleHook
 {

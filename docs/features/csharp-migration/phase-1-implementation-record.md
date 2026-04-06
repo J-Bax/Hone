@@ -1,8 +1,7 @@
 # Phase 1 Implementation Record: Core Domain Models, Configuration, Contracts, Utilities, Observability
 
 > **Status:** Complete  
-> **Date:** 2026-04-05  
-> **Worker Agent:** `hone-migration-core`  
+> **Worker Agent:** `hone-migration-core`
 > **Orchestrator:** `hone-migration-orchestrator`
 
 ---

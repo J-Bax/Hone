@@ -1,8 +1,7 @@
 # Phase 3 Implementation Record: Lifecycle & Hooks
 
 > **Status:** Complete  
-> **Date:** 2026-04-06  
-> **Worker Agent:** `hone-migration-core`  
+> **Worker Agent:** `hone-migration-core`
 > **Orchestrator:** `hone-migration-orchestrator`
 
 ---

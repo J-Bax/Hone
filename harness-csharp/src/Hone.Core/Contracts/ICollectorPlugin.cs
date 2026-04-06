@@ -4,7 +4,7 @@ namespace Hone.Core.Contracts;
 
 /// <summary>
 /// Contract for diagnostic data collector plugins.
-/// Mirrors the PowerShell collector lifecycle: Start → Stop → Export.
+/// Lifecycle: Start → Stop → Export.
 /// </summary>
 public interface ICollectorPlugin
 {

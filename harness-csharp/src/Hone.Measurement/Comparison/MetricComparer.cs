@@ -6,7 +6,6 @@ namespace Hone.Measurement.Comparison;
 /// <summary>
 /// Pure comparison engine that determines whether an experiment is accepted,
 /// rejected, or stale based on metric deltas and tolerance thresholds.
-/// Replaces the PowerShell <c>Compare-Metric</c> function.
 /// </summary>
 public sealed class MetricComparer
 {

@@ -8,7 +8,6 @@ namespace Hone.Agents.Preparation;
 
 /// <summary>
 /// Assesses a target project's compatibility with the Hone optimization harness.
-/// Ports the PowerShell <c>Invoke-CompatibilityAgent.ps1</c>.
 /// </summary>
 public sealed class CompatibilityAgent
 {

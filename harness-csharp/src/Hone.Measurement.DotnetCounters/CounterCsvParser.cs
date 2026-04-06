@@ -154,8 +154,7 @@ public static class CounterCsvParser
 
     /// <summary>
     /// Filters rows by exact provider match and partial counter-name match,
-    /// then computes aggregate statistics — mirroring the PowerShell
-    /// <c>Get-CounterStat</c> helper.
+    /// then computes aggregate statistics.
     /// </summary>
     private static CounterStatistic ComputeStatistic(
         List<CsvRow> rows,
