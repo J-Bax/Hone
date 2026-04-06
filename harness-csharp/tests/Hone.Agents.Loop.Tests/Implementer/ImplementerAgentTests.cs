@@ -162,7 +162,7 @@ public sealed class ImplementerAgentTests(ITestOutputHelper output) : HoneTestBa
 
         _ = await _runner.Received(1).InvokeAsync(
             Arg.Is<AgentInvocation>(inv =>
-                inv.AgentName == "hone-fixer" &&
+                inv.AgentName == "hone-implementer" &&
                 inv.Model == "custom-fixer-model"),
             Arg.Any<CancellationToken>());
     }

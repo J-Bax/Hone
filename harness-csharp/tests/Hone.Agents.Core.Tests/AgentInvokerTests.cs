@@ -196,7 +196,7 @@ public sealed class AgentInvokerTests(ITestOutputHelper output) : HoneTestBase(o
 
         _ = result.ParsedResult.Should().BeNull();
         _ = result.RawOutput.Should().Be("not json at all");
-        _ = result.Success.Should().BeTrue();
+        _ = result.Success.Should().BeFalse();
     }
 
     [Fact]

@@ -134,7 +134,7 @@ public sealed class AgentInvoker
 
         // All retries exhausted with no successful JSON parse.
         return new AgentResult<T>(
-            Success: lastRunResult is not null && lastRunResult.ExitCode == 0,
+            Success: false,
             ParsedResult: default,
             RawOutput: lastRunResult?.Output ?? string.Empty,
             ResponseText: string.Empty,

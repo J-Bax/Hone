@@ -79,7 +79,15 @@ internal sealed class ProcessRunner : IProcessRunner
         }
         else
         {
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                TryKillProcess(process);
+                throw;
+            }
         }
 
         string stdout = await stdoutTask.ConfigureAwait(false);

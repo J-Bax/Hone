@@ -7,7 +7,7 @@ using Hone.Core.Utilities;
 namespace Hone.Agents.Loop.Implementer;
 
 /// <summary>
-/// Invokes the hone-fixer AI agent to generate optimized file content.
+/// Invokes the hone-implementer AI agent to generate optimized file content.
 /// </summary>
 public sealed class ImplementerAgent(AgentInvoker agentInvoker)
 {
@@ -39,7 +39,7 @@ public sealed class ImplementerAgent(AgentInvoker agentInvoker)
         string prompt = BuildPrompt(filePath, explanation, targetLabel, attempt, previousErrors, currentFileContent, rootCauseDocument);
 
         AgentInvocationOptions options = new(
-            AgentName: "hone-fixer",
+            AgentName: "hone-implementer",
             Prompt: prompt,
             ModelConfigKey: "ImplementerModel",
             DefaultModel: ModelDefaults.Implementation,

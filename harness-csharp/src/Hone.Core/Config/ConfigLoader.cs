@@ -70,11 +70,13 @@ public static class ConfigLoader
 
         public object Create(Type type)
         {
-            // Try constructor with all-default parameters (positional records)
+            // Try constructor with all-default parameters (positional records).
+            // Use the constructor with the most parameters to pick the primary
+            // record constructor reliably across runtimes.
             ConstructorInfo[] ctors = type.GetConstructors();
             if (ctors.Length > 0)
             {
-                ConstructorInfo ctor = ctors[0];
+                ConstructorInfo ctor = ctors.OrderByDescending(c => c.GetParameters().Length).First();
                 ParameterInfo[] parameters = ctor.GetParameters();
                 if (parameters.Length > 0 && Array.TrueForAll(parameters, static p => p.HasDefaultValue))
                 {
