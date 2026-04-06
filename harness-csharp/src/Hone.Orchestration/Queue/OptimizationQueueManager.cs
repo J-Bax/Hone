@@ -159,6 +159,25 @@ internal sealed class OptimizationQueueManager
     }
 
     /// <summary>
+    /// Returns the root-cause document content for the given queue item, or <c>null</c>
+    /// if no RCA was generated.
+    /// </summary>
+    internal string? GetRootCauseDocument(string itemId)
+    {
+        lock (_lock)
+        {
+            QueueFileDto queue = ReadQueue();
+            QueueItemDto? dto = queue.Items.Find(i => string.Equals(i.Id, itemId, StringComparison.Ordinal));
+            if (dto?.RootCausePath is not null && File.Exists(dto.RootCausePath))
+            {
+                return File.ReadAllText(dto.RootCausePath, Encoding.UTF8);
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Returns true if any pending non-architecture items exist.
     /// </summary>
     internal bool HasActionable()

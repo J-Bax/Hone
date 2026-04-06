@@ -51,6 +51,18 @@ internal sealed class IterativeImplementerRunner
         string targetFile = ResolveTargetFile(options.FilePath, options.TargetName);
         string fullTargetPath = Path.Combine(options.TargetDir, targetFile);
 
+        // If the resolved path doesn't exist, try the original (unstripped) path.
+        // This handles cases where targetName matches a real directory in the repo.
+        if (!File.Exists(fullTargetPath))
+        {
+            string originalFull = Path.Combine(options.TargetDir, options.FilePath.Trim());
+            if (File.Exists(originalFull))
+            {
+                targetFile = options.FilePath.Trim();
+                fullTargetPath = originalFull;
+            }
+        }
+
         // Validate target directory exists
         string? parentDir = Path.GetDirectoryName(fullTargetPath);
         if (parentDir is null || !Directory.Exists(parentDir))

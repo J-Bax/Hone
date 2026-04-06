@@ -22,6 +22,8 @@ public static class ConfigMerger
         ArgumentNullException.ThrowIfNull(target);
 
         var merged = new HoneConfig(
+            Name: target.Name ?? engine.Name,
+            BaseBranch: target.BaseBranch ?? engine.BaseBranch,
             Api: MergeSection(engine.Api, target.Api),
             Tolerances: MergeTolerances(engine.Tolerances, target.Tolerances),
             ScaleTest: MergeSection(engine.ScaleTest, target.ScaleTest),

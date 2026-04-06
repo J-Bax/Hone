@@ -37,8 +37,8 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
         ArgumentException.ThrowIfNullOrEmpty(branch);
 
         string[] arguments = create
-            ? ["checkout", "-b", "--", branch]
-            : ["checkout", "--", branch];
+            ? ["checkout", "-b", branch]
+            : ["checkout", branch];
 
         ProcessResult result = await processRunner.RunAsync(
             "git",

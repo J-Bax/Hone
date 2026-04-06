@@ -184,11 +184,12 @@ internal sealed class HoneLoopRunner
         }
 
         // ── Implement ───────────────────────────────────────────────────────
+        string? rcaDocument = _queueManager.GetRootCauseDocument(item.Id);
         ImplementerRunResult implResult = await _implementer.RunAsync(
             new ImplementerOptions(
                 FilePath: item.FilePath,
                 Explanation: item.Explanation,
-                RootCauseDocument: null,
+                RootCauseDocument: rcaDocument,
                 Experiment: exp,
                 BaseBranch: baseBranch,
                 TargetDir: targetDir,

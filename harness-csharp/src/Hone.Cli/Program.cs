@@ -90,6 +90,9 @@ internal static class Program
             var options = new LoopOptions(
                 TargetDir: targetDir,
                 Config: config,
+                TargetName: config.Name ?? Path.GetFileName(targetDir),
+                DefaultBranch: config.BaseBranch ?? "main",
+                ResultsPath: config.Api.ResultsPath,
                 DryRun: dryRun,
                 MaxExperimentsOverride: maxExperiments);
 

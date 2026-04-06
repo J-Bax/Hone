@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 
 using Hone.Agents.Core;
 using Hone.Core.Models;
@@ -162,7 +163,9 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
                 Explanation: explanation,
                 Scope: scope,
                 RootCause: dto.RootCause,
-                ImpactEstimate: dto.ImpactEstimate));
+                ImpactEstimate: dto.ImpactEstimate?.ValueKind == JsonValueKind.String
+                    ? dto.ImpactEstimate.Value.GetString()
+                    : dto.ImpactEstimate?.GetRawText()));
         }
 
         return result;
@@ -185,6 +188,6 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 
         public string? RootCause { get; set; }
 
-        public string? ImpactEstimate { get; set; }
+        public JsonElement? ImpactEstimate { get; set; }
     }
 }
