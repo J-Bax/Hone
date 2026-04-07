@@ -215,7 +215,7 @@ internal sealed class HoneLoopRunner
         {
             return await HandleFailedExperimentAsync(
                 ctx, implResult.Result.ExitReason ?? "implementation_failed",
-                comparison: null, experimentMetrics: null, ct)
+                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
 
@@ -228,7 +228,7 @@ internal sealed class HoneLoopRunner
         {
             return await HandleFailedExperimentAsync(
                 ctx, "load_test_failed",
-                comparison: null, experimentMetrics: null, ct)
+                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
 
@@ -248,11 +248,11 @@ internal sealed class HoneLoopRunner
 
             ExperimentOutcome.Regressed =>
                 await HandleFailedExperimentAsync(
-                    ctx, "regressed", comparison, experimentMetrics, ct).ConfigureAwait(false),
+                    ctx, "regressed", comparison, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
 
             ExperimentOutcome.Stale =>
                 await HandleFailedExperimentAsync(
-                    ctx, "stale", comparison, experimentMetrics, ct).ConfigureAwait(false),
+                    ctx, "stale", comparison, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
 
             ExperimentOutcome.Unknown or _ => throw new InvalidOperationException($"Unexpected experiment outcome: {comparison.Outcome}"),
         };
@@ -407,6 +407,7 @@ internal sealed class HoneLoopRunner
         string outcome,
         ComparisonResult? comparison,
         MetricSet? experimentMetrics,
+        string? queueItemId,
         CancellationToken ct)
     {
         int exp = ctx.Experiment;
@@ -440,7 +441,8 @@ internal sealed class HoneLoopRunner
                 Experiment: exp,
                 Outcome: outcome,
                 RevertDescription: $"Revert {outcome} experiment {exp}",
-                TargetDir: targetDir),
+                TargetDir: targetDir,
+                QueueItemId: queueItemId),
             onMetadataUpdate: null,
             ct).ConfigureAwait(false);
 
