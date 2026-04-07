@@ -20,10 +20,11 @@ internal static class ArtifactStager
         "k6.log",
     ];
 
-    private static readonly string[] CounterFiles =
+    // Only the median/final k6 summary — individual run files (k6-summary-run1…N)
+    // are large and redundant once the median is selected.
+    private static readonly string[] MeasurementSummaries =
     [
-        "dotnet-counters.json",
-        "dotnet-counters.csv",
+        "k6-summary.json",
     ];
 
     private static readonly string[] DiagnosticSummaries =
@@ -67,14 +68,8 @@ internal static class ArtifactStager
             paths.Add($"{prefix}/iterations/");
         }
 
-        // k6 log globs: k6-*.log
-        CollectGlobFiles(paths, experimentDir, prefix, "k6-*.log");
-
-        // k6 summary globs: k6-summary*.json
-        CollectGlobFiles(paths, experimentDir, prefix, "k6-summary*.json");
-
-        // Counter data files
-        CollectFixedFiles(paths, experimentDir, prefix, CounterFiles);
+        // Median k6 summary only (not per-run k6-summary-run*.json)
+        CollectFixedFiles(paths, experimentDir, prefix, MeasurementSummaries);
 
         // Diagnostic collector summaries
         foreach (string summary in DiagnosticSummaries)
@@ -133,15 +128,6 @@ internal static class ArtifactStager
             {
                 paths.Add($"{prefix}/{fileName}");
             }
-        }
-    }
-
-    private static void CollectGlobFiles(List<string> paths, string experimentDir, string prefix, string pattern)
-    {
-        foreach (string file in Directory.EnumerateFiles(experimentDir, pattern))
-        {
-            string name = Path.GetFileName(file);
-            paths.Add($"{prefix}/{name}");
         }
     }
 

@@ -118,9 +118,10 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     /// <inheritdoc />
     public async Task<int> GetDiffLineCountAsync(string workingDir, CancellationToken ct)
     {
+        // Exclude .hone/ results artifacts so diff count reflects only source changes
         ProcessResult result = await _processRunner.RunAsync(
             "git",
-            ["diff", "--stat", "HEAD~1"],
+            ["diff", "--stat", "HEAD~1", "--", ".", ":(exclude).hone"],
             workingDir,
             timeout: null,
             ct).ConfigureAwait(false);

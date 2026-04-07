@@ -77,7 +77,20 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
             config.ScaleTest, _loadTestRunner, baseUrl, outputDir, experiment: 0,
             BuildCooldownCallback(), ct).ConfigureAwait(false);
 
-        return result.Metrics ?? throw new InvalidOperationException("Baseline scale test produced no metrics.");
+        MetricSet metrics = result.Metrics
+            ?? throw new InvalidOperationException("Baseline scale test produced no metrics.");
+
+        // Persist the selected median run's summary as the aggregated baseline file
+        // so subsequent `run` invocations skip re-measurement.
+        if (!string.IsNullOrEmpty(metrics.SummaryPath) && File.Exists(metrics.SummaryPath))
+        {
+            byte[] summaryBytes = await File.ReadAllBytesAsync(metrics.SummaryPath, ct)
+                .ConfigureAwait(false);
+            await File.WriteAllBytesAsync(baselinePath, summaryBytes, ct)
+                .ConfigureAwait(false);
+        }
+
+        return metrics;
     }
 
     /// <inheritdoc />

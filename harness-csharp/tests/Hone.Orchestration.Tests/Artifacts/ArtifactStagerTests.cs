@@ -77,17 +77,17 @@ public sealed class ArtifactStagerTests(ITestOutputHelper output) : HoneTestBase
     [Fact]
     public void StageArtifacts_CopiesMetrics()
     {
-        // Arrange — k6 summaries
+        // Arrange — only the median k6 summary is staged, per-run files are skipped
         string targetDir = SetupExperiment("copies-metrics",
-            "k6-summary.json", "k6-summary-iter2.json", "k6-summary-final.json");
+            "k6-summary.json", "k6-summary-run1.json", "k6-summary-run2.json");
 
         // Act
         IReadOnlyList<string> paths = ArtifactStager.CollectArtifactPaths(targetDir, ResultsPath, Experiment);
 
-        // Assert
+        // Assert — only median
         _ = paths.Should().Contain(".hone/results/experiment-1/k6-summary.json");
-        _ = paths.Should().Contain(".hone/results/experiment-1/k6-summary-iter2.json");
-        _ = paths.Should().Contain(".hone/results/experiment-1/k6-summary-final.json");
+        _ = paths.Should().NotContain(".hone/results/experiment-1/k6-summary-run1.json");
+        _ = paths.Should().NotContain(".hone/results/experiment-1/k6-summary-run2.json");
     }
 
     [Fact]
@@ -131,17 +131,17 @@ public sealed class ArtifactStagerTests(ITestOutputHelper output) : HoneTestBase
     }
 
     [Fact]
-    public void StageArtifacts_CollectsCounterData()
+    public void StageArtifacts_CounterDataNotStaged()
     {
-        // Arrange
+        // Arrange — raw counter files are excluded (diagnostic summaries capture this data)
         string targetDir = SetupExperiment("counter-data", "dotnet-counters.json", "dotnet-counters.csv");
 
         // Act
         IReadOnlyList<string> paths = ArtifactStager.CollectArtifactPaths(targetDir, ResultsPath, Experiment);
 
-        // Assert
-        _ = paths.Should().Contain(".hone/results/experiment-1/dotnet-counters.json");
-        _ = paths.Should().Contain(".hone/results/experiment-1/dotnet-counters.csv");
+        // Assert — raw counter files should not be staged
+        _ = paths.Should().NotContain(".hone/results/experiment-1/dotnet-counters.json");
+        _ = paths.Should().NotContain(".hone/results/experiment-1/dotnet-counters.csv");
     }
 
     [Fact]
@@ -237,19 +237,19 @@ public sealed class ArtifactStagerTests(ITestOutputHelper output) : HoneTestBase
     }
 
     [Fact]
-    public void StageArtifacts_K6LogGlobs_CollectsMultiple()
+    public void StageArtifacts_K6LogGlobs_NotStaged()
     {
-        // Arrange — multiple k6 log files matching k6-*.log
+        // Arrange — per-iteration k6 log files are no longer staged (main k6.log is in AnalysisArtifacts)
         string targetDir = SetupExperiment("k6-globs",
             "k6-iter1.log", "k6-iter2.log", "k6-final.log");
 
         // Act
         IReadOnlyList<string> paths = ArtifactStager.CollectArtifactPaths(targetDir, ResultsPath, Experiment);
 
-        // Assert
-        _ = paths.Should().Contain(".hone/results/experiment-1/k6-iter1.log");
-        _ = paths.Should().Contain(".hone/results/experiment-1/k6-iter2.log");
-        _ = paths.Should().Contain(".hone/results/experiment-1/k6-final.log");
+        // Assert — per-iteration logs should not be staged
+        _ = paths.Should().NotContain(".hone/results/experiment-1/k6-iter1.log");
+        _ = paths.Should().NotContain(".hone/results/experiment-1/k6-iter2.log");
+        _ = paths.Should().NotContain(".hone/results/experiment-1/k6-final.log");
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public sealed class ArtifactStagerTests(ITestOutputHelper output) : HoneTestBase
             "fix-prompt.md", "fix-response.md", "root-cause.md",
             "build.log", "e2e-tests.log", "e2e-results.trx", "k6.log",
             "iteration-log.json",
-            "k6-iter1.log", "k6-summary.json", "k6-summary-iter2.json",
+            "k6-summary.json", "k6-summary-run1.json", "k6-summary-run2.json",
             "dotnet-counters.json", "dotnet-counters.csv",
             "diagnostics/dotnet-counters/dotnet-counters.json",
             "diagnostics/perfview-gc/gc-report.json",
@@ -276,15 +276,19 @@ public sealed class ArtifactStagerTests(ITestOutputHelper output) : HoneTestBase
         // Act
         IReadOnlyList<string> paths = ArtifactStager.CollectArtifactPaths(targetDir, ResultsPath, Experiment);
 
-        // Assert — should contain at least all the key categories
-        _ = paths.Should().HaveCountGreaterThanOrEqualTo(20);
+        // Assert — should contain key categories (agent output, diagnostics, metadata)
+        _ = paths.Should().HaveCountGreaterThanOrEqualTo(16);
         _ = paths.Should().Contain(p => p.Contains("build.log"));
         _ = paths.Should().Contain(p => p.Contains("iterations/"));
-        _ = paths.Should().Contain(p => p.Contains("k6-summary"));
-        _ = paths.Should().Contain(p => p.Contains("dotnet-counters"));
+        _ = paths.Should().Contain(p => p.EndsWith("k6-summary.json"));
         _ = paths.Should().Contain(p => p.Contains("diagnostics/"));
         _ = paths.Should().Contain(p => p.Contains("metadata/"));
         _ = paths.Should().Contain(p => p.Contains("run-metadata.json"));
+
+        // Assert — heavy artifacts excluded
+        _ = paths.Should().NotContain(p => p.Contains("dotnet-counters.json") && !p.Contains("diagnostics/"));
+        _ = paths.Should().NotContain(p => p.Contains("dotnet-counters.csv"));
+        _ = paths.Should().NotContain(p => p.Contains("k6-summary-run"));
     }
 
     [Fact]
