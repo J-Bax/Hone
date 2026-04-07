@@ -5,6 +5,8 @@ namespace Hone.Core.Config;
 /// Aggregates all configuration sections with defaults.
 /// </summary>
 public sealed record HoneConfig(
+    string? Name = null,
+    string? BaseBranch = null,
     ApiConfig? Api = null,
     TolerancesConfig? Tolerances = null,
     ScaleTestConfig? ScaleTest = null,

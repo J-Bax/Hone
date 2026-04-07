@@ -8,4 +8,5 @@ public sealed record LoopConfig(
     string BranchPrefix = "hone/experiment",
     bool StackedDiffs = true,
     bool WaitForMerge = false,
-    bool SkipClassification = false);
+    bool SkipClassification = false,
+    int ExperimentCooldownSeconds = 30);

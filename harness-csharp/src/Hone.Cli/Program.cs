@@ -90,6 +90,9 @@ internal static class Program
             var options = new LoopOptions(
                 TargetDir: targetDir,
                 Config: config,
+                TargetName: config.Name ?? Path.GetFileName(targetDir),
+                DefaultBranch: config.BaseBranch ?? "main",
+                ResultsPath: config.Api.ResultsPath,
                 DryRun: dryRun,
                 MaxExperimentsOverride: maxExperiments);
 
@@ -209,7 +212,7 @@ internal static class Program
             Console.WriteLine($"Running baseline measurement against {baseUrl}...");
 
             ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-                config.ScaleTest, loadTestRunner, baseUrl, baselineDir, experiment: 0, ct)
+                config.ScaleTest, loadTestRunner, baseUrl, baselineDir, experiment: 0, ct: ct)
                 .ConfigureAwait(false);
 
             if (result.Metrics is null)

@@ -24,10 +24,13 @@ public static partial class JsonUtils
     /// <summary>
     /// Extracts the first JSON block from markdown-fenced text
     /// (<c>```json … ```</c>).  Falls back to generic fences, then
-    /// returns the original text when no fences are found.
+    /// attempts to find an unfenced JSON object/array, and finally
+    /// returns the original text when nothing matches.
     /// </summary>
     public static string ExtractJsonBlock(string text)
     {
+        ArgumentNullException.ThrowIfNull(text);
+
         Match match = JsonFencePattern().Match(text);
         if (match.Success)
         {
@@ -40,7 +43,9 @@ public static partial class JsonUtils
             return match.Groups["content"].Value.Trim();
         }
 
-        return text;
+        // Fallback: find the first '{' or '[' that starts a JSON object/array
+        // and match it to the last corresponding '}' or ']'.
+        return TryExtractUnfencedJson(text) ?? text;
     }
 
     /// <summary>
@@ -63,6 +68,47 @@ public static partial class JsonUtils
         }
 
         return text;
+    }
+
+    /// <summary>
+    /// Attempts to locate an unfenced JSON object or array in the text by finding the
+    /// first <c>{</c> or <c>[</c> and matching it to the last corresponding <c>}</c> or <c>]</c>.
+    /// </summary>
+    private static string? TryExtractUnfencedJson(string text)
+    {
+        int openBrace = text.IndexOf('{', StringComparison.Ordinal);
+        int openBracket = text.IndexOf('[', StringComparison.Ordinal);
+
+        int start;
+        char closeChar;
+        if (openBrace < 0 && openBracket < 0)
+        {
+            return null;
+        }
+
+        if (openBrace < 0)
+        {
+            start = openBracket;
+            closeChar = ']';
+        }
+        else if (openBracket < 0 || openBrace < openBracket)
+        {
+            start = openBrace;
+            closeChar = '}';
+        }
+        else
+        {
+            start = openBracket;
+            closeChar = ']';
+        }
+
+        int end = text.LastIndexOf(closeChar);
+        if (end <= start)
+        {
+            return null;
+        }
+
+        return text[start..(end + 1)];
     }
 
     [GeneratedRegex(@":\s*-?(?:NaN|Infinity)\b", RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]

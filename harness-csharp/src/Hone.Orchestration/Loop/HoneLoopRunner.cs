@@ -85,6 +85,17 @@ internal sealed class HoneLoopRunner
         {
             ct.ThrowIfCancellationRequested();
 
+            // Cooldown between experiments to allow TCP TIME_WAIT sockets to clear
+            // and reduce environmental degradation across consecutive load tests.
+            if (exp > startExperiment && config.Loop.ExperimentCooldownSeconds > 0)
+            {
+                int cooldown = config.Loop.ExperimentCooldownSeconds;
+                _eventSink.Emit(new StatusMessage(
+                    $"Cooling down {cooldown}s between experiments",
+                    LogLevel.Info, DateTimeOffset.UtcNow, exp));
+                await Task.Delay(TimeSpan.FromSeconds(cooldown), ct).ConfigureAwait(false);
+            }
+
             ExperimentContext expCtx = await RunSingleExperimentAsync(
                 exp, state, baseline, options, config, targetDir, resultsPath,
                 targetName, machineInfo, experiments, metadataPath, ct)
@@ -184,11 +195,12 @@ internal sealed class HoneLoopRunner
         }
 
         // ── Implement ───────────────────────────────────────────────────────
+        string? rcaDocument = _queueManager.GetRootCauseDocument(item.Id);
         ImplementerRunResult implResult = await _implementer.RunAsync(
             new ImplementerOptions(
                 FilePath: item.FilePath,
                 Explanation: item.Explanation,
-                RootCauseDocument: null,
+                RootCauseDocument: rcaDocument,
                 Experiment: exp,
                 BaseBranch: baseBranch,
                 TargetDir: targetDir,

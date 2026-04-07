@@ -78,7 +78,8 @@ internal static class ServiceRegistration
             classificationAgent,
             codeHost,
             versionControl,
-            config);
+            config,
+            httpClient);
 
         IImplementerPipeline implementerPipeline = new ImplementerPipelineAdapter(
             implementerAgent,

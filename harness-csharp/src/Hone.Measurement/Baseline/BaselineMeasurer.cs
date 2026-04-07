@@ -51,7 +51,7 @@ public sealed class BaselineMeasurer
 
         // 2. Run scale tests (experiment 0 for baselines)
         ScaleTestResult scaleResult = await ScaleTestOrchestrator.RunAsync(
-            scaleConfig, runner, baseUrl, outputDir, experiment: 0, ct).ConfigureAwait(false);
+            scaleConfig, runner, baseUrl, outputDir, experiment: 0, ct: ct).ConfigureAwait(false);
 
         // 3. Stop counter collection if started
         IReadOnlyDictionary<string, double>? counterMetrics = null;

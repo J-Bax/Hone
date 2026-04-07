@@ -36,6 +36,7 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     private readonly ICodeHost _codeHost;
     private readonly IVersionControl _versionControl;
     private readonly HoneConfig _config;
+    private readonly HttpClient? _httpClient;
 
     internal LoopPipelineAdapter(
         ILoadTestRunner loadTestRunner,
@@ -43,7 +44,8 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         ClassificationAgent classificationAgent,
         ICodeHost codeHost,
         IVersionControl versionControl,
-        HoneConfig config)
+        HoneConfig config,
+        HttpClient? httpClient = null)
     {
         _loadTestRunner = loadTestRunner;
         _analysisAgent = analysisAgent;
@@ -51,6 +53,7 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         _codeHost = codeHost;
         _versionControl = versionControl;
         _config = config;
+        _httpClient = httpClient;
     }
 
     /// <inheritdoc />
@@ -71,7 +74,8 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         var baseUrl = new Uri(config.Api.BaseUrl);
 
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-            config.ScaleTest, _loadTestRunner, baseUrl, outputDir, experiment: 0, ct).ConfigureAwait(false);
+            config.ScaleTest, _loadTestRunner, baseUrl, outputDir, experiment: 0,
+            BuildCooldownCallback(), ct).ConfigureAwait(false);
 
         return result.Metrics ?? throw new InvalidOperationException("Baseline scale test produced no metrics.");
     }
@@ -151,8 +155,11 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         string outputDir = Path.Combine(input.TargetDir, input.ResultsPath, $"experiment-{input.Experiment}");
         var baseUrl = new Uri(_config.Api.BaseUrl);
 
+        Func<CancellationToken, Task>? afterRunCallback = BuildCooldownCallback();
+
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-            _config.ScaleTest, _loadTestRunner, baseUrl, outputDir, input.Experiment, ct).ConfigureAwait(false);
+            _config.ScaleTest, _loadTestRunner, baseUrl, outputDir, input.Experiment,
+            afterRunCallback, ct).ConfigureAwait(false);
 
         if (result.Metrics is null)
         {
@@ -223,5 +230,34 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
 
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(metadata, MetadataJsonOptions);
         await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Builds a callback that triggers server-side GC via the configured GcEndpoint.
+    /// Returns null if no HttpClient or GcEndpoint is configured.
+    /// </summary>
+    private Func<CancellationToken, Task>? BuildCooldownCallback()
+    {
+        if (_httpClient is null || string.IsNullOrEmpty(_config.Api.GcEndpoint))
+        {
+            return null;
+        }
+
+        var gcUri = new Uri(new Uri(_config.Api.BaseUrl), _config.Api.GcEndpoint);
+
+        return async ct =>
+        {
+            try
+            {
+                using HttpRequestMessage request = new(HttpMethod.Post, gcUri);
+                using HttpResponseMessage response = await _httpClient.SendAsync(request, ct)
+                    .ConfigureAwait(false);
+                // Best-effort: ignore failures (endpoint may not exist on all targets)
+            }
+            catch (HttpRequestException)
+            {
+                // Swallow — GC endpoint is optional
+            }
+        };
     }
 }
