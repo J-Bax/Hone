@@ -130,8 +130,8 @@ DotnetCounters:
 
 Diagnostics:
   Enabled: true
-  CollectorsPath: "harness/collectors"
-  AnalyzersPath: "harness/analyzers"
+  CollectorsPath: "harness-csharp/plugins/collectors"
+  AnalyzersPath: "harness-csharp/plugins/analyzers"
   PerfViewExePath: "tools/PerfView/PerfView.exe"
   DiagnosticScenarioPath: null
   DiagnosticRuns: 1
@@ -296,8 +296,8 @@ Collectors are organized into **groups** — collectors in the same group run to
 ```yaml
 Diagnostics:
   Enabled: true
-  CollectorsPath: "harness/collectors"
-  AnalyzersPath: "harness/analyzers"
+  CollectorsPath: "harness-csharp/plugins/collectors"
+  AnalyzersPath: "harness-csharp/plugins/analyzers"
   PerfViewExePath: "tools/PerfView/PerfView.exe"
   DiagnosticScenarioPath: null        # null = reuse ScaleTest.ScenarioPath
   DiagnosticRuns: 1

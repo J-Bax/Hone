@@ -5,8 +5,8 @@ namespace Hone.Core.Config;
 /// </summary>
 public sealed record DiagnosticsConfig(
     bool Enabled = true,
-    string CollectorsPath = "harness/collectors",
-    string AnalyzersPath = "harness/analyzers",
+    string CollectorsPath = "plugins/collectors",
+    string AnalyzersPath = "plugins/analyzers",
     string? PerfViewExePath = "tools/PerfView/PerfView.exe",
     string? DiagnosticScenarioPath = null,
     int DiagnosticRuns = 1,

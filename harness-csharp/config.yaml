@@ -213,8 +213,8 @@ Diagnostics:
   Enabled: true
 
   # Directories containing collector / analyzer plugins (relative to repo root)
-  CollectorsPath: "harness-legacy/collectors"
-  AnalyzersPath: "harness-legacy/analyzers"
+  CollectorsPath: "harness-csharp/plugins/collectors"
+  AnalyzersPath: "harness-csharp/plugins/analyzers"
 
   # PerfView executable path (downloaded by Setup-DevEnvironment.ps1)
   PerfViewExePath: "tools/PerfView/PerfView.exe"

@@ -103,8 +103,8 @@ public sealed class HoneConfigTests(ITestOutputHelper output) : HoneTestBase(out
         var diagnostics = new DiagnosticsConfig();
 
         _ = diagnostics.Enabled.Should().BeTrue();
-        _ = diagnostics.CollectorsPath.Should().Be("harness/collectors");
-        _ = diagnostics.AnalyzersPath.Should().Be("harness/analyzers");
+        _ = diagnostics.CollectorsPath.Should().Be("plugins/collectors");
+        _ = diagnostics.AnalyzersPath.Should().Be("plugins/analyzers");
         _ = diagnostics.PerfViewExePath.Should().Be("tools/PerfView/PerfView.exe");
         _ = diagnostics.DiagnosticScenarioPath.Should().BeNull();
         _ = diagnostics.DiagnosticRuns.Should().Be(1);
