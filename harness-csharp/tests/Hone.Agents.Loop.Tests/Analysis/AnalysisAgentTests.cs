@@ -313,4 +313,51 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
 
         _ = capturedInvocation!.Prompt.Should().Contain("Improvement vs baseline: 0%");
     }
+
+    // ── EmptyOpportunitiesList_ReturnsFailure ───────────────────────────
+
+    [Fact]
+    public async Task AnalysisAgent_EmptyOpportunitiesList_ReturnsFailure()
+    {
+        string json = JsonSerializer.Serialize(new { opportunities = Array.Empty<object>() });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        AnalysisAgent sut = CreateSut();
+
+        AnalysisResult result = await sut.AnalyzeAsync(
+            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
+
+        _ = result.Success.Should().BeFalse();
+        _ = result.FilePath.Should().BeNull();
+        _ = result.Explanation.Should().BeNull();
+        _ = result.Opportunities.Should().BeEmpty();
+    }
+
+    // ── MissingFilePath_ThrowsInvalidOperationException ─────────────────
+
+    [Fact]
+    public async Task AnalysisAgent_MissingFilePath_ThrowsInvalidOperationException()
+    {
+        string json = MakeAgentJson(
+            new
+            {
+                title = "Optimize endpoint",
+                explanation = "Slow query",
+                scope = "narrow",
+            });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        AnalysisAgent sut = CreateSut();
+
+        Func<Task> act = () => sut.AnalyzeAsync(
+            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
+
+        _ = await act.Should().ThrowAsync<InvalidOperationException>();
+    }
 }

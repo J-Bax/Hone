@@ -195,7 +195,7 @@ internal sealed class HoneLoopRunner
                 new ClassificationInput(item.FilePath, item.Explanation, exp, targetDir), ct)
                 .ConfigureAwait(false);
 
-            if (classResult.Success && classResult.Scope == OpportunityScope.Architecture)
+            if (classResult.Success && classResult.Scope is OpportunityScope.Architecture)
             {
                 _queueManager.MarkDone(item.Id, "skipped_architecture", exp);
                 continue;
