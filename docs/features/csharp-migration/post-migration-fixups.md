@@ -46,8 +46,10 @@ Evaluate how to make diagnostic measurement configuration overrideable in the ta
 ### 11. FoldedStackParser Module Filtering
 Why can't we use included modules for stack filtering? Presumably we know the target API process name. Investigate using module inclusion lists rather than broad stack capture.
 
-### 12. FoldedStackParser Test Fixtures
-Does FoldedStackParser have a clear example output format to wire through unit tests from a real PerfView trace? Create representative test fixtures from actual PerfView output.
+### 12. ~~FoldedStackParser Test Fixtures~~ ✅ Resolved
+~~Does FoldedStackParser have a clear example output format to wire through unit tests from a real PerfView trace? Create representative test fixtures from actual PerfView output.~~
+
+**Resolved:** `FoldedStackParserTests.cs` contains 7 test cases with representative PerfView CSV fixtures covering parsing, module filtering, sorting, truncation, and edge cases.
 
 ## Platform Support
 
