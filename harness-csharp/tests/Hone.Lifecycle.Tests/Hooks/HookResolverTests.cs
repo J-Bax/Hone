@@ -11,11 +11,12 @@ public sealed class HookResolverTests(ITestOutputHelper output) : HoneTestBase(o
     [Fact]
     public void Resolve_BuiltInHook_ResolvesToNativeImplementation()
     {
-        TargetConfig config = ConfigWith("build", new TargetHookConfig(Type: "BuiltIn"));
+        TargetConfig config = ConfigWith("build", new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-build"));
 
         ResolvedHook result = HookResolver.Resolve("build", config);
 
         _ = result.Type.Should().Be(HookType.BuiltIn);
+        _ = result.BuiltInName.Should().Be("dotnet-build");
         _ = result.Command.Should().BeNull();
         _ = result.Url.Should().BeNull();
         _ = result.HttpMethod.Should().BeNull();
@@ -115,11 +116,22 @@ public sealed class HookResolverTests(ITestOutputHelper output) : HoneTestBase(o
     [Fact]
     public void Resolve_CaseInsensitive_TypeMatching()
     {
-        TargetConfig config = ConfigWith("build", new TargetHookConfig(Type: "builtin"));
+        TargetConfig config = ConfigWith("build", new TargetHookConfig(Type: "builtin", Name: "dotnet-build"));
 
         ResolvedHook result = HookResolver.Resolve("build", config);
 
         _ = result.Type.Should().Be(HookType.BuiltIn);
+    }
+
+    [Fact]
+    public void Resolve_BuiltInHook_MissingName_Throws()
+    {
+        TargetConfig config = ConfigWith("build", new TargetHookConfig(Type: "BuiltIn"));
+
+        Action act = () => HookResolver.Resolve("build", config);
+
+        _ = act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*missing Name for BuiltIn hook*");
     }
 
     private static TargetConfig ConfigWith(string hookName, TargetHookConfig hookConfig)

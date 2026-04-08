@@ -313,6 +313,25 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         return startResult;
     }
 
+    /// <inheritdoc />
+    public async Task<HookResult> PrepareAsync(
+        string targetDir, HoneConfig config, CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping prepare",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve("Prepare", _targetConfig);
+        var context = new HookContext(targetDir, config, BaseUrl: null, Experiment: 0);
+        return await _hookDispatcher.DispatchAsync("Prepare", hook, context, ct).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Builds a callback that triggers server-side GC via the configured GcEndpoint.
     /// Returns null if no HttpClient or GcEndpoint is configured.

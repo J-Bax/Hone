@@ -103,7 +103,10 @@ internal static class ServiceRegistration
             implementerAgent,
             versionControl,
             processRunner,
-            eventBus);
+            eventBus,
+            config,
+            hookDispatcher,
+            targetConfig);
 
         // ── Orchestration ────────────────────────────────────────────────
         var queueManager = new OptimizationQueueManager(metadataPath, eventBus);

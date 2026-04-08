@@ -1,9 +1,11 @@
 using System.Globalization;
 
 using Hone.Agents.Loop.Implementer;
+using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
 using Hone.Core.Observability;
+using Hone.Lifecycle.Hooks;
 using Hone.Orchestration.Implementer;
 
 namespace Hone.Cli;
@@ -17,17 +19,26 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     private readonly IVersionControl _versionControl;
     private readonly IProcessRunner _processRunner;
     private readonly IHoneEventSink _eventSink;
+    private readonly HoneConfig _config;
+    private readonly LifecycleHookDispatcher? _hookDispatcher;
+    private readonly TargetConfig? _targetConfig;
 
     internal ImplementerPipelineAdapter(
         ImplementerAgent implementerAgent,
         IVersionControl versionControl,
         IProcessRunner processRunner,
-        IHoneEventSink eventSink)
+        IHoneEventSink eventSink,
+        HoneConfig config,
+        LifecycleHookDispatcher? hookDispatcher = null,
+        TargetConfig? targetConfig = null)
     {
         _implementerAgent = implementerAgent;
         _versionControl = versionControl;
         _processRunner = processRunner;
         _eventSink = eventSink;
+        _config = config;
+        _hookDispatcher = hookDispatcher;
+        _targetConfig = targetConfig;
     }
 
     /// <inheritdoc />
@@ -78,6 +89,15 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     /// <inheritdoc />
     public async Task<BuildStepResult> BuildProjectAsync(BuildStepInput input, CancellationToken ct)
     {
+        if (_hookDispatcher is not null && _targetConfig is not null)
+        {
+            ResolvedHook hook = HookResolver.Resolve("Build", _targetConfig);
+            var context = new HookContext(input.TargetDir, _config, BaseUrl: null, input.Experiment);
+            HookResult hookResult = await _hookDispatcher.DispatchAsync("Build", hook, context, ct)
+                .ConfigureAwait(false);
+            return new BuildStepResult(Success: hookResult.Success, Output: hookResult.Message);
+        }
+
         ProcessResult result = await _processRunner.RunAsync(
             "dotnet",
             ["build", "--no-restore", "-c", "Release"],
@@ -91,6 +111,15 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     /// <inheritdoc />
     public async Task<TestStepResult> RunTestsAsync(TestStepInput input, CancellationToken ct)
     {
+        if (_hookDispatcher is not null && _targetConfig is not null)
+        {
+            ResolvedHook hook = HookResolver.Resolve("Test", _targetConfig);
+            var context = new HookContext(input.TargetDir, _config, BaseUrl: null, input.Experiment);
+            HookResult hookResult = await _hookDispatcher.DispatchAsync("Test", hook, context, ct)
+                .ConfigureAwait(false);
+            return new TestStepResult(Success: hookResult.Success, Output: hookResult.Message);
+        }
+
         ProcessResult result = await _processRunner.RunAsync(
             "dotnet",
             ["test", "--no-build", "-c", "Release"],

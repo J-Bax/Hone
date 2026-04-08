@@ -211,6 +211,11 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Started", Duration: TimeSpan.FromSeconds(1),
                 Artifacts: [], BaseUrl: new Uri("http://localhost:5050"))));
+        _ = pipeline.PrepareAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Prepared", Duration: TimeSpan.FromSeconds(2),
+                Artifacts: [], BaseUrl: null)));
     }
 
     // ── Test harness record ──────────────────────────────────────────────────

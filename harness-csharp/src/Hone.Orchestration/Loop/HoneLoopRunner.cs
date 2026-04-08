@@ -77,6 +77,16 @@ internal sealed class HoneLoopRunner
         };
         ResumeState(state, experiments);
 
+        // ── Prepare (once per run, before any experiments) ──────────────────
+        HookResult prepareResult = await _pipeline.PrepareAsync(targetDir, config, ct)
+            .ConfigureAwait(false);
+        if (!prepareResult.Success)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Prepare hook failed: {prepareResult.Message}",
+                LogLevel.Warning, DateTimeOffset.UtcNow, Experiment: null));
+        }
+
         // ── Experiment loop ─────────────────────────────────────────────────
         int maxExp = options.MaxExperimentsOverride ?? config.Loop.MaxExperiments;
         int startExperiment = experiments.Count + 1;

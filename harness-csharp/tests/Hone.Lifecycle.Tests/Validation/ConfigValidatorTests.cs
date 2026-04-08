@@ -285,7 +285,7 @@ public sealed class ConfigValidatorTests(ITestOutputHelper output) : HoneTestBas
         ValidationResult result = ConfigValidator.ValidateTargetConfig(config, TempDir);
 
         _ = result.IsValid.Should().BeFalse();
-        _ = result.Errors.Should().HaveCount(8);
+        _ = result.Errors.Should().HaveCount(10);
         _ = result.Errors.Should().AllSatisfy(e => e.Should().Contain("is not declared"));
     }
 
@@ -323,6 +323,17 @@ public sealed class ConfigValidatorTests(ITestOutputHelper output) : HoneTestBas
     }
 
     [Fact]
+    public void ValidateTargetConfig_MissingBuiltInName_Fails()
+    {
+        TargetConfig config = CreateTargetConfigWithHook("Build", new TargetHookConfig(Type: "BuiltIn"));
+
+        ValidationResult result = ConfigValidator.ValidateTargetConfig(config, TempDir);
+
+        _ = result.IsValid.Should().BeFalse();
+        _ = result.Errors.Should().Contain(e => e.Contains("missing Name for BuiltIn hook"));
+    }
+
+    [Fact]
     public void ValidateTargetConfig_MissingHookType_Fails()
     {
         TargetConfig config = CreateTargetConfigWithHook("Prepare", new TargetHookConfig(Type: ""));
@@ -339,14 +350,16 @@ public sealed class ConfigValidatorTests(ITestOutputHelper output) : HoneTestBas
     {
         Dictionary<string, TargetHookConfig> hooks = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["Prepare"] = new TargetHookConfig(Type: "BuiltIn"),
+            ["Prepare"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-build"),
+            ["Build"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-build"),
+            ["Test"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-test"),
             ["Start"] = new TargetHookConfig(Type: "Command", Value: "dotnet run"),
             ["Stop"] = new TargetHookConfig(Type: "Command", Value: "kill"),
             ["Ready"] = new TargetHookConfig(Type: "Http", Path: "/health"),
             ["Warmup"] = new TargetHookConfig(Type: "Skip"),
             ["Active"] = new TargetHookConfig(Type: "Skip"),
             ["Cooldown"] = new TargetHookConfig(Type: "Skip"),
-            ["Cleanup"] = new TargetHookConfig(Type: "BuiltIn"),
+            ["Cleanup"] = new TargetHookConfig(Type: "BuiltIn", Name: "cleanup-hook"),
         };
 
         return new TargetConfig(Name: "test-target", Hooks: hooks);
@@ -360,14 +373,16 @@ public sealed class ConfigValidatorTests(ITestOutputHelper output) : HoneTestBas
     {
         Dictionary<string, TargetHookConfig> hooks = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["Prepare"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Start"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Stop"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Ready"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Warmup"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Active"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Cooldown"] = new TargetHookConfig(Type: "BuiltIn"),
-            ["Cleanup"] = new TargetHookConfig(Type: "BuiltIn"),
+            ["Prepare"] = new TargetHookConfig(Type: "BuiltIn", Name: "default"),
+            ["Build"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-build"),
+            ["Test"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-test"),
+            ["Start"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-start"),
+            ["Stop"] = new TargetHookConfig(Type: "BuiltIn", Name: "dotnet-stop"),
+            ["Ready"] = new TargetHookConfig(Type: "BuiltIn", Name: "health-poll"),
+            ["Warmup"] = new TargetHookConfig(Type: "BuiltIn", Name: "default"),
+            ["Active"] = new TargetHookConfig(Type: "BuiltIn", Name: "k6-run"),
+            ["Cooldown"] = new TargetHookConfig(Type: "BuiltIn", Name: "default"),
+            ["Cleanup"] = new TargetHookConfig(Type: "BuiltIn", Name: "default"),
         };
 
         hooks[hookName] = hookConfig;

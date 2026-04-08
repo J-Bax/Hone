@@ -50,7 +50,7 @@ public sealed class LifecycleHookDispatcherTests(ITestOutputHelper output) : Hon
         _ = _registry.GetHook("build").Returns(hookImpl);
 
         LifecycleHookDispatcher sut = CreateSut();
-        HookResult result = await sut.DispatchAsync("build", ResolvedHook.BuiltIn(), DefaultContext());
+        HookResult result = await sut.DispatchAsync("build", ResolvedHook.BuiltIn("build"), DefaultContext());
 
         _ = result.Success.Should().BeTrue();
         _ = result.Message.Should().Be("Built-in executed");
@@ -63,7 +63,7 @@ public sealed class LifecycleHookDispatcherTests(ITestOutputHelper output) : Hon
         _ = _registry.GetHook("unknown").Returns((ILifecycleHook?)null);
 
         LifecycleHookDispatcher sut = CreateSut();
-        Func<Task> act = () => sut.DispatchAsync("unknown", ResolvedHook.BuiltIn(), DefaultContext());
+        Func<Task> act = () => sut.DispatchAsync("unknown", ResolvedHook.BuiltIn("unknown"), DefaultContext());
 
         _ = await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*No built-in hook implementation registered for 'unknown'*");

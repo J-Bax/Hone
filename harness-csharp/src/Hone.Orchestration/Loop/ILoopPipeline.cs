@@ -36,4 +36,10 @@ internal interface ILoopPipeline
     /// Dispatches the Start hook followed by the Ready hook.
     /// </summary>
     public Task<HookResult> StartTargetAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+
+    /// <summary>
+    /// Runs the Prepare hook once per run before the experiment loop begins.
+    /// Used for project-level setup (e.g. NuGet restore, codegen).
+    /// </summary>
+    public Task<HookResult> PrepareAsync(string targetDir, HoneConfig config, CancellationToken ct);
 }
