@@ -8,7 +8,7 @@ For architecture context, see [architecture.md](architecture.md).
 
 ## Collector Plugins
 
-Collector plugins live in `harness/collectors/<name>/` and implement the `ICollectorPlugin` interface.
+Collector plugins live in `harness-csharp/plugins/collectors/<name>/` and implement the `ICollectorPlugin` interface.
 
 ### `ICollectorPlugin` Interface
 
@@ -105,7 +105,7 @@ public sealed record CollectorExport(
 
 ## Analyzer Plugins
 
-Analyzer plugins live in `harness/analyzers/<name>/` and implement the `IAnalyzerPlugin` interface.
+Analyzer plugins live in `harness-csharp/plugins/analyzers/<name>/` and implement the `IAnalyzerPlugin` interface.
 
 ### `IAnalyzerPlugin` Interface
 
@@ -175,7 +175,7 @@ public sealed record AnalyzerReport(
 Each plugin provides a YAML metadata file (`collector.yaml` or `analyzer.yaml`) that the framework uses for discovery and dependency resolution:
 
 ```yaml
-# harness/collectors/perfview-cpu/collector.yaml
+# harness-csharp/plugins/collectors/perfview-cpu/collector.yaml
 Name: perfview-cpu
 Description: PerfView CPU sampling collector
 Group: etw-cpu           # Collectors with same Group run together in one pass
@@ -191,7 +191,7 @@ DefaultSettings:
 ```
 
 ```yaml
-# harness/analyzers/cpu-hotspots/analyzer.yaml
+# harness-csharp/plugins/analyzers/cpu-hotspots/analyzer.yaml
 Name: cpu-hotspots
 Description: CPU hotspot analysis agent
 RequiredCollectors:
@@ -213,7 +213,7 @@ Plugin settings from `config.yaml` are merged with `DefaultSettings` and passed 
 1. **Create the plugin directory** with the required files:
 
    ```
-   harness/collectors/<name>/
+   harness-csharp/plugins/collectors/<name>/
    ├── collector.yaml          # Metadata (Name, Group, RequiresAdmin, DefaultSettings)
    └── <Name>Collector.cs      # ICollectorPlugin implementation
    ```
@@ -244,7 +244,7 @@ Plugin settings from `config.yaml` are merged with `DefaultSettings` and passed 
 1. **Create the plugin directory** with the required files:
 
    ```
-   harness/analyzers/<name>/
+   harness-csharp/plugins/analyzers/<name>/
    ├── analyzer.yaml       # Metadata (Name, RequiredCollectors, AgentName, DefaultSettings)
    ├── agent.md            # Copilot agent definition (also symlinked to .github/agents/)
    └── <Name>Analyzer.cs   # IAnalyzerPlugin implementation
@@ -257,7 +257,7 @@ Plugin settings from `config.yaml` are merged with `DefaultSettings` and passed 
 4. **Symlink the agent definition** into `.github/agents/`:
 
    ```sh
-   # Windows: mklink /H .github/agents/hone-thread-profiler.agent.md harness/analyzers/thread-hotspots/agent.md
+   # Windows: mklink /H .github/agents/hone-thread-profiler.agent.md harness-csharp/plugins/analyzers/thread-hotspots/agent.md
    ```
 
 5. **Add configuration** under `Diagnostics.AnalyzerSettings` in `config.yaml`:

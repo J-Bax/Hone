@@ -175,8 +175,8 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
         HoneConfig config = ConfigLoader.Load(path);
 
         _ = config.Diagnostics.Enabled.Should().BeTrue();
-        _ = config.Diagnostics.CollectorsPath.Should().Be("harness-legacy/collectors");
-        _ = config.Diagnostics.AnalyzersPath.Should().Be("harness-legacy/analyzers");
+        _ = config.Diagnostics.CollectorsPath.Should().Be("harness-csharp/plugins/collectors");
+        _ = config.Diagnostics.AnalyzersPath.Should().Be("harness-csharp/plugins/analyzers");
         _ = config.Diagnostics.PerfViewExePath.Should().Be("tools/PerfView/PerfView.exe");
         _ = config.Diagnostics.DiagnosticScenarioPath.Should().BeNull();
         _ = config.Diagnostics.DiagnosticRuns.Should().Be(1);
