@@ -253,7 +253,7 @@ Phase 10 is the final phase of Hone's PowerShell-to-C# migration. It converts al
 
 4. **sample-api submodule contains untracked config.yaml:** The `sample-api/.hone/config.yaml` was created inside the submodule directory. If sample-api is an external submodule, this file may need to be committed separately in that repository.
 
-5. **Stub CLI commands remain:** `hone baseline`, `hone results`, and `hone dashboard` are stubs (from Phase 9). They print "not yet implemented" messages. These should be wired up with result file loading infrastructure.
+5. ~~**Stub CLI commands remain:**~~ ✅ **Resolved** — `hone baseline`, `hone results`, and `hone dashboard` are fully wired in `Program.cs` with complete implementations (baseline runs `ScaleTestOrchestrator` and saves results; results renders via `ResultsRenderer`; dashboard exports HTML via `DashboardExporter`).
 
 ---
 
