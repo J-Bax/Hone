@@ -149,7 +149,7 @@ public sealed class K6LoadTestRunnerTests(ITestOutputHelper output) : HoneTestBa
         _ = await processRunner.Received(1).RunAsync(
             executable: "k6",
             arguments: Arg.Is<IEnumerable<string>>(args =>
-                args.Contains($"BASE_URL={baseUrl}", StringComparer.Ordinal)),
+                args.Contains($"BASE_URL={baseUrl.GetLeftPart(UriPartial.Authority)}", StringComparer.Ordinal)),
             workingDirectory: null,
             timeout: Arg.Any<TimeSpan?>(),
             ct: Arg.Any<CancellationToken>());
