@@ -20,7 +20,7 @@ internal sealed record ClassificationInput(
 
 internal sealed record ClassificationResult(
     bool Success,
-    OpportunityScope Scope);
+    OpportunityScope? Scope);
 
 internal sealed record LoadTestInput(
     string TargetDir,

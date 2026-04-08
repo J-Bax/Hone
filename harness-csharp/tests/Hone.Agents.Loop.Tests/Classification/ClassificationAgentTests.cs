@@ -151,4 +151,46 @@ public sealed class ClassificationAgentTests(ITestOutputHelper output) : HoneTes
         _ = prompt.Should().Contain("Classify the scope");
         _ = prompt.Should().Contain("Respond with JSON only");
     }
+
+    // ── MissingScopeField_ThrowsInvalidOperationException ───────────────
+
+    [Fact]
+    public async Task ClassificationAgent_MissingScopeField_ThrowsInvalidOperationException()
+    {
+        string json = JsonSerializer.Serialize(new { reasoning = "Some reasoning" });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        ClassificationAgent sut = CreateSut();
+
+        Func<Task> act = () => sut.ClassifyAsync(
+            filePath: "Controllers/ItemsController.cs",
+            explanation: "Optimize endpoint",
+            targetLabel: "SampleApi",
+            workingDirectory: null);
+
+        _ = await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    // ── NullScopeField_ThrowsInvalidOperationException ──────────────────
+
+    [Fact]
+    public async Task ClassificationAgent_NullScopeField_ThrowsInvalidOperationException()
+    {
+        string json = JsonSerializer.Serialize(new { scope = (string?)null, reasoning = "Some reasoning" });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        ClassificationAgent sut = CreateSut();
+
+        Func<Task> act = () => sut.ClassifyAsync(
+            filePath: "Controllers/ItemsController.cs",
+            explanation: "Optimize endpoint",
+            targetLabel: "SampleApi",
+            workingDirectory: null);
+
+        _ = await act.Should().ThrowAsync<InvalidOperationException>();
+    }
 }

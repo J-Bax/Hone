@@ -30,8 +30,10 @@ Why can't we just allow the implementer agent to make file writes itself? The cu
 ### 7. Agent Invocation Reliability
 Can we make agent invocations stronger guarantees? Why allow them to fail at all? Investigate retry strategies, structured output enforcement, and deterministic prompting to reduce agent failure rates.
 
-### 8. AnalyzerResult Field Guarantees
-Can the analysis agent be guaranteed to give us all required fields in AnalyzerResult (except maybe error)? Currently these are weak nullable guarantees. Investigate structured output / schema enforcement to make these required.
+### 8. ~~AnalyzerResult Field Guarantees~~ ✅ Resolved
+~~Can the analysis agent be guaranteed to give us all required fields in AnalyzerResult (except maybe error)? Currently these are weak nullable guarantees. Investigate structured output / schema enforcement to make these required.~~
+
+**Resolved:** All 6 agent result records now have explicit nullable annotations and XML doc remarks documenting nullability semantics. `ClassificationResult.Scope` was changed from non-nullable `OpportunityScope` to `OpportunityScope?` to match deserialization reality. Internal DTOs already use `string?` for all JSON-sourced fields; `NormalizeOpportunities()` validates before constructing domain models. New tests cover missing/null scope and missing file path scenarios.
 
 ## Configuration & Compatibility
 
