@@ -9,9 +9,9 @@ namespace Hone.Lifecycle.Validation;
 /// </summary>
 public static class ConfigValidator
 {
-    /// <summary>All 8 required lifecycle hooks.</summary>
+    /// <summary>All 10 required lifecycle hooks.</summary>
     private static readonly FrozenSet<string> RequiredHooks =
-        FrozenSet.ToFrozenSet(["Prepare", "Start", "Stop", "Ready", "Warmup", "Active", "Cooldown", "Cleanup"]);
+        FrozenSet.ToFrozenSet(["Prepare", "Build", "Test", "Start", "Stop", "Ready", "Warmup", "Active", "Cooldown", "Cleanup"]);
 
     /// <summary>Valid hook types for target config validation.</summary>
     private static readonly FrozenSet<string> ValidHookTypes =
@@ -213,6 +213,10 @@ public static class ConfigValidator
             else if (hook.Type.Equals("Command", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(hook.Value))
             {
                 errors.Add($".hone/config.yaml Hooks.{hookName} is missing Value for Command hook");
+            }
+            else if (hook.Type.Equals("BuiltIn", StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(hook.Name))
+            {
+                errors.Add($".hone/config.yaml Hooks.{hookName} is missing Name for BuiltIn hook");
             }
         }
     }

@@ -25,7 +25,7 @@ public sealed class LifecycleHookDispatcher(
 
         return hook.Type switch
         {
-            HookType.BuiltIn => await DispatchBuiltInAsync(hookName, context, ct).ConfigureAwait(false),
+            HookType.BuiltIn => await DispatchBuiltInAsync(hookName, hook, context, ct).ConfigureAwait(false),
             HookType.Command => await DispatchCommandAsync(hook, stopwatch, ct).ConfigureAwait(false),
             HookType.Http => await DispatchHttpAsync(hook, context, stopwatch, ct).ConfigureAwait(false),
             HookType.Skip => new HookResult(
@@ -44,11 +44,12 @@ public sealed class LifecycleHookDispatcher(
     }
 
     private async Task<HookResult> DispatchBuiltInAsync(
-        string hookName, HookContext context, CancellationToken ct)
+        string hookName, ResolvedHook hook, HookContext context, CancellationToken ct)
     {
-        ILifecycleHook hookImpl = hookRegistry.GetHook(hookName)
+        string registryKey = hook.BuiltInName ?? hookName;
+        ILifecycleHook hookImpl = hookRegistry.GetHook(registryKey)
             ?? throw new InvalidOperationException(
-                $"No built-in hook implementation registered for '{hookName}'");
+                $"No built-in hook implementation registered for '{registryKey}'");
 
         return await hookImpl.ExecuteAsync(context, ct).ConfigureAwait(false);
     }

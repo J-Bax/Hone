@@ -21,7 +21,9 @@ public static class HookResolver
 
         return hookDef.Type.ToUpperInvariant() switch
         {
-            "BUILTIN" => ResolvedHook.BuiltIn(),
+            "BUILTIN" => ResolvedHook.BuiltIn(
+                hookDef.Name ?? throw new InvalidOperationException(
+                    $"Hooks.{hookName} is missing Name for BuiltIn hook")),
             "COMMAND" => ResolvedHook.ForCommand(
                 hookDef.Value ?? throw new InvalidOperationException(
                     $"Hooks.{hookName} is missing Value for Command hook")),

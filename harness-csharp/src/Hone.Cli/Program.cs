@@ -84,7 +84,7 @@ internal static class Program
             var cliOverrides = new CliOverrides(MaxExperiments: maxExperiments);
             HoneConfig config = LoadAndMergeConfig(configPath, cliOverrides);
 
-            IServiceProvider services = ServiceRegistration.Build(targetDir, config);
+            IServiceProvider services = ServiceRegistration.Build(targetDir, config, configPath);
             var loopRunner = (HoneLoopRunner)services.GetService(typeof(HoneLoopRunner))!;
 
             var options = new LoopOptions(
