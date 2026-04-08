@@ -191,6 +191,15 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 Arg.Any<ClassificationInput>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new ClassificationResult(
                 Success: true, Scope: OpportunityScope.Narrow)));
+        _ = pipeline.StopTargetAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Stopped", Duration: TimeSpan.Zero, Artifacts: [], BaseUrl: null)));
+        _ = pipeline.StartTargetAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Started", Duration: TimeSpan.FromSeconds(1),
+                Artifacts: [], BaseUrl: new Uri("http://localhost:5050"))));
     }
 
     private sealed record TestHarness(

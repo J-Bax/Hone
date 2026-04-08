@@ -8,6 +8,8 @@ using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Observability;
 using Hone.Diagnostics.Discovery;
+using Hone.Lifecycle.Hooks;
+using Hone.Lifecycle.SharedHooks;
 using Hone.Measurement.DotnetCounters;
 using Hone.Measurement.K6;
 using Hone.Orchestration.Failure;
@@ -28,10 +30,11 @@ internal static class ServiceRegistration
     /// <summary>
     /// Builds a fully configured <see cref="IServiceProvider"/> for the Hone CLI.
     /// </summary>
-    internal static IServiceProvider Build(string targetDir, HoneConfig config)
+    internal static IServiceProvider Build(string targetDir, HoneConfig config, string configPath)
     {
         ArgumentException.ThrowIfNullOrEmpty(targetDir);
         ArgumentNullException.ThrowIfNull(config);
+        ArgumentException.ThrowIfNullOrEmpty(configPath);
 
         string resultsPath = config.Api.ResultsPath;
         string metadataPath = config.Api.MetadataPath;
@@ -71,6 +74,19 @@ internal static class ServiceRegistration
 #pragma warning restore CA2000
         var pluginDiscovery = new PluginDiscoveryService();
 
+        // ── Lifecycle hooks ──────────────────────────────────────────────
+        TargetConfig targetConfig = TargetConfigLoader.Load(configPath);
+        var dotnetBuildHook = new DotnetBuildHook(processRunner);
+        var dotnetTestHook = new DotnetTestHook(processRunner);
+        var dotnetStartHook = new DotnetStartHook(httpClient);
+        var dotnetStopHook = new DotnetStopHook();
+        var healthPollHook = new HealthPollHook(httpClient);
+        var k6RunHook = new K6RunHook(loadTestRunner);
+        var hookRegistry = new BuiltInHookRegistry(
+            dotnetBuildHook, dotnetTestHook, dotnetStartHook,
+            dotnetStopHook, healthPollHook, k6RunHook);
+        var hookDispatcher = new LifecycleHookDispatcher(hookRegistry, processRunner, httpClient);
+
         // ── Pipeline adapters ────────────────────────────────────────────
         ILoopPipeline loopPipeline = new LoopPipelineAdapter(
             loadTestRunner,
@@ -79,7 +95,9 @@ internal static class ServiceRegistration
             codeHost,
             versionControl,
             config,
-            httpClient);
+            httpClient,
+            hookDispatcher,
+            targetConfig);
 
         IImplementerPipeline implementerPipeline = new ImplementerPipelineAdapter(
             implementerAgent,

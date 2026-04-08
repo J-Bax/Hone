@@ -7,6 +7,7 @@ using Hone.Agents.Loop.Classification;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
+using Hone.Lifecycle.Hooks;
 using Hone.Measurement.Comparison;
 using Hone.Measurement.K6;
 using Hone.Measurement.Orchestration;
@@ -37,6 +38,8 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     private readonly IVersionControl _versionControl;
     private readonly HoneConfig _config;
     private readonly HttpClient? _httpClient;
+    private readonly LifecycleHookDispatcher? _hookDispatcher;
+    private readonly TargetConfig? _targetConfig;
 
     internal LoopPipelineAdapter(
         ILoadTestRunner loadTestRunner,
@@ -45,7 +48,9 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         ICodeHost codeHost,
         IVersionControl versionControl,
         HoneConfig config,
-        HttpClient? httpClient = null)
+        HttpClient? httpClient = null,
+        LifecycleHookDispatcher? hookDispatcher = null,
+        TargetConfig? targetConfig = null)
     {
         _loadTestRunner = loadTestRunner;
         _analysisAgent = analysisAgent;
@@ -54,6 +59,8 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         _versionControl = versionControl;
         _config = config;
         _httpClient = httpClient;
+        _hookDispatcher = hookDispatcher;
+        _targetConfig = targetConfig;
     }
 
     /// <inheritdoc />
@@ -243,6 +250,67 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
 
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(metadata, MetadataJsonOptions);
         await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<HookResult> StopTargetAsync(
+        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping stop",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve("Stop", _targetConfig);
+        var context = new HookContext(targetDir, config, BaseUrl: null, experiment);
+        return await _hookDispatcher.DispatchAsync("Stop", hook, context, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<HookResult> StartTargetAsync(
+        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping start",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        // Dispatch Start hook
+        ResolvedHook startHook = HookResolver.Resolve("Start", _targetConfig);
+        var startContext = new HookContext(targetDir, config, BaseUrl: null, experiment);
+        HookResult startResult = await _hookDispatcher.DispatchAsync("Start", startHook, startContext, ct)
+            .ConfigureAwait(false);
+
+        if (!startResult.Success)
+        {
+            return startResult;
+        }
+
+        // Track the BaseUrl from the start result (DotnetStartHook returns it)
+        Uri? startedBaseUrl = startResult.BaseUrl;
+
+        // Dispatch Ready hook (health poll) using the BaseUrl from Start
+        ResolvedHook readyHook = HookResolver.Resolve("Ready", _targetConfig);
+        var readyContext = new HookContext(targetDir, config, BaseUrl: startedBaseUrl, experiment);
+        HookResult readyResult = await _hookDispatcher.DispatchAsync("Ready", readyHook, readyContext, ct)
+            .ConfigureAwait(false);
+
+        if (!readyResult.Success)
+        {
+            return readyResult;
+        }
+
+        return startResult;
     }
 
     /// <summary>

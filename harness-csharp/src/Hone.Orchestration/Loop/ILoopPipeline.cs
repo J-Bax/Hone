@@ -25,4 +25,15 @@ internal interface ILoopPipeline
     public Task CheckoutAsync(string targetDir, string branch, CancellationToken ct);
     public Task<RunMetadata?> LoadRunMetadataAsync(string path, CancellationToken ct);
     public Task SaveRunMetadataAsync(string path, RunMetadata metadata, CancellationToken ct);
+
+    /// <summary>
+    /// Stops the target API process via the configured lifecycle hook.
+    /// </summary>
+    public Task<HookResult> StopTargetAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+
+    /// <summary>
+    /// Starts the target API and waits for it to become healthy via configured lifecycle hooks.
+    /// Dispatches the Start hook followed by the Ready hook.
+    /// </summary>
+    public Task<HookResult> StartTargetAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
 }

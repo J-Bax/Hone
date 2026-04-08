@@ -194,6 +194,18 @@ internal sealed class HoneLoopRunner
             break;
         }
 
+        // ── Stop target API before build ────────────────────────────────────
+        // Prevents file-lock failures on Windows when the API runs from bin/Release.
+        _eventSink.Emit(new StatusMessage(
+            "Stopping target API for build", LogLevel.Info, DateTimeOffset.UtcNow, exp));
+        HookResult stopResult = await _pipeline.StopTargetAsync(targetDir, config, exp, ct)
+            .ConfigureAwait(false);
+        if (!stopResult.Success)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Stop hook failed: {stopResult.Message}", LogLevel.Warning, DateTimeOffset.UtcNow, exp));
+        }
+
         // ── Implement ───────────────────────────────────────────────────────
         string? rcaDocument = _queueManager.GetRootCauseDocument(item.Id);
         ImplementerRunResult implResult = await _implementer.RunAsync(
@@ -213,8 +225,25 @@ internal sealed class HoneLoopRunner
 
         if (!implResult.Result.Success)
         {
+            // Restart API before next experiment even though this one failed
+            await TryRestartTargetAsync(targetDir, config, exp, ct).ConfigureAwait(false);
             return await HandleFailedExperimentAsync(
                 ctx, implResult.Result.ExitReason ?? "implementation_failed",
+                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
+                .ConfigureAwait(false);
+        }
+
+        // ── Restart target API for load testing ─────────────────────────────
+        _eventSink.Emit(new StatusMessage(
+            "Restarting target API for verification", LogLevel.Info, DateTimeOffset.UtcNow, exp));
+        HookResult startResult = await _pipeline.StartTargetAsync(targetDir, config, exp, ct)
+            .ConfigureAwait(false);
+        if (!startResult.Success)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Start hook failed: {startResult.Message}", LogLevel.Error, DateTimeOffset.UtcNow, exp));
+            return await HandleFailedExperimentAsync(
+                ctx, "start_failed",
                 comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
@@ -315,6 +344,36 @@ internal sealed class HoneLoopRunner
         }
 
         return loadResult.Metrics;
+    }
+
+    // ── Lifecycle helpers ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Best-effort restart of the target API after a failed experiment.
+    /// Logs but does not propagate failures — the API must be running for the next experiment.
+    /// </summary>
+    private async Task TryRestartTargetAsync(
+        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+    {
+        try
+        {
+            HookResult result = await _pipeline.StartTargetAsync(targetDir, config, experiment, ct)
+                .ConfigureAwait(false);
+            if (!result.Success)
+            {
+                _eventSink.Emit(new StatusMessage(
+                    $"Failed to restart target API after failure: {result.Message}",
+                    LogLevel.Warning, DateTimeOffset.UtcNow, experiment));
+            }
+        }
+#pragma warning disable CA1031 // Best-effort restart must not crash the loop
+        catch (Exception ex)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Exception restarting target API: {ex.Message}",
+                LogLevel.Warning, DateTimeOffset.UtcNow, experiment));
+        }
+#pragma warning restore CA1031
     }
 
     // ── Outcome handlers ────────────────────────────────────────────────────
