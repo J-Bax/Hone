@@ -82,7 +82,7 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
 
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
             config.ScaleTest, _loadTestRunner, baseUrl, outputDir, experiment: 0,
-            BuildCooldownCallback(), ct).ConfigureAwait(false);
+            BuildCooldownHookCallback(targetDir, experiment: 0), ct).ConfigureAwait(false);
 
         MetricSet metrics = result.Metrics
             ?? throw new InvalidOperationException("Baseline scale test produced no metrics.");
@@ -172,10 +172,14 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     /// <inheritdoc />
     public async Task<LoadTestResult> RunLoadTestAsync(LoadTestInput input, CancellationToken ct)
     {
+        // Dispatch Warmup hook before the scale test measurement phase
+        _ = await WarmupAsync(input.TargetDir, _config, input.Experiment, ct).ConfigureAwait(false);
+
         string outputDir = Path.Combine(input.TargetDir, input.ResultsPath, $"experiment-{input.Experiment}");
         var baseUrl = new Uri(_config.Api.BaseUrl);
 
-        Func<CancellationToken, Task>? afterRunCallback = BuildCooldownCallback();
+        // Use Cooldown hook dispatch as the after-run callback (replaces hardcoded GC endpoint)
+        Func<CancellationToken, Task>? afterRunCallback = BuildCooldownHookCallback(input.TargetDir, input.Experiment);
 
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
             _config.ScaleTest, _loadTestRunner, baseUrl, outputDir, input.Experiment,
@@ -332,12 +336,78 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         return await _hookDispatcher.DispatchAsync("Prepare", hook, context, ct).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Builds a callback that triggers server-side GC via the configured GcEndpoint.
-    /// Returns null if no HttpClient or GcEndpoint is configured.
-    /// </summary>
-    private Func<CancellationToken, Task>? BuildCooldownCallback()
+    /// <inheritdoc />
+    public async Task<HookResult> WarmupAsync(
+        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
     {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping warmup",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve("Warmup", _targetConfig);
+        var context = new HookContext(targetDir, config, BaseUrl: null, experiment);
+        return await _hookDispatcher.DispatchAsync("Warmup", hook, context, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<HookResult> CooldownAsync(
+        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping cooldown",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve("Cooldown", _targetConfig);
+        var baseUrl = new Uri(config.Api.BaseUrl);
+        var context = new HookContext(targetDir, config, BaseUrl: baseUrl, experiment);
+        return await _hookDispatcher.DispatchAsync("Cooldown", hook, context, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<HookResult> CleanupAsync(
+        string targetDir, HoneConfig config, CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: "Lifecycle hooks not configured — skipping cleanup",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve("Cleanup", _targetConfig);
+        var context = new HookContext(targetDir, config, BaseUrl: null, Experiment: 0);
+        return await _hookDispatcher.DispatchAsync("Cleanup", hook, context, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Builds a callback that dispatches the Cooldown lifecycle hook after each k6 run.
+    /// When hooks are configured, the Cooldown hook handles inter-run cleanup (e.g., GC trigger).
+    /// Falls back to the legacy GC endpoint callback when hooks are not configured.
+    /// </summary>
+    private Func<CancellationToken, Task>? BuildCooldownHookCallback(string targetDir, int experiment)
+    {
+        if (_hookDispatcher is not null && _targetConfig is not null)
+        {
+            return async ct =>
+                _ = await CooldownAsync(targetDir, _config, experiment, ct).ConfigureAwait(false);
+        }
+
+        // Fallback: legacy hardcoded GC endpoint callback
         if (_httpClient is null || string.IsNullOrEmpty(_config.Api.GcEndpoint))
         {
             return null;
@@ -352,7 +422,6 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
                 using HttpRequestMessage request = new(HttpMethod.Post, gcUri);
                 using HttpResponseMessage response = await _httpClient.SendAsync(request, ct)
                     .ConfigureAwait(false);
-                // Best-effort: ignore failures (endpoint may not exist on all targets)
             }
             catch (HttpRequestException)
             {

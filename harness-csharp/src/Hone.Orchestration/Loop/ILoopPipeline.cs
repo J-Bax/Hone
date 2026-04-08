@@ -42,4 +42,24 @@ internal interface ILoopPipeline
     /// Used for project-level setup (e.g. NuGet restore, codegen).
     /// </summary>
     public Task<HookResult> PrepareAsync(string targetDir, HoneConfig config, CancellationToken ct);
+
+    /// <summary>
+    /// Dispatches the Warmup hook before the scale test measurement phase.
+    /// Allows the target to perform custom pre-measurement warmup (e.g. cache priming,
+    /// data seeding). Called before each <see cref="RunLoadTestAsync"/> invocation.
+    /// </summary>
+    public Task<HookResult> WarmupAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+
+    /// <summary>
+    /// Dispatches the Cooldown hook after each k6 run within a scale test.
+    /// Replaces the hardcoded GC endpoint callback — allows targets to define
+    /// custom inter-run cleanup (GC trigger, cache flush, connection pool reset).
+    /// </summary>
+    public Task<HookResult> CooldownAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+
+    /// <summary>
+    /// Dispatches the Cleanup hook once after the experiment loop completes.
+    /// Used for final teardown (log collection, resource cleanup, notification).
+    /// </summary>
+    public Task<HookResult> CleanupAsync(string targetDir, HoneConfig config, CancellationToken ct);
 }

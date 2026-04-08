@@ -23,9 +23,10 @@ All YAML keys use **PascalCase** to match C# record property names, which `YamlD
 - **ScaleTest** — Primary k6 scenario, scenario registry, warmup, measured runs, cooldown
 - **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior, skip classification
 - **Agents** — AI model selection, per-agent model overrides, agent timeout
+- **Hooks** — Lifecycle hooks for build, test, start/stop, measurement phases. See [Lifecycle Hooks](hooks.md) for the full reference.
 - **Implementer** — Max implementer attempts, diff growth guard, test file guard
 - **DotnetCounters** — Runtime counter collection providers and sampling interval
-- **Diagnostics** — Diagnostic profiling plugin framework (PerfView, analyzers)
+- **Diagnostics** — Diagnostic profiling plugin framework (PerfView, analyzers). Targets can override to disable platform-specific collectors.
 - **Logging** — Log level, log rotation
 
 ### Notable Settings
@@ -228,6 +229,15 @@ Loop:
 Tolerances:
   MaxRegressionPct: 0.10
   MinImprovementPct: 0
+
+# Optional: disable inapplicable diagnostic collectors
+# (PerfView is Windows-only, dotnet-counters requires .NET runtime)
+# Diagnostics:
+#   CollectorSettings:
+#     perfview-cpu:
+#       Enabled: false
+#     perfview-gc:
+#       Enabled: false
 ```
 
 ## Runtime Overrides (CLI Flags)

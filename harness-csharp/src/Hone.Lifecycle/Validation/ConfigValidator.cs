@@ -30,6 +30,7 @@ public static class ConfigValidator
         ValidateNumericRanges(config, errors);
         ValidateImplementerConfig(config.Implementer, "Engine config", errors);
         ValidateConfigInteractions(config, warnings);
+        ValidateDiagnosticCompatibility(config.Diagnostics, warnings);
 
         return new ValidationResult(
             IsValid: errors.Count == 0,
@@ -56,6 +57,11 @@ public static class ConfigValidator
         }
 
         ValidateHooks(targetConfig, errors);
+
+        if (targetConfig.Diagnostics is not null)
+        {
+            ValidateDiagnosticCompatibility(targetConfig.Diagnostics, warnings);
+        }
 
         return new ValidationResult(
             IsValid: errors.Count == 0,
@@ -218,6 +224,43 @@ public static class ConfigValidator
             {
                 errors.Add($".hone/config.yaml Hooks.{hookName} is missing Name for BuiltIn hook");
             }
+        }
+    }
+
+    /// <summary>
+    /// Validates diagnostic configuration compatibility with the runtime platform.
+    /// Produces warnings (not errors) for diagnostics that may not work on the current
+    /// platform or target runtime.
+    /// </summary>
+    internal static void ValidateDiagnosticCompatibility(
+        DiagnosticsConfig diagnostics, List<string> warnings)
+    {
+        if (!diagnostics.Enabled)
+        {
+            return;
+        }
+
+        // PerfView collectors require Windows
+        if (!OperatingSystem.IsWindows())
+        {
+            CheckCollectorPlatform(diagnostics, "perfview-cpu", "PerfView", "Windows", warnings);
+            CheckCollectorPlatform(diagnostics, "perfview-gc", "PerfView", "Windows", warnings);
+        }
+    }
+
+    private static void CheckCollectorPlatform(
+        DiagnosticsConfig diagnostics,
+        string collectorName,
+        string toolName,
+        string requiredPlatform,
+        List<string> warnings)
+    {
+        if (diagnostics.CollectorSettings.TryGetValue(collectorName, out CollectorSettingsEntry? entry)
+            && entry.Enabled)
+        {
+            warnings.Add(
+                $"Diagnostics.CollectorSettings.{collectorName} is enabled but {toolName} requires {requiredPlatform}. " +
+                "Set Enabled: false in .hone/config.yaml Diagnostics section to suppress this warning.");
         }
     }
 }

@@ -117,6 +117,16 @@ internal sealed class HoneLoopRunner
             }
         }
 
+        // ── Cleanup (once per run, after all experiments) ───────────────────
+        HookResult cleanupResult = await _pipeline.CleanupAsync(targetDir, config, ct)
+            .ConfigureAwait(false);
+        if (!cleanupResult.Success)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Cleanup hook failed: {cleanupResult.Message}",
+                LogLevel.Warning, DateTimeOffset.UtcNow, Experiment: null));
+        }
+
         // ── Finalise ────────────────────────────────────────────────────────
         sw.Stop();
         _eventSink.Emit(new PhaseCompleted(

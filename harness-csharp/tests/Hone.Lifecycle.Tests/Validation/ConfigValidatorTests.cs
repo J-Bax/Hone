@@ -344,6 +344,56 @@ public sealed class ConfigValidatorTests(ITestOutputHelper output) : HoneTestBas
         _ = result.Errors.Should().Contain(e => e.Contains("Hooks.Prepare is missing Type"));
     }
 
+    // ── Diagnostic compatibility ────────────────────────────────────────────
+
+    [Fact]
+    public void ValidateDiagnosticCompatibility_DisabledDiagnostics_NoWarnings()
+    {
+        var diagnostics = new DiagnosticsConfig(Enabled: false);
+        List<string> warnings = [];
+
+        ConfigValidator.ValidateDiagnosticCompatibility(diagnostics, warnings);
+
+        _ = warnings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateDiagnosticCompatibility_AllCollectorsDisabled_NoWarnings()
+    {
+        var diagnostics = new DiagnosticsConfig(
+            Enabled: true,
+            CollectorSettings: new Dictionary<string, CollectorSettingsEntry>(StringComparer.Ordinal)
+            {
+                ["perfview-cpu"] = new(Enabled: false),
+                ["perfview-gc"] = new(Enabled: false),
+                ["dotnet-counters"] = new(Enabled: false),
+            });
+        List<string> warnings = [];
+
+        ConfigValidator.ValidateDiagnosticCompatibility(diagnostics, warnings);
+
+        _ = warnings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateTargetConfig_WithDiagnosticsOverride_IsValid()
+    {
+        TargetConfig config = CreateValidTargetConfig() with
+        {
+            Diagnostics = new DiagnosticsConfig(
+                Enabled: true,
+                CollectorSettings: new Dictionary<string, CollectorSettingsEntry>(StringComparer.Ordinal)
+                {
+                    ["perfview-cpu"] = new(Enabled: false),
+                    ["perfview-gc"] = new(Enabled: false),
+                }),
+        };
+
+        ValidationResult result = ConfigValidator.ValidateTargetConfig(config, TempDir);
+
+        _ = result.IsValid.Should().BeTrue();
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static TargetConfig CreateValidTargetConfig()
