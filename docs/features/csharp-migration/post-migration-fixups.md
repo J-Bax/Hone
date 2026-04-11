@@ -59,8 +59,10 @@ Why can't we use included modules for stack filtering? Presumably we know the ta
 
 ## Platform Support
 
-### 13. Multi-Agent System Support
+### 13. Multi-Agent System Support — 🔵 Deferred
 Add support for different agent systems beyond GitHub Copilot CLI — e.g., Claude Code, API-based agents. The `IAgentRunner` interface was designed for this; implement additional backends.
+
+**Deferred:** This is a feature-level expansion, not a migration fixup. The `IAgentRunner` abstraction is in place and ready for new implementations when needed. Also blocks full Active hook dispatch (requires typed hook return values for pluggable measurement backends).
 
 ## Lifecycle Hooks (from audit)
 
