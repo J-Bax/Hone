@@ -23,8 +23,14 @@ How do hooks work now? Hooks are a critical part of the design so the target can
 ### 4. Perf Analysis Agent Input Strategy
 Should perf analysis agents get raw data as input prompt context? Or get a file pointer with all the raw data with detailed tool calling and agent mode enabled for them to do their own analysis? Needs investigation of token efficiency vs. analysis quality trade-offs.
 
-### 5. Experiment History Context Bloat
-Investigate whether including all experiment history bloats context. The history is there to ensure new experiments are picked, but as the number of experiments increases, this may flood the agent context window. Consider summarization, windowing, or relevance filtering.
+### 5. Experiment History Context Bloat ✅ Resolved
+~~Investigate whether including all experiment history bloats context. The history is there to ensure new experiments are picked, but as the number of experiments increases, this may flood the agent context window. Consider summarization, windowing, or relevance filtering.~~
+
+**Resolution (PR #29):** Added sliding-window history to `AnalysisContextBuilder`:
+- Experiment history table: last N experiments shown in full detail; older experiments summarised as a count-by-outcome line with best p95/RPS metrics
+- Optimization queue: done items capped to last N; all pending items always shown
+- Experiment log: truncated to last 4000 characters when oversized
+- Controlled by `LoopConfig.MaxHistoryExperiments` (default 10)
 
 ### 6. Implementer Agent File Write Strategy
 Why can't we just allow the implementer agent to make file writes itself? The current approach of parsing a response back and having something else apply the change seems overly complicated. Investigate letting the agent use tool calls to write files directly.

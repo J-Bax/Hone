@@ -297,6 +297,199 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
         _ = result.HistoryContext.Should().Contain("Do NOT re-attempt");
     }
 
+    // ── History windowing ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task ContextBuilder_HistoryContext_WindowsExperimentTable()
+    {
+        // 8 experiments, window of 3 → 5 summarised, 3 in table
+        List<ExperimentMetadata> experiments = [];
+        for (int i = 1; i <= 8; i++)
+        {
+            experiments.Add(new ExperimentMetadata(
+                Experiment: i,
+                StartedAt: "2024-01-01T00:00:00Z",
+                CompletedAt: "2024-01-01T01:00:00Z",
+                Outcome: i % 2 == 0 ? ExperimentOutcome.Improved : ExperimentOutcome.Stale,
+                BranchName: $"hone/exp-{i}",
+                BaseBranch: "main",
+                P95: 10.0 + i,
+                RPS: 500.0 + (i * 10),
+                PrNumber: null,
+                PrUrl: null,
+                StaleCount: 0,
+                ConsecutiveFailures: 0));
+        }
+
+        var runMeta = new RunMetadata(TargetName: "SampleApi", StartedAt: "2024-01-01T00:00:00Z", MachineInfo: null, Experiments: experiments);
+        string metaJson = JsonSerializer.Serialize(runMeta);
+
+        string targetDir = CreateTargetDir("proj", b => b
+            .AddDirectory("myapi/Controllers")
+            .AddFile("results/run-metadata.json", metaJson));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                ResultsPath: "results"),
+            Loop: new LoopConfig(MaxHistoryExperiments: 3));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        // Summary for older 5 experiments
+        _ = result.HistoryContext.Should().Contain("*5 earlier experiments");
+        _ = result.HistoryContext.Should().Contain("best p95:");
+        _ = result.HistoryContext.Should().Contain("best RPS:");
+
+        // Recent 3 experiments (6, 7, 8) in full table
+        _ = result.HistoryContext.Should().Contain("| 6 |");
+        _ = result.HistoryContext.Should().Contain("| 7 |");
+        _ = result.HistoryContext.Should().Contain("| 8 |");
+
+        // Older experiments (1-5) NOT in table
+        _ = result.HistoryContext.Should().NotContain("| 1 | —");
+        _ = result.HistoryContext.Should().NotContain("| 5 | —");
+    }
+
+    [Fact]
+    public async Task ContextBuilder_HistoryContext_CapsQueueDoneItems()
+    {
+        var items = new List<QueueItem>();
+        for (int i = 1; i <= 8; i++)
+        {
+            items.Add(new QueueItem(
+                Id: $"q{i}", FilePath: $"File{i}.cs", Explanation: $"Optimisation {i}",
+                Scope: OpportunityScope.Narrow, Status: QueueItemStatus.Done,
+                TriedByExperiment: i, Outcome: "improved"));
+        }
+
+        // Add 2 pending items — these should always appear
+        items.Add(new QueueItem(Id: "p1", FilePath: "Pending1.cs", Explanation: "Pending opt 1",
+            Scope: OpportunityScope.Architecture, Status: QueueItemStatus.Pending, TriedByExperiment: null, Outcome: null));
+        items.Add(new QueueItem(Id: "p2", FilePath: "Pending2.cs", Explanation: "Pending opt 2",
+            Scope: OpportunityScope.Narrow, Status: QueueItemStatus.Pending, TriedByExperiment: null, Outcome: null));
+
+        var queue = new OptimizationQueue(GeneratedByExperiment: 8, Items: items);
+        string queueJson = JsonSerializer.Serialize(queue);
+
+        string targetDir = CreateTargetDir("proj", b => b
+            .AddDirectory("myapi/Controllers")
+            .AddFile("metadata/experiment-queue.json", queueJson));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                MetadataPath: "metadata"),
+            Loop: new LoopConfig(MaxHistoryExperiments: 3));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        // 5 older done items omitted
+        _ = result.HistoryContext.Should().Contain("*(5 earlier tried items omitted)*");
+
+        // Recent 3 done items (6, 7, 8) present
+        _ = result.HistoryContext.Should().Contain("[TRIED] `File6.cs`");
+        _ = result.HistoryContext.Should().Contain("[TRIED] `File7.cs`");
+        _ = result.HistoryContext.Should().Contain("[TRIED] `File8.cs`");
+
+        // Older done items (1-5) absent
+        _ = result.HistoryContext.Should().NotContain("`File1.cs`");
+        _ = result.HistoryContext.Should().NotContain("`File5.cs`");
+
+        // All pending items present
+        _ = result.HistoryContext.Should().Contain("[PENDING] [ARCHITECTURE] `Pending1.cs`");
+        _ = result.HistoryContext.Should().Contain("[PENDING] `Pending2.cs`");
+    }
+
+    [Fact]
+    public async Task ContextBuilder_HistoryContext_TruncatesLongExperimentLog()
+    {
+        // Create a log just over the limit
+        string longContent = new('x', AnalysisContextBuilder.MaxExperimentLogChars + 500);
+
+        string targetDir = CreateTargetDir("proj", b => b
+            .AddDirectory("myapi/Controllers")
+            .AddFile("metadata/experiment-log.md", longContent));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                MetadataPath: "metadata"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.HistoryContext.Should().Contain("*(Truncated — showing most recent entries)*");
+        // The total content (excluding header/wrapper) should be capped near MaxExperimentLogChars
+        _ = result.HistoryContext.Length.Should().BeLessThan(
+            AnalysisContextBuilder.MaxExperimentLogChars + 200,
+            "truncated log plus headers should be bounded");
+    }
+
+    [Fact]
+    public async Task ContextBuilder_HistoryContext_ShortLogNotTruncated()
+    {
+        const string ShortLog = "# Experiment 1\nOptimized serialization\n";
+
+        string targetDir = CreateTargetDir("proj", b => b
+            .AddDirectory("myapi/Controllers")
+            .AddFile("metadata/experiment-log.md", ShortLog));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                MetadataPath: "metadata"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.HistoryContext.Should().NotContain("Truncated");
+        _ = result.HistoryContext.Should().Contain("Optimized serialization");
+    }
+
+    [Fact]
+    public async Task ContextBuilder_HistoryContext_FewExperimentsNoSummary()
+    {
+        // 2 experiments with default window of 10 → no summary line
+        var runMeta = new RunMetadata(
+            TargetName: "SampleApi",
+            StartedAt: "2024-01-01T00:00:00Z",
+            MachineInfo: null,
+            Experiments: [
+                new ExperimentMetadata(Experiment: 1, StartedAt: "2024-01-01T00:00:00Z", CompletedAt: "2024-01-01T01:00:00Z",
+                    Outcome: ExperimentOutcome.Improved, BranchName: "hone/exp-1", BaseBranch: "main",
+                    P95: 12.3, RPS: 567.8, PrNumber: null, PrUrl: null, StaleCount: 0, ConsecutiveFailures: 0),
+                new ExperimentMetadata(Experiment: 2, StartedAt: "2024-01-01T01:00:00Z", CompletedAt: null,
+                    Outcome: ExperimentOutcome.Stale, BranchName: null, BaseBranch: null,
+                    P95: null, RPS: null, PrNumber: null, PrUrl: null, StaleCount: 1, ConsecutiveFailures: 0),
+            ]);
+
+        string metaJson = JsonSerializer.Serialize(runMeta);
+
+        string targetDir = CreateTargetDir("proj", b => b
+            .AddDirectory("myapi/Controllers")
+            .AddFile("results/run-metadata.json", metaJson));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                ResultsPath: "results"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.HistoryContext.Should().NotContain("earlier experiments");
+        _ = result.HistoryContext.Should().Contain("| 1 |");
+        _ = result.HistoryContext.Should().Contain("| 2 |");
+    }
+
     // ── Profiling context ────────────────────────────────────────────────
 
     [Fact]
