@@ -141,7 +141,7 @@ public sealed class DiagnosticMeasurementOrchestrator
     }
 
     /// <summary>
-    /// Runs all enabled analyzers against the merged collector data.
+    /// Runs all enabled analyzers in parallel against the merged collector data.
     /// Analyzers whose required collectors are missing are skipped with a warning.
     /// Individual analyzer failures are isolated — other analyzers continue.
     /// </summary>
@@ -174,12 +174,12 @@ public sealed class DiagnosticMeasurementOrchestrator
 
         EmitStatus("Running analyzers...");
 
-        var reports = new Dictionary<string, AnalyzerResult>(StringComparer.Ordinal);
-        bool allSuccess = true;
+        // ── Validate and prepare all analyzers synchronously ────────────
+        // Fail fast on config bugs before launching parallel work.
+        var prepared = new List<(string Name, IAnalyzerPlugin Plugin, AnalyzerContext Context)>();
 
         foreach (DiscoveredAnalyzer analyzer in analyzers)
         {
-            // Check required collectors have data
             IReadOnlyList<string> requiredCollectors = analyzer.Metadata.RequiredCollectors;
             var missing = requiredCollectors
                 .Where(c => !mergedCollectorData.ContainsKey(c))
@@ -193,7 +193,6 @@ public sealed class DiagnosticMeasurementOrchestrator
                 continue;
             }
 
-            // Resolve plugin — a missing plugin is a configuration bug; fail loudly.
             if (!_analyzerPlugins.TryGetValue(analyzer.Name, out IAnalyzerPlugin? plugin))
             {
                 throw new InvalidOperationException(
@@ -212,36 +211,71 @@ public sealed class DiagnosticMeasurementOrchestrator
                 Settings: analyzer.MergedSettings,
                 OutputDir: analyzerOutputDir);
 
-            EmitStatus($"Running analyzer: {analyzer.Name}");
-            EmitProgress(analyzer.Name, "analyzing");
+            prepared.Add((analyzer.Name, plugin, context));
+        }
 
-            try
-            {
-                AnalyzerResult result = await plugin.AnalyzeAsync(context, ct).ConfigureAwait(false);
+        // ── Run all analyzers in parallel ───────────────────────────────
+        Task<(string Name, AnalyzerResult? Result, bool Failed)>[] tasks =
+            [.. prepared.Select(entry => RunSingleAnalyzerAsync(entry.Name, entry.Plugin, entry.Context, ct))];
 
-                if (result.Success)
-                {
-                    reports[analyzer.Name] = result;
-                    EmitStatus($"  {analyzer.Name}: {result.Summary}");
-                }
-                else
-                {
-                    allSuccess = false;
-                    EmitWarning($"Analyzer '{analyzer.Name}' failed: {result.Error ?? "unknown error"}");
-                }
-            }
-#pragma warning disable CA1031 // Catch general exception for failure isolation
-            catch (Exception ex)
-#pragma warning restore CA1031
+        (string Name, AnalyzerResult? Result, bool Failed)[] outcomes = await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        // ── Merge results ───────────────────────────────────────────────
+        var reports = new Dictionary<string, AnalyzerResult>(StringComparer.Ordinal);
+        bool allSuccess = true;
+
+        foreach ((string name, AnalyzerResult? result, bool failed) in outcomes)
+        {
+            if (failed || result is null)
             {
                 allSuccess = false;
-                EmitWarning($"Analyzer '{analyzer.Name}' threw an exception: {ex.Message}");
+            }
+            else if (result.Success)
+            {
+                reports[name] = result;
+            }
+            else
+            {
+                allSuccess = false;
             }
         }
 
         EmitProgress("analyzers", "complete");
 
         return new DiagnosticAnalysisResult(Success: allSuccess, Reports: reports);
+    }
+
+    private async Task<(string Name, AnalyzerResult? Result, bool Failed)> RunSingleAnalyzerAsync(
+        string name,
+        IAnalyzerPlugin plugin,
+        AnalyzerContext context,
+        CancellationToken ct)
+    {
+        EmitStatus($"Running analyzer: {name}");
+        EmitProgress(name, "analyzing");
+
+        try
+        {
+            AnalyzerResult result = await plugin.AnalyzeAsync(context, ct).ConfigureAwait(false);
+
+            if (result.Success)
+            {
+                EmitStatus($"  {name}: {result.Summary}");
+            }
+            else
+            {
+                EmitWarning($"Analyzer '{name}' failed: {result.Error ?? "unknown error"}");
+            }
+
+            return (name, result, Failed: false);
+        }
+#pragma warning disable CA1031 // Catch general exception for failure isolation
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            EmitWarning($"Analyzer '{name}' threw an exception: {ex.Message}");
+            return (name, Result: null, Failed: true);
+        }
     }
 
     private void EmitStatus(string message)

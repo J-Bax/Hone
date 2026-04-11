@@ -293,6 +293,57 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
         _ = result.Reports.Should().NotContainKey("bad-analyzer");
     }
 
+    [Fact]
+    public async Task AnalyzersRunInParallel()
+    {
+        // Arrange — two analyzers with artificial delay to prove parallelism
+        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        IAnalyzerPlugin analyzerA = Substitute.For<IAnalyzerPlugin>();
+        _ = analyzerA.Name.Returns("analyzer-a");
+        _ = analyzerA.RequiredCollectors.Returns([]);
+        _ = analyzerA.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                // Signal that analyzer-a has started, then wait for barrier
+                _ = barrier.TrySetResult();
+                await Task.Delay(50, callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                return new AnalyzerResult(Success: true, Summary: "A done");
+            });
+
+        IAnalyzerPlugin analyzerB = Substitute.For<IAnalyzerPlugin>();
+        _ = analyzerB.Name.Returns("analyzer-b");
+        _ = analyzerB.RequiredCollectors.Returns([]);
+        _ = analyzerB.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                // If running in parallel, analyzer-a should have started by now
+                bool aStarted = barrier.Task.IsCompleted;
+                await Task.Delay(50, callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                return new AnalyzerResult(Success: true, Summary: aStarted ? "B parallel" : "B sequential");
+            });
+
+        DiagnosticMeasurementOrchestrator sut = CreateOrchestrator(
+            analyzerPlugins: [("analyzer-a", analyzerA), ("analyzer-b", analyzerB)]);
+
+        var mergedData = new Dictionary<string, CollectorExportResult>(StringComparer.Ordinal);
+        string outputDir = Path.Combine(TempDir, "analysis");
+
+        // Act
+        DiagnosticAnalysisResult result = await sut.RunAnalyzersAsync(
+            [MakeAnalyzer("analyzer-a"), MakeAnalyzer("analyzer-b")],
+            mergedData,
+            currentMetrics: null,
+            experiment: 1,
+            outputDir: outputDir);
+
+        // Assert — both analyzers ran and B observed A already started (parallel)
+        _ = result.Success.Should().BeTrue();
+        _ = result.Reports.Should().ContainKey("analyzer-a");
+        _ = result.Reports.Should().ContainKey("analyzer-b");
+        _ = result.Reports["analyzer-b"].Summary.Should().Be("B parallel");
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private static DiscoveredCollector MakeCollector(string name, string group = "default")
