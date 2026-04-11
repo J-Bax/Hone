@@ -27,6 +27,24 @@ internal sealed class PreProbeData
 
     [JsonPropertyName("honeDirContents")]
     public List<string>? HoneDirContents { get; init; }
+
+    [JsonPropertyName("legacyHarness")]
+    public LegacyHarnessInfo? LegacyHarness { get; init; }
+}
+
+/// <summary>
+/// Metadata about a detected PowerShell-based legacy harness.
+/// </summary>
+internal sealed record LegacyHarnessInfo
+{
+    [JsonPropertyName("detected")]
+    public bool Detected { get; init; }
+
+    [JsonPropertyName("configPsd1Path")]
+    public string? ConfigPsd1Path { get; init; }
+
+    [JsonPropertyName("hookScripts")]
+    public IReadOnlyList<string>? HookScripts { get; init; }
 }
 
 /// <summary>

@@ -5,6 +5,9 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Hone.Agents.CopilotCli;
+using Hone.Agents.Core;
+using Hone.Agents.Preparation;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
@@ -31,6 +34,12 @@ internal static class Program
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
+    private static readonly JsonSerializerOptions AssessJsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private static async Task<int> Main(string[] args)
     {
         RootCommand rootCommand = new("Hone optimization harness")
@@ -40,6 +49,7 @@ internal static class Program
             BuildBaselineCommand(),
             BuildResultsCommand(),
             BuildDashboardCommand(),
+            BuildAssessCommand(),
         };
 
         ParseResult parseResult = rootCommand.Parse(args);
@@ -343,6 +353,113 @@ internal static class Program
         });
 
         return command;
+    }
+
+    // ── assess ─────────────────────────────────────────────────────────
+
+    private static Command BuildAssessCommand()
+    {
+        Option<string> targetOption = CreateTargetOption();
+        var modelOption = new Option<string?>("--model")
+        {
+            Description = "Override the AI model for assessment",
+        };
+        var jsonOption = new Option<bool>("--json")
+        {
+            Description = "Output raw JSON instead of formatted report",
+        };
+
+        var command = new Command("assess", "Assess target project compatibility with Hone")
+        {
+            targetOption,
+            modelOption,
+            jsonOption,
+        };
+
+        command.SetAction(async (pr, ct) =>
+        {
+            string targetPath = pr.GetValue(targetOption)!;
+            string? model = pr.GetValue(modelOption);
+            bool jsonOutput = pr.GetValue(jsonOption);
+
+            string targetDir = Path.GetFullPath(targetPath);
+            if (!Directory.Exists(targetDir))
+            {
+                await Console.Error.WriteLineAsync($"Target directory not found: {targetDir}").ConfigureAwait(false);
+                return 2;
+            }
+
+            // Minimal config for agent invocation (no .hone/config.yaml needed)
+            var config = new HoneConfig();
+            IProcessRunner processRunner = new ProcessRunner();
+            IAgentRunner agentRunner = new CopilotCliAgentRunner();
+            var agentInvoker = new AgentInvoker(agentRunner, config.Agents);
+            var compatibilityAgent = new CompatibilityAgent(agentInvoker, processRunner);
+
+            CompatibilityResult result = await compatibilityAgent
+                .AssessAsync(targetPath, model, ct).ConfigureAwait(false);
+
+            if (!result.Success)
+            {
+                await Console.Error.WriteLineAsync(result.Message).ConfigureAwait(false);
+                return 2;
+            }
+
+            if (jsonOutput)
+            {
+                string json = JsonSerializer.Serialize(result.Report, AssessJsonOptions);
+                Console.WriteLine(json);
+            }
+            else
+            {
+                AssessmentViewModel viewModel = MapToViewModel(result.Report!);
+                var writer = new SystemConsoleColorWriter();
+                AssessmentRenderer.Render(viewModel, writer);
+            }
+
+            // Write assessment JSON file
+            string outputPath = Path.Combine(targetDir, ".hone-assessment.json");
+            string reportJson = JsonSerializer.Serialize(result.Report, AssessJsonOptions);
+            await File.WriteAllTextAsync(outputPath, reportJson, ct).ConfigureAwait(false);
+            Console.WriteLine();
+            Console.WriteLine($"Full report written to: {outputPath}");
+
+            string overall = result.Report?.Compatibility?.Overall ?? "unknown";
+            return overall.Equals("incompatible", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        });
+
+        return command;
+    }
+
+    private static AssessmentViewModel MapToViewModel(CompatibilityReport report)
+    {
+        CompatibilitySection compatibility = report.Compatibility ?? new CompatibilitySection();
+
+        IReadOnlyList<AssessmentFindingViewModel> blockers = [.. (compatibility.Blockers ?? [])
+            .Select(b => new AssessmentFindingViewModel(
+                Area: b.Area ?? "unknown",
+                Issue: b.Issue ?? "unknown",
+                Remediation: b.Remediation ?? "N/A")),];
+
+        IReadOnlyList<AssessmentFindingViewModel> warnings = [.. (compatibility.Warnings ?? [])
+            .Select(w => new AssessmentFindingViewModel(
+                Area: w.Area ?? "unknown",
+                Issue: w.Issue ?? "unknown",
+                Remediation: w.Remediation ?? "N/A")),];
+
+        IReadOnlyList<AssessmentReadyViewModel> readyItems = [.. (compatibility.Ready ?? [])
+            .Select(r => new AssessmentReadyViewModel(
+                Area: r.Area ?? "unknown",
+                Detail: r.Detail ?? "ready")),];
+
+        return new AssessmentViewModel(
+            TargetName: report.Target?.Name ?? "Unknown Target",
+            Overall: compatibility.Overall ?? "unknown",
+            Score: compatibility.Score ?? 0,
+            Blockers: blockers,
+            Warnings: warnings,
+            ReadyItems: readyItems,
+            OnboardingSummary: report.OnboardingPlan?.Summary);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
