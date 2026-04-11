@@ -21,7 +21,7 @@ All YAML keys use **PascalCase** to match C# record property names, which `YamlD
 - **Api** — Solution path, project path, test project, base URL, health endpoint, results directory, source code paths
 - **Tolerances** — Regression threshold, improvement threshold, stale experiment limits, efficiency tiebreaker, absolute delta thresholds
 - **ScaleTest** — Primary k6 scenario, scenario registry, warmup, measured runs, cooldown
-- **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior, skip classification
+- **Loop** — Max experiments, branch prefix, stacked diffs mode, wait-for-merge behavior, skip classification, history windowing
 - **Agents** — AI model selection, per-agent model overrides, agent timeout
 - **Hooks** — Lifecycle hooks for build, test, start/stop, measurement phases. See [Lifecycle Hooks](hooks.md) for the full reference.
 - **Implementer** — Max implementer attempts, diff growth guard, test file guard
@@ -103,6 +103,7 @@ Loop:
   StackedDiffs: true
   WaitForMerge: false
   SkipClassification: false
+  MaxHistoryExperiments: 10  # Number of recent experiments to show in full detail in the analysis prompt
 
 Agents:
   DefaultModel: "claude-sonnet-4.5"

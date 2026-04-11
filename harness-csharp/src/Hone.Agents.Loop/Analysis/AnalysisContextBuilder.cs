@@ -14,6 +14,12 @@ namespace Hone.Agents.Loop.Analysis;
 /// </summary>
 public static class AnalysisContextBuilder
 {
+    /// <summary>
+    /// Maximum characters to retain from experiment-log.md. Older content is truncated
+    /// to prevent unbounded context growth in the analysis prompt.
+    /// </summary>
+    internal const int MaxExperimentLogChars = 4000;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -37,7 +43,7 @@ public static class AnalysisContextBuilder
         IReadOnlyList<string> sourcePaths = CollectSourceFilePaths(targetDir, config.Api);
         string counterCtx = BuildCounterContext(counters);
         string trafficCtx = await BuildTrafficContextAsync(targetDir, config.ScaleTest, ct).ConfigureAwait(false);
-        string historyCtx = await BuildHistoryContextAsync(targetDir, config.Api, previousRcaExplanation, eventSink, ct).ConfigureAwait(false);
+        string historyCtx = await BuildHistoryContextAsync(targetDir, config.Api, previousRcaExplanation, config.Loop.MaxHistoryExperiments, eventSink, ct).ConfigureAwait(false);
         string profilingCtx = BuildProfilingContext(diagnosticReports);
 
         return new AnalysisContext(sourcePaths, counterCtx, trafficCtx, historyCtx, profilingCtx);
@@ -123,16 +129,23 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
 
     internal static async Task<string> BuildHistoryContextAsync(
         string targetDir, ApiConfig api, string? previousRcaExplanation,
-        IHoneEventSink? eventSink, CancellationToken ct)
+        int maxHistoryExperiments, IHoneEventSink? eventSink, CancellationToken ct)
     {
         var sb = new StringBuilder();
         string metadataDir = Path.Combine(targetDir, api.MetadataPath);
 
-        // Experiment log
+        // Experiment log (truncated to prevent context bloat)
         string logPath = Path.Combine(metadataDir, "experiment-log.md");
         if (File.Exists(logPath))
         {
             string logContent = await File.ReadAllTextAsync(logPath, ct).ConfigureAwait(false);
+            if (logContent.Length > MaxExperimentLogChars)
+            {
+                logContent = string.Concat(
+                    "*(Truncated — showing most recent entries)*\n",
+                    logContent.AsSpan(logContent.Length - MaxExperimentLogChars));
+            }
+
             sb.Append("\n## Previously Tried Optimizations\n")
               .Append(logContent)
               .Append('\n');
@@ -142,7 +155,7 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
         string queueJsonPath = Path.Combine(metadataDir, "experiment-queue.json");
         if (File.Exists(queueJsonPath))
         {
-            await AppendQueueFromJsonAsync(sb, queueJsonPath, eventSink, ct).ConfigureAwait(false);
+            await AppendQueueFromJsonAsync(sb, queueJsonPath, maxHistoryExperiments, eventSink, ct).ConfigureAwait(false);
         }
 
         // Previous RCA explanation
@@ -157,14 +170,14 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
         string runMetadataPath = Path.Combine(targetDir, api.ResultsPath, "run-metadata.json");
         if (File.Exists(runMetadataPath))
         {
-            await AppendExperimentHistoryAsync(sb, runMetadataPath, eventSink, ct).ConfigureAwait(false);
+            await AppendExperimentHistoryAsync(sb, runMetadataPath, maxHistoryExperiments, eventSink, ct).ConfigureAwait(false);
         }
 
         return sb.ToString();
     }
 
     private static async Task AppendQueueFromJsonAsync(
-        StringBuilder sb, string queueJsonPath, IHoneEventSink? eventSink, CancellationToken ct)
+        StringBuilder sb, string queueJsonPath, int maxDoneItems, IHoneEventSink? eventSink, CancellationToken ct)
     {
         try
         {
@@ -175,17 +188,30 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
                 return;
             }
 
-            List<QueueItem> doneItems = [.. queue.Items.Where(i => i.Status == QueueItemStatus.Done)];
+            List<QueueItem> allDoneItems = [.. queue.Items
+                .Where(i => i.Status == QueueItemStatus.Done)
+                .OrderBy(i => i.TriedByExperiment ?? 0),];
             List<QueueItem> pendingItems = [.. queue.Items.Where(i => i.Status == QueueItemStatus.Pending)];
 
-            if (doneItems.Count == 0 && pendingItems.Count == 0)
+            if (allDoneItems.Count == 0 && pendingItems.Count == 0)
             {
                 return;
             }
 
             sb.Append("\n## Known Optimization Queue\n");
 
-            foreach (QueueItem item in doneItems)
+            // Cap done items to the most recent N
+            int omittedCount = Math.Max(0, allDoneItems.Count - maxDoneItems);
+            if (omittedCount > 0)
+            {
+                sb.Append(CultureInfo.InvariantCulture, $"*({omittedCount} earlier tried items omitted)*\n");
+            }
+
+            List<QueueItem> recentDoneItems = allDoneItems.Count > maxDoneItems
+                ? allDoneItems[omittedCount..]
+                : allDoneItems;
+
+            foreach (QueueItem item in recentDoneItems)
             {
                 sb.Append(CultureInfo.InvariantCulture, $"- [TRIED] `{item.FilePath}` — {item.Explanation} *(experiment {item.TriedByExperiment} — {item.Outcome})*\n");
             }
@@ -206,7 +232,7 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
     }
 
     private static async Task AppendExperimentHistoryAsync(
-        StringBuilder sb, string runMetadataPath, IHoneEventSink? eventSink, CancellationToken ct)
+        StringBuilder sb, string runMetadataPath, int maxDetailedExperiments, IHoneEventSink? eventSink, CancellationToken ct)
     {
         try
         {
@@ -225,6 +251,15 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
 
             sb.Append("\n## Experiment History (with metrics)\n");
             sb.Append("Do NOT re-attempt optimizations that were already tried and resulted in stale or regressed outcomes. Propose different targets or approaches instead.\n");
+
+            // Summarise older experiments beyond the window
+            if (experiments.Count > maxDetailedExperiments)
+            {
+                List<ExperimentMetadata> older = experiments[..^maxDetailedExperiments];
+                AppendExperimentSummary(sb, older);
+                experiments = experiments[^maxDetailedExperiments..];
+            }
+
             sb.Append("| Exp | File | Outcome | p95 (ms) | RPS | Branch |\n");
             sb.Append("|-----|------|---------|----------|-----|--------|\n");
 
@@ -248,6 +283,40 @@ endpoint. Use this to estimate what percentage of total traffic each endpoint/co
                 LogLevel.Warning,
                 DateTimeOffset.UtcNow));
         }
+    }
+
+    private static void AppendExperimentSummary(StringBuilder sb, List<ExperimentMetadata> older)
+    {
+        var countsByOutcome = older
+            .Where(e => e.Outcome.HasValue)
+            .GroupBy(e => e.Outcome!.Value)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var parts = new List<string>();
+        foreach (ExperimentOutcome outcome in Enum.GetValues<ExperimentOutcome>())
+        {
+            if (countsByOutcome.TryGetValue(outcome, out int count))
+            {
+                parts.Add($"{count} {outcome}");
+            }
+        }
+
+        string outcomeSummary = parts.Count > 0
+            ? string.Join(", ", parts)
+            : "no outcomes recorded";
+
+        double? bestP95 = older.Where(e => e.P95.HasValue).Select(e => e.P95!.Value).Order().FirstOrDefault();
+        double? bestRps = older.Where(e => e.RPS.HasValue).Select(e => e.RPS!.Value).OrderDescending().FirstOrDefault();
+
+        string metricsSummary = (bestP95, bestRps) switch
+        {
+            (not null, not null) => string.Create(CultureInfo.InvariantCulture, $" — best p95: {bestP95.Value:F1}ms, best RPS: {bestRps.Value:F1}"),
+            (not null, null) => string.Create(CultureInfo.InvariantCulture, $" — best p95: {bestP95.Value:F1}ms"),
+            (null, not null) => string.Create(CultureInfo.InvariantCulture, $" — best RPS: {bestRps.Value:F1}"),
+            _ => string.Empty,
+        };
+
+        sb.Append(CultureInfo.InvariantCulture, $"*{older.Count} earlier experiments ({outcomeSummary}){metricsSummary}*\n");
     }
 
     // ── Diagnostic profiling context ─────────────────────────────────────────

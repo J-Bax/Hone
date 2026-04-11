@@ -9,4 +9,5 @@ public sealed record LoopConfig(
     bool StackedDiffs = true,
     bool WaitForMerge = false,
     bool SkipClassification = false,
-    int ExperimentCooldownSeconds = 30);
+    int ExperimentCooldownSeconds = 30,
+    int MaxHistoryExperiments = 10);
