@@ -478,7 +478,8 @@ internal static class Program
             var agentInvoker = new AgentInvoker(agentRunner, config.Agents);
             var compatibilityAgent = new CompatibilityAgent(agentInvoker, processRunner);
             var scaffolderAgent = new ScaffolderAgent(agentInvoker);
-            var manager = new OnboardingManager(compatibilityAgent, scaffolderAgent);
+            var migratorAgent = new MigratorAgent(agentInvoker);
+            var manager = new OnboardingManager(compatibilityAgent, scaffolderAgent, migratorAgent);
 
             var options = new OnboardingOptions(Model: model, Force: force, DryRun: dryRun);
             OnboardingResult result = await manager.OnboardAsync(targetPath, options, ct)

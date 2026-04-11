@@ -29,6 +29,15 @@ public sealed class OnboardingManagerTests(ITestOutputHelper output) : HoneTestB
         return new OnboardingManager(assessor, scaffolder);
     }
 
+    private OnboardingManager CreateSutWithMigrator(AgentConfig? config = null)
+    {
+        var invoker = new AgentInvoker(_runner, config ?? new AgentConfig());
+        var assessor = new CompatibilityAgent(invoker);
+        var scaffolder = new ScaffolderAgent(invoker);
+        var migrator = new MigratorAgent(invoker);
+        return new OnboardingManager(assessor, scaffolder, migrator);
+    }
+
     private static string MakeAssessmentJson(int score = 80, string overall = "compatible") =>
         JsonSerializer.Serialize(new CompatibilityReport
         {
@@ -61,6 +70,28 @@ public sealed class OnboardingManagerTests(ITestOutputHelper output) : HoneTestB
                 [".hone/scenarios/baseline.js"] = "import http from 'k6/http';",
             },
             Notes = "Generated config",
+        });
+
+    private static string MakeMigrationJson() =>
+        JsonSerializer.Serialize(new MigrationPlan
+        {
+            Config = new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["Name"] = "migrated-project",
+                ["BaseBranch"] = "main",
+            },
+            HookMappings =
+            [
+                new HookMapping
+                {
+                    OriginalScript = "Invoke-Build.ps1",
+                    MappedTo = "BuiltIn:DotnetBuild",
+                    Confidence = "high",
+                    Notes = "Direct match",
+                },
+            ],
+            Warnings = ["Feature X not supported"],
+            Notes = "Migrated from PS config",
         });
 
     // ── Full flow: assess + scaffold + write ────────────────────────────
@@ -197,5 +228,106 @@ public sealed class OnboardingManagerTests(ITestOutputHelper output) : HoneTestB
         _ = result.Assessment!.Success.Should().BeFalse();
         _ = result.Scaffold.Should().BeNull();
         _ = result.WriteResult.Should().BeNull();
+    }
+
+    // ── Migration triggered when legacy harness detected ────────────────
+
+    [Fact]
+    public async Task OnboardAsync_LegacyHarnessDetected_TriggersMigration()
+    {
+        string targetDir = CreateTargetDir("onboard-migrate", b => b
+            .AddFile("MyApp.sln", "solution")
+            .AddFile("config.psd1", "@{ Name = 'legacy-project'; BaseBranch = 'main' }")
+            .AddFile("Invoke-Build.ps1", "dotnet build"));
+
+        int callCount = 0;
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                int call = Interlocked.Increment(ref callCount);
+                return call switch
+                {
+                    1 => Ok(MakeAssessmentJson()),
+                    2 => Ok(MakeScaffoldJson()),
+                    _ => Ok(MakeMigrationJson()),
+                };
+            });
+
+        OnboardingManager sut = CreateSutWithMigrator();
+        OnboardingResult result = await sut.OnboardAsync(
+            targetDir, new OnboardingOptions());
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Migration.Should().NotBeNull();
+        _ = result.Migration!.Success.Should().BeTrue();
+        _ = result.Migration.Plan.Should().NotBeNull();
+        _ = result.Migration.Plan!.HookMappings.Should().HaveCount(1);
+        // Config should be overridden by migration
+        _ = result.Scaffold!.Plan!.Files!.Should().ContainKey(".hone/config.yaml");
+    }
+
+    // ── Migration skipped when no legacy harness ────────────────────────
+
+    [Fact]
+    public async Task OnboardAsync_NoLegacyHarness_SkipsMigration()
+    {
+        string targetDir = CreateTargetDir("onboard-nomigrate", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        int callCount = 0;
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                int call = Interlocked.Increment(ref callCount);
+                return call == 1
+                    ? Ok(MakeAssessmentJson())
+                    : Ok(MakeScaffoldJson());
+            });
+
+        OnboardingManager sut = CreateSutWithMigrator();
+        OnboardingResult result = await sut.OnboardAsync(
+            targetDir, new OnboardingOptions());
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Migration.Should().BeNull();
+        // Only 2 agent calls (assess + scaffold), no migration
+        _ = callCount.Should().Be(2);
+    }
+
+    // ── Migration failure doesn't block overall flow ────────────────────
+
+    [Fact]
+    public async Task OnboardAsync_MigrationFailure_DoesNotBlockFlow()
+    {
+        string targetDir = CreateTargetDir("onboard-migfail", b => b
+            .AddFile("MyApp.sln", "solution")
+            .AddFile("config.psd1", "@{ Name = 'legacy-project' }")
+            .AddFile("Invoke-Build.ps1", "dotnet build"));
+
+        int callCount = 0;
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                int call = Interlocked.Increment(ref callCount);
+                return call switch
+                {
+                    1 => Ok(MakeAssessmentJson()),
+                    2 => Ok(MakeScaffoldJson()),
+                    // Migration agent returns invalid JSON
+                    _ => Ok("not valid json"),
+                };
+            });
+
+        OnboardingManager sut = CreateSutWithMigrator();
+        OnboardingResult result = await sut.OnboardAsync(
+            targetDir, new OnboardingOptions());
+
+        // Overall flow still succeeds — migration is additive
+        _ = result.Success.Should().BeTrue();
+        _ = result.WriteResult.Should().NotBeNull();
+        _ = result.WriteResult!.Written.Should().HaveCount(2);
+        // Migration result is captured but not successful
+        _ = result.Migration.Should().NotBeNull();
+        _ = result.Migration!.Success.Should().BeFalse();
     }
 }

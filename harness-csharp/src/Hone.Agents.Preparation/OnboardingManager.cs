@@ -16,10 +16,11 @@ public sealed record OnboardingResult(
     string Message,
     CompatibilityResult? Assessment = null,
     ScaffoldResult? Scaffold = null,
-    ScaffoldWriteResult? WriteResult = null);
+    ScaffoldWriteResult? WriteResult = null,
+    MigrationResult? Migration = null);
 
 /// <summary>
-/// Orchestrates the full onboarding flow: assess → scaffold → write.
+/// Orchestrates the full onboarding flow: assess → scaffold → (migrate) → write.
 /// </summary>
 public sealed class OnboardingManager
 {
@@ -27,13 +28,18 @@ public sealed class OnboardingManager
 
     private readonly CompatibilityAgent _assessor;
     private readonly ScaffolderAgent _scaffolder;
+    private readonly MigratorAgent? _migrator;
 
-    public OnboardingManager(CompatibilityAgent assessor, ScaffolderAgent scaffolder)
+    public OnboardingManager(
+        CompatibilityAgent assessor,
+        ScaffolderAgent scaffolder,
+        MigratorAgent? migrator = null)
     {
         ArgumentNullException.ThrowIfNull(assessor);
         ArgumentNullException.ThrowIfNull(scaffolder);
         _assessor = assessor;
         _scaffolder = scaffolder;
+        _migrator = migrator;
     }
 
     /// <summary>
@@ -87,6 +93,23 @@ public sealed class OnboardingManager
                 Scaffold: scaffold);
         }
 
+        // Step 3b: Migrate legacy harness (if detected and migrator available)
+        MigrationResult? migration = null;
+        ScaffoldPlan effectivePlan = scaffold.Plan!;
+
+        if (_migrator is not null
+            && assessment.PreProbe?.LegacyHarness?.Detected == true)
+        {
+            migration = await _migrator
+                .MigrateAsync(assessment.PreProbe, assessment.Report!, options.Model, ct)
+                .ConfigureAwait(false);
+
+            if (migration.Success && migration.Plan is not null)
+            {
+                effectivePlan = ScaffoldPlanMerger.Merge(effectivePlan, migration.Plan);
+            }
+        }
+
         // Step 4: Dry run — return plan without writing
         if (options.DryRun)
         {
@@ -94,19 +117,27 @@ public sealed class OnboardingManager
                 Success: true,
                 Message: "Dry run complete — no files written",
                 Assessment: assessment,
-                Scaffold: scaffold);
+                Scaffold: scaffold with { Plan = effectivePlan },
+                Migration: migration);
         }
 
         // Step 5: Write files
         ScaffoldWriteResult writeResult = await ScaffoldWriter
-            .WriteAsync(targetPath, scaffold.Plan!, options.Force, ct)
+            .WriteAsync(targetPath, effectivePlan, options.Force, ct)
             .ConfigureAwait(false);
+
+        string message = $"Onboarding complete: {writeResult.Written.Count} file(s) written, {writeResult.Skipped.Count} skipped";
+        if (migration is { Success: true, Plan.Warnings: { Count: > 0 } warnings })
+        {
+            message += $" ({warnings.Count} migration warning(s))";
+        }
 
         return new OnboardingResult(
             Success: true,
-            Message: $"Onboarding complete: {writeResult.Written.Count} file(s) written, {writeResult.Skipped.Count} skipped",
+            Message: message,
             Assessment: assessment,
-            Scaffold: scaffold,
-            WriteResult: writeResult);
+            Scaffold: scaffold with { Plan = effectivePlan },
+            WriteResult: writeResult,
+            Migration: migration);
     }
 }
