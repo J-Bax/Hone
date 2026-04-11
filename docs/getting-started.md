@@ -148,6 +148,26 @@ hone validate --target sample-api
 
 This loads and validates `sample-api/.hone/config.yaml` against the engine schema without running any experiments.
 
+### Targeting a Non-.NET API
+
+Hone works with any buildable API — not just .NET projects. Configure lifecycle hooks in `.hone/config.yaml` using `Command` or `Http` types instead of the built-in .NET hooks:
+
+```yaml
+Hooks:
+  Build:
+    Type: Command
+    Value: './gradlew build -x test'
+  Test:
+    Type: Command
+    Value: './gradlew test'
+  Start:
+    Type: Command
+    Value: 'java -jar build/libs/myapi.jar &'
+  # ... see docs/hooks.md for the full reference
+```
+
+Non-.NET targets should also disable inapplicable diagnostic collectors (PerfView, dotnet-counters). See [Lifecycle Hooks](hooks.md) for complete examples including Java and Python targets.
+
 ### 10. Run the Full Hone Loop
 
 ```sh

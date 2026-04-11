@@ -205,6 +205,21 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Prepared", Duration: TimeSpan.FromSeconds(2),
                 Artifacts: [], BaseUrl: null)));
+        _ = pipeline.WarmupAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Warmed up", Duration: TimeSpan.Zero,
+                Artifacts: [], BaseUrl: null)));
+        _ = pipeline.CooldownAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Cooled down", Duration: TimeSpan.Zero,
+                Artifacts: [], BaseUrl: null)));
+        _ = pipeline.CleanupAsync(
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new HookResult(
+                Success: true, Message: "Cleaned up", Duration: TimeSpan.Zero,
+                Artifacts: [], BaseUrl: null)));
     }
 
     private sealed record TestHarness(

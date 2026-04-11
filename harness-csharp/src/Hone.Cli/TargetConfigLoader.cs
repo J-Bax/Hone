@@ -1,3 +1,4 @@
+using Hone.Core.Config;
 using Hone.Lifecycle.Hooks;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -6,7 +7,7 @@ namespace Hone.Cli;
 
 /// <summary>
 /// Loads the target project's <c>.hone/config.yaml</c> into a <see cref="TargetConfig"/>
-/// to extract lifecycle hook definitions.
+/// to extract lifecycle hook definitions and optional diagnostic overrides.
 /// </summary>
 internal static class TargetConfigLoader
 {
@@ -35,6 +36,8 @@ internal static class TargetConfigLoader
         IDeserializer deserializer = new DeserializerBuilder()
             .WithNamingConvention(PascalCaseNamingConvention.Instance)
             .WithTypeMapping<IReadOnlyDictionary<string, TargetHookConfig>, Dictionary<string, TargetHookConfig>>()
+            .WithTypeMapping<IReadOnlyDictionary<string, CollectorSettingsEntry>, Dictionary<string, CollectorSettingsEntry>>()
+            .WithTypeMapping<IReadOnlyDictionary<string, AnalyzerSettingsEntry>, Dictionary<string, AnalyzerSettingsEntry>>()
             .IgnoreUnmatchedProperties()
             .Build();
 
