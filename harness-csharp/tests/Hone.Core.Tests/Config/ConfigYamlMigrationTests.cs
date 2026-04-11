@@ -231,7 +231,7 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
         _ = config.Api.SolutionPath.Should().Be("SampleApi.sln");
         _ = config.Api.ProjectPath.Should().Be("SampleApi");
         _ = config.Api.TestProjectPath.Should().Be("SampleApi.Tests");
-        _ = config.Api.BaseUrl.Should().Be("http://localhost:5050");
+        _ = config.Api.BaseUrl.Should().Be("http://localhost:0");
         _ = config.Api.HealthEndpoint.Should().Be("/health");
         _ = config.Api.GcEndpoint.Should().Be("/diag/gc");
         _ = config.Api.StartupTimeout.Should().Be(90);
