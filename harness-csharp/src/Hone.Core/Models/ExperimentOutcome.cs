@@ -19,4 +19,19 @@ public enum ExperimentOutcome
 
     /// <summary>An efficiency improvement was detected.</summary>
     EfficiencyWin = 4,
+
+    /// <summary>The implementer could not produce a viable change.</summary>
+    ImplementationFailed = 5,
+
+    /// <summary>The experiment failed during the build step.</summary>
+    BuildFailed = 6,
+
+    /// <summary>The experiment failed during functional verification.</summary>
+    TestFailed = 7,
+
+    /// <summary>The experiment failed while starting the target for verification.</summary>
+    StartFailed = 8,
+
+    /// <summary>The experiment failed during evaluation measurement.</summary>
+    LoadTestFailed = 9,
 }

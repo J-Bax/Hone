@@ -1,0 +1,4 @@
+Name: fixture-stacked-diffs
+BaseBranch: main
+Loop:
+  SkipClassification: true

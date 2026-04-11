@@ -1,0 +1,4 @@
+Name: fixture-regression
+BaseBranch: main
+Loop:
+  SkipClassification: true

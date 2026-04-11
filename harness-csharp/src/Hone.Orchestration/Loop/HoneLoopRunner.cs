@@ -245,11 +245,13 @@ internal sealed class HoneLoopRunner
 
         if (!implResult.Result.Success)
         {
+            ExperimentOutcome failureOutcome = MapImplementerFailureOutcome(implResult.Result.ExitReason);
+
             // Restart API before next experiment even though this one failed
             await TryRestartTargetAsync(targetDir, config, exp, ct).ConfigureAwait(false);
             return await HandleFailedExperimentAsync(
-                ctx, implResult.Result.ExitReason ?? "implementation_failed",
-                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
+                ctx, failureOutcome,
+                experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
 
@@ -263,8 +265,8 @@ internal sealed class HoneLoopRunner
             _eventSink.Emit(new StatusMessage(
                 $"Start hook failed: {startResult.Message}", LogLevel.Error, DateTimeOffset.UtcNow, exp));
             return await HandleFailedExperimentAsync(
-                ctx, "start_failed",
-                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
+                ctx, ExperimentOutcome.StartFailed,
+                experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
 
@@ -276,8 +278,8 @@ internal sealed class HoneLoopRunner
         if (experimentMetrics is null)
         {
             return await HandleFailedExperimentAsync(
-                ctx, "load_test_failed",
-                comparison: null, experimentMetrics: null, queueItemId: item.Id, ct)
+                ctx, ExperimentOutcome.LoadTestFailed,
+                experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
         }
 
@@ -297,11 +299,19 @@ internal sealed class HoneLoopRunner
 
             ExperimentOutcome.Regressed =>
                 await HandleFailedExperimentAsync(
-                    ctx, "regressed", comparison, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
+                    ctx, ExperimentOutcome.Regressed, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
 
             ExperimentOutcome.Stale =>
                 await HandleFailedExperimentAsync(
-                    ctx, "stale", comparison, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
+                    ctx, ExperimentOutcome.Stale, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
+
+            ExperimentOutcome.ImplementationFailed
+                or ExperimentOutcome.BuildFailed
+                or ExperimentOutcome.TestFailed
+                or ExperimentOutcome.StartFailed
+                or ExperimentOutcome.LoadTestFailed =>
+                throw new InvalidOperationException(
+                    $"Unexpected comparison outcome from metric comparison: {comparison.Outcome}"),
 
             ExperimentOutcome.Unknown or _ => throw new InvalidOperationException($"Unexpected experiment outcome: {comparison.Outcome}"),
         };
@@ -459,15 +469,7 @@ internal sealed class HoneLoopRunner
             state.PrChain.Add(prResult.PrNumber.Value);
         }
 
-        string outcomeName = comparison.Outcome switch
-        {
-            ExperimentOutcome.Improved => "improved",
-            ExperimentOutcome.EfficiencyWin => "efficiency_win",
-            ExperimentOutcome.Regressed => "regressed",
-            ExperimentOutcome.Stale => "stale",
-            ExperimentOutcome.Unknown or _ => "unknown",
-        };
-        _queueManager.MarkDone(item.Id, outcomeName, exp);
+        _queueManager.MarkDone(item.Id, ToOutcomeName(comparison.Outcome), exp);
 
         // Record metadata
         ctx.Experiments.Add(MakeExperimentMetadata(
@@ -483,8 +485,7 @@ internal sealed class HoneLoopRunner
 
     private async Task<ExperimentContext> HandleFailedExperimentAsync(
         ExperimentRunContext ctx,
-        string outcome,
-        ComparisonResult? comparison,
+        ExperimentOutcome outcome,
         MetricSet? experimentMetrics,
         string? queueItemId,
         CancellationToken ct)
@@ -507,7 +508,7 @@ internal sealed class HoneLoopRunner
                     BaseBranch: baseBranch,
                     HeadBranch: branchName,
                     Title: $"perf(rejected): experiment {exp}",
-                    Body: $"Rejected: {outcome}",
+                    Body: $"Rejected: {ToOutcomeName(outcome)}",
                     WorkingDirectory: targetDir), ct)
                 .ConfigureAwait(false);
         }
@@ -518,8 +519,8 @@ internal sealed class HoneLoopRunner
                 BranchName: branchName,
                 FilePath: string.Empty,
                 Experiment: exp,
-                Outcome: outcome,
-                RevertDescription: $"Revert {outcome} experiment {exp}",
+                Outcome: ToOutcomeName(outcome),
+                RevertDescription: $"Revert {ToOutcomeName(outcome)} experiment {exp}",
                 TargetDir: targetDir,
                 QueueItemId: queueItemId),
             onMetadataUpdate: null,
@@ -529,7 +530,7 @@ internal sealed class HoneLoopRunner
             .ConfigureAwait(false);
 
         // Update state
-        if (string.Equals(outcome, "stale", StringComparison.Ordinal))
+        if (outcome == ExperimentOutcome.Stale)
         {
             state.StaleCount++;
         }
@@ -538,17 +539,9 @@ internal sealed class HoneLoopRunner
         state.FailedExperiments.Add(exp);
 
         // Record metadata
-        if (comparison is not null)
-        {
-            ctx.Experiments.Add(MakeExperimentMetadata(
-                exp, ctx.StartedAt, comparison.Outcome, branchName, baseBranch,
-                experimentMetrics, prResult: prResult, state));
-        }
-        else
-        {
-            ctx.Experiments.Add(MakeFailedExperimentMetadata(
-                exp, ctx.StartedAt, branchName, baseBranch, state));
-        }
+        ctx.Experiments.Add(MakeExperimentMetadata(
+            exp, ctx.StartedAt, outcome, branchName, baseBranch,
+            experimentMetrics, prResult: prResult, state));
 
         await SaveMetadataAsync(ctx.MetadataPath, ctx.TargetName, ctx.MachineInfo, ctx.Experiments, ct)
             .ConfigureAwait(false);
@@ -556,7 +549,7 @@ internal sealed class HoneLoopRunner
         // Legacy mode: all failures break the loop immediately
         if (!config.Loop.StackedDiffs)
         {
-            state.ExitReason = outcome;
+            state.ExitReason = ToOutcomeName(outcome);
             _ = CheckExitConditions(state, config);
             return ExperimentContext.Break;
         }
@@ -677,25 +670,28 @@ internal sealed class HoneLoopRunner
             StaleCount: state.StaleCount,
             ConsecutiveFailures: state.ConsecutiveFailures);
 
-    private static ExperimentMetadata MakeFailedExperimentMetadata(
-        int experiment,
-        DateTimeOffset startedAt,
-        string branchName,
-        string baseBranch,
-        LoopState state) =>
-        new(
-            Experiment: experiment,
-            StartedAt: startedAt.ToString("o"),
-            CompletedAt: DateTimeOffset.UtcNow.ToString("o"),
-            Outcome: null,
-            BranchName: branchName,
-            BaseBranch: baseBranch,
-            P95: null,
-            RPS: null,
-            PrNumber: null,
-            PrUrl: null,
-            StaleCount: state.StaleCount,
-            ConsecutiveFailures: state.ConsecutiveFailures);
+    private static ExperimentOutcome MapImplementerFailureOutcome(string exitReason) =>
+        exitReason switch
+        {
+            "build_failure" => ExperimentOutcome.BuildFailed,
+            "test_failure" => ExperimentOutcome.TestFailed,
+            _ => ExperimentOutcome.ImplementationFailed,
+        };
+
+    private static string ToOutcomeName(ExperimentOutcome outcome) =>
+        outcome switch
+        {
+            ExperimentOutcome.Improved => "improved",
+            ExperimentOutcome.Regressed => "regressed",
+            ExperimentOutcome.Stale => "stale",
+            ExperimentOutcome.EfficiencyWin => "efficiency_win",
+            ExperimentOutcome.ImplementationFailed => "implementation_failed",
+            ExperimentOutcome.BuildFailed => "build_failed",
+            ExperimentOutcome.TestFailed => "test_failed",
+            ExperimentOutcome.StartFailed => "start_failed",
+            ExperimentOutcome.LoadTestFailed => "load_test_failed",
+            ExperimentOutcome.Unknown or _ => "unknown",
+        };
 
     private async Task SaveMetadataAsync(
         string metadataPath,

@@ -18,6 +18,11 @@ public sealed class EnumTests
     [InlineData(ExperimentOutcome.Regressed, "\"Regressed\"")]
     [InlineData(ExperimentOutcome.Stale, "\"Stale\"")]
     [InlineData(ExperimentOutcome.EfficiencyWin, "\"EfficiencyWin\"")]
+    [InlineData(ExperimentOutcome.ImplementationFailed, "\"ImplementationFailed\"")]
+    [InlineData(ExperimentOutcome.BuildFailed, "\"BuildFailed\"")]
+    [InlineData(ExperimentOutcome.TestFailed, "\"TestFailed\"")]
+    [InlineData(ExperimentOutcome.StartFailed, "\"StartFailed\"")]
+    [InlineData(ExperimentOutcome.LoadTestFailed, "\"LoadTestFailed\"")]
     public void ExperimentOutcome_RoundTrips(ExperimentOutcome value, string expectedJson)
     {
         string json = JsonSerializer.Serialize(value, JsonOptions);

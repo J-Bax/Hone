@@ -47,6 +47,11 @@ public sealed class ComparisonResultTests
             ExperimentOutcome.Regressed,
             ExperimentOutcome.Stale,
             ExperimentOutcome.EfficiencyWin,
+            ExperimentOutcome.ImplementationFailed,
+            ExperimentOutcome.BuildFailed,
+            ExperimentOutcome.TestFailed,
+            ExperimentOutcome.StartFailed,
+            ExperimentOutcome.LoadTestFailed,
         ];
 
         foreach (ExperimentOutcome outcome in allOutcomes)
