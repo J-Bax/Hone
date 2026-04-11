@@ -15,6 +15,9 @@ public sealed record CompatibilityReport
 
     [JsonPropertyName("onboardingPlan")]
     public OnboardingPlanSection? OnboardingPlan { get; init; }
+
+    [JsonPropertyName("detectedConfig")]
+    public DetectedConfigSection? DetectedConfig { get; init; }
 }
 
 public sealed record CompatibilitySection
@@ -69,4 +72,22 @@ public sealed record OnboardingPlanSection
 {
     [JsonPropertyName("summary")]
     public string? Summary { get; init; }
+}
+
+public sealed record DetectedConfigSection
+{
+    [JsonPropertyName("sourceCodePaths")]
+    public IReadOnlyList<string>? SourceCodePaths { get; init; }
+
+    [JsonPropertyName("sourceFileGlob")]
+    public string? SourceFileGlob { get; init; }
+
+    [JsonPropertyName("solutionPath")]
+    public string? SolutionPath { get; init; }
+
+    [JsonPropertyName("projectPath")]
+    public string? ProjectPath { get; init; }
+
+    [JsonPropertyName("testProjectPath")]
+    public string? TestProjectPath { get; init; }
 }

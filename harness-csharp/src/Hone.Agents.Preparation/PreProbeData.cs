@@ -27,6 +27,15 @@ internal sealed class PreProbeData
 
     [JsonPropertyName("honeDirContents")]
     public List<string>? HoneDirContents { get; init; }
+
+    [JsonPropertyName("detectedSourceCodePaths")]
+    public List<string>? DetectedSourceCodePaths { get; init; }
+
+    [JsonPropertyName("detectedSourceFileGlob")]
+    public string? DetectedSourceFileGlob { get; init; }
+
+    [JsonPropertyName("detectedStack")]
+    public string? DetectedStack { get; init; }
 }
 
 /// <summary>

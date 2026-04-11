@@ -123,6 +123,22 @@ public sealed class CompatibilityAgent
             4. For build and test commands, run them from the target directory: {preProbe.TargetPath}
             5. Produce a complete compatibility assessment following your output schema.
 
+            ## Source Code Path Detection
+
+            The pre-probe data includes `detectedSourceCodePaths` — directories that were
+            automatically identified as containing source files. You MUST validate and refine
+            these paths:
+
+            1. Review each detected path — confirm it contains application logic (not generated
+               code, configuration-only, or third-party vendored code).
+            2. Look for source directories the detector may have missed — check project file
+               references, namespace declarations, and import/using statements.
+            3. Remove false positives (generated code, designer files, migration-only dirs).
+            4. Return the final refined list in `detectedConfig.sourceCodePaths` relative to
+               the project root directory (not the solution root).
+            5. Also set `detectedConfig.sourceFileGlob` to the appropriate file extension
+               pattern for the detected stack (e.g., "*.cs", "*.ts", "*.go").
+
             ## Important
 
             - Run the build command to verify CLI buildability.

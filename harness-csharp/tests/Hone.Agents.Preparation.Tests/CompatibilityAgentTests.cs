@@ -369,4 +369,75 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
         _ = capturedPrompt.Should().Contain("\"existingHoneDir\":true");
         _ = capturedPrompt.Should().Contain("config.yaml");
     }
+
+    // ── Pre-probe detects source code paths ─────────────────────────────
+
+    [Fact]
+    public async Task CompatibilityAgent_PreProbe_IncludesDetectedSourceCodePaths()
+    {
+        string targetDir = CreateTargetDir("source-paths", b => b
+            .AddFile("MyApp.sln", "solution")
+            .AddFile("src/MyApp/MyApp.csproj", "<Project />")
+            .AddFile("src/MyApp/Controllers/HomeController.cs", "class HomeController {}")
+            .AddFile("src/MyApp/Services/OrderService.cs", "class OrderService {}"));
+
+        string? capturedPrompt = null;
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                capturedPrompt = callInfo.Arg<AgentInvocation>().Prompt;
+                return Ok(JsonSerializer.Serialize(new CompatibilityReport
+                {
+                    Compatibility = new CompatibilitySection { Overall = "compatible", Score = 100 },
+                }));
+            });
+
+        CompatibilityAgent sut = CreateSut();
+        _ = await sut.AssessAsync(targetDir);
+
+        _ = capturedPrompt.Should().NotBeNull();
+        _ = capturedPrompt.Should().Contain("detectedSourceCodePaths");
+        _ = capturedPrompt.Should().Contain("Source Code Path Detection");
+    }
+
+    // ── Report includes detectedConfig with sourceCodePaths ─────────────
+
+    [Fact]
+    public async Task CompatibilityAgent_Report_ParsesDetectedConfig()
+    {
+        string targetDir = CreateTargetDir("detected-config", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        var report = new CompatibilityReport
+        {
+            Compatibility = new CompatibilitySection
+            {
+                Overall = "compatible",
+                Score = 90,
+            },
+            DetectedConfig = new DetectedConfigSection
+            {
+                SourceCodePaths = ["Controllers", "Services", "Data"],
+                SourceFileGlob = "*.cs",
+                SolutionPath = "MyApp.sln",
+                ProjectPath = "src/MyApp",
+                TestProjectPath = "tests/MyApp.Tests",
+            },
+        };
+
+        string json = JsonSerializer.Serialize(report);
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(Ok(json));
+
+        CompatibilityAgent sut = CreateSut();
+        CompatibilityResult result = await sut.AssessAsync(targetDir);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Report!.DetectedConfig.Should().NotBeNull();
+        _ = result.Report.DetectedConfig!.SourceCodePaths.Should().BeEquivalentTo(
+            ["Controllers", "Services", "Data"]);
+        _ = result.Report.DetectedConfig.SourceFileGlob.Should().Be("*.cs");
+        _ = result.Report.DetectedConfig.ProjectPath.Should().Be("src/MyApp");
+    }
 }
