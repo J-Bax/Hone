@@ -15,6 +15,7 @@ public sealed record HoneConfig(
     DiagnosticsConfig? Diagnostics = null,
     LoggingConfig? Logging = null,
     ImplementerConfig? Implementer = null,
+    CriticConfig? Critic = null,
     DotnetCountersConfig? DotnetCounters = null)
 {
     /// <summary>Gets the API configuration.</summary>
@@ -40,6 +41,9 @@ public sealed record HoneConfig(
 
     /// <summary>Gets the iterative implementer configuration.</summary>
     public ImplementerConfig Implementer { get; init; } = Implementer ?? new ImplementerConfig();
+
+    /// <summary>Gets the critic review gate configuration.</summary>
+    public CriticConfig Critic { get; init; } = Critic ?? new CriticConfig();
 
     /// <summary>Gets the .NET counters configuration.</summary>
     public DotnetCountersConfig DotnetCounters { get; init; } = DotnetCounters ?? new DotnetCountersConfig();

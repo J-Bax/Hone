@@ -13,6 +13,7 @@ internal static class ArtifactStager
         "classification-response.json",
         "fix-prompt.md",
         "fix-response.md",
+        "critic-response.json",
         "root-cause.md",
         "build.log",
         "e2e-tests.log",

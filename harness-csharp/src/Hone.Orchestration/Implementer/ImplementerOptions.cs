@@ -14,6 +14,8 @@ internal sealed record ImplementerOptions(
     string TargetDir,
     string? TargetName,
     ImplementerConfig Config,
+    CriticConfig CriticConfig,
     IReadOnlyList<string>? TestProjectPaths,
     string BranchPrefix,
-    string ResultsPath);
+    string ResultsPath,
+    string? ClassificationScope = null);
