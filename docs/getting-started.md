@@ -148,6 +148,23 @@ hone validate --target sample-api
 
 This loads and validates `sample-api/.hone/config.yaml` against the engine schema without running any experiments.
 
+### Onboard a New Target Project
+
+Use the built-in onboarding commands to assess and scaffold a new target:
+
+```sh
+# Assess compatibility (read-only)
+hone assess --target /path/to/my-api
+
+# Scaffold .hone/ directory from assessment
+hone init --target /path/to/my-api
+
+# Preview what would be generated
+hone init --target /path/to/my-api --dry-run
+```
+
+See [Onboarding Guide](onboarding.md) for the full reference including PowerShell harness migration.
+
 ### Targeting a Non-.NET API
 
 Hone works with any buildable API — not just .NET projects. Configure lifecycle hooks in `.hone/config.yaml` using `Command` or `Http` types instead of the built-in .NET hooks:
