@@ -296,8 +296,10 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
     [Fact]
     public async Task AnalyzersRunInParallel()
     {
-        // Arrange — two analyzers with artificial delay to prove parallelism
-        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Arrange — both analyzers must reach the same point before either can finish
+        using var bothStarted = new CountdownEvent(2);
+        var completionGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int completedAnalyzers = 0;
 
         IAnalyzerPlugin analyzerA = Substitute.For<IAnalyzerPlugin>();
         _ = analyzerA.Name.Returns("analyzer-a");
@@ -305,9 +307,9 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
         _ = analyzerA.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
-                // Signal that analyzer-a has started, then wait for barrier
-                _ = barrier.TrySetResult();
-                await Task.Delay(50, callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                _ = bothStarted.Signal();
+                await completionGate.Task.WaitAsync(callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                _ = Interlocked.Increment(ref completedAnalyzers);
                 return new AnalyzerResult(Success: true, Summary: "A done");
             });
 
@@ -317,10 +319,10 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
         _ = analyzerB.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
             .Returns(async callInfo =>
             {
-                // If running in parallel, analyzer-a should have started by now
-                bool aStarted = barrier.Task.IsCompleted;
-                await Task.Delay(50, callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
-                return new AnalyzerResult(Success: true, Summary: aStarted ? "B parallel" : "B sequential");
+                _ = bothStarted.Signal();
+                await completionGate.Task.WaitAsync(callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                _ = Interlocked.Increment(ref completedAnalyzers);
+                return new AnalyzerResult(Success: true, Summary: "B done");
             });
 
         DiagnosticMeasurementOrchestrator sut = CreateOrchestrator(
@@ -330,18 +332,26 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
         string outputDir = Path.Combine(TempDir, "analysis");
 
         // Act
-        DiagnosticAnalysisResult result = await sut.RunAnalyzersAsync(
+        Task<DiagnosticAnalysisResult> runTask = sut.RunAnalyzersAsync(
             [MakeAnalyzer("analyzer-a"), MakeAnalyzer("analyzer-b")],
             mergedData,
             currentMetrics: null,
             experiment: 1,
             outputDir: outputDir);
 
-        // Assert — both analyzers ran and B observed A already started (parallel)
+        bool bothReachedBarrier = bothStarted.Wait(TimeSpan.FromSeconds(1));
+        _ = completionGate.TrySetResult();
+
+        DiagnosticAnalysisResult result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Assert — neither analyzer could finish until both had started
+        _ = bothReachedBarrier.Should().BeTrue();
         _ = result.Success.Should().BeTrue();
         _ = result.Reports.Should().ContainKey("analyzer-a");
         _ = result.Reports.Should().ContainKey("analyzer-b");
-        _ = result.Reports["analyzer-b"].Summary.Should().Be("B parallel");
+        _ = result.Reports["analyzer-a"].Summary.Should().Be("A done");
+        _ = result.Reports["analyzer-b"].Summary.Should().Be("B done");
+        _ = completedAnalyzers.Should().Be(2);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
