@@ -29,7 +29,7 @@ However, the codebase has accumulated patterns typical of rapid feature iteratio
 | 2.3 | Artifact staging | ✅ Done — `Stage-ExperimentArtifacts.ps1` |
 | 2.4 | Health check helper | ✅ Done — `Wait-ApiHealthy` in `HoneHelpers.psm1` |
 | 2.5 | Write-Status extraction | ✅ Done — `HoneHelpers.psm1` module |
-| 3.1 | Main loop decomposition | ✅ Partial — `Invoke-FailureHandler.ps1` + helpers extracted; full phase modules deferred |
+| 3.1 | Main loop decomposition | ⬜ N/A — superseded by C# harness migration (`harness-csharp/`); no longer relevant to the legacy PowerShell harness |
 | 3.2 | PR body extraction | ✅ Done — `Build-PRBody.ps1` |
 | 4.1 | try/finally process cleanup | ✅ Done — diagnostic and scale test scripts |
 | 4.2 | Atomic queue writes | ✅ Done — temp file + `Move-Item` |
@@ -196,34 +196,9 @@ Each specific agent script becomes thin: build prompt → call runner → parse 
 
 ## 3. Tier 3 — Main Loop Decomposition ✅
 
-### 3.1 Break Invoke-HoneLoop.ps1 into Phase Modules ✅ Partial
+### 3.1 Break Invoke-HoneLoop.ps1 into Phase Modules ⬜ N/A — Superseded
 
-**Problem:** `Invoke-HoneLoop.ps1` is ~1900 lines and handles all 5 experiment phases, state management, PR creation, branch management, and summary reporting. It contains:
-- 6 inline helper functions
-- ~200 lines of rejection handling duplicated across 5 failure modes (build failure, test failure, API start failure, scale test failure, regression)
-- Complex stacked-diffs vs legacy mode branching throughout
-
-**Recommendation:** Extract each phase into its own script:
-
-| Module | Responsibility |
-|--------|---------------|
-| `Invoke-MeasurePhase.ps1` | Load baseline, run comparison for analysis context |
-| `Invoke-AnalyzePhase.ps1` | Diagnostic profiling + analysis agent + queue init |
-| `Invoke-ExperimentPhase.ps1` | Classification → fix → apply → build |
-| `Invoke-VerifyPhase.ps1` | E2E tests → scale tests → compare results |
-| `Invoke-PublishPhase.ps1` | Push branch, create PR (accepted or rejected) |
-| `Invoke-FailureHandler.ps1` | Unified revert + rejected PR creation + metadata update |
-
-The rejection handling is the highest-value extraction. The current code has **5 near-identical rejection blocks** (~80 lines each) for build failure, test failure, API start failure, scale test failure, and regression/stale. These all:
-1. Revert code via `Revert-ExperimentCode.ps1`
-2. Update metadata via `Update-OptimizationMetadata.ps1`
-3. Mark queue item done via `Manage-OptimizationQueue.ps1`
-4. Update branch/failure tracking variables
-5. Build rejected PR body
-6. Create rejected PR via `New-ExperimentPR`
-7. Check consecutive failure limit
-
-A single `Invoke-FailureHandler` taking `$outcome` and `$outcomeLabel` would eliminate ~400 lines of duplication.
+> **Status:** No longer relevant. The PowerShell harness has been superseded by the C# harness (`harness-csharp/`). The loop decomposition concern was addressed architecturally by the migration rather than by refactoring the legacy scripts. The failure-handler extraction (`Invoke-FailureHandler.ps1`) that was completed remains in `harness-legacy/` for reference.
 
 ### 3.2 Extract PR Body Construction ✅
 
