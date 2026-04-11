@@ -50,6 +50,7 @@ internal static class Program
             BuildResultsCommand(),
             BuildDashboardCommand(),
             BuildAssessCommand(),
+            BuildInitCommand(),
         };
 
         ParseResult parseResult = rootCommand.Parse(args);
@@ -426,6 +427,120 @@ internal static class Program
 
             string overall = result.Report?.Compatibility?.Overall ?? "unknown";
             return overall.Equals("incompatible", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        });
+
+        return command;
+    }
+
+    // ── init ──────────────────────────────────────────────────────────────
+
+    private static Command BuildInitCommand()
+    {
+        Option<string> targetOption = CreateTargetOption();
+        var modelOption = new Option<string?>("--model")
+        {
+            Description = "Override the AI model for assessment and scaffolding",
+        };
+        var forceOption = new Option<bool>("--force")
+        {
+            Description = "Proceed even with low compatibility score and overwrite existing files",
+        };
+        var dryRunOption = new Option<bool>("--dry-run")
+        {
+            Description = "Show what would be generated without writing files",
+        };
+
+        var command = new Command("init", "Assess and scaffold .hone/ configuration for a target project")
+        {
+            targetOption,
+            modelOption,
+            forceOption,
+            dryRunOption,
+        };
+
+        command.SetAction(async (pr, ct) =>
+        {
+            string targetPath = pr.GetValue(targetOption)!;
+            string? model = pr.GetValue(modelOption);
+            bool force = pr.GetValue(forceOption);
+            bool dryRun = pr.GetValue(dryRunOption);
+
+            string targetDir = Path.GetFullPath(targetPath);
+            if (!Directory.Exists(targetDir))
+            {
+                await Console.Error.WriteLineAsync($"Target directory not found: {targetDir}").ConfigureAwait(false);
+                return 2;
+            }
+
+            var config = new HoneConfig();
+            IProcessRunner processRunner = new ProcessRunner();
+            IAgentRunner agentRunner = new CopilotCliAgentRunner();
+            var agentInvoker = new AgentInvoker(agentRunner, config.Agents);
+            var compatibilityAgent = new CompatibilityAgent(agentInvoker, processRunner);
+            var scaffolderAgent = new ScaffolderAgent(agentInvoker);
+            var manager = new OnboardingManager(compatibilityAgent, scaffolderAgent);
+
+            var options = new OnboardingOptions(Model: model, Force: force, DryRun: dryRun);
+            OnboardingResult result = await manager.OnboardAsync(targetPath, options, ct)
+                .ConfigureAwait(false);
+
+            // Render assessment if available
+            if (result.Assessment?.Report is not null)
+            {
+                AssessmentViewModel viewModel = MapToViewModel(result.Assessment.Report);
+                var writer = new SystemConsoleColorWriter();
+                AssessmentRenderer.Render(viewModel, writer);
+                Console.WriteLine();
+            }
+
+            if (!result.Success)
+            {
+                await Console.Error.WriteLineAsync(result.Message).ConfigureAwait(false);
+                return result.Assessment is { Success: false } ? 1 : 2;
+            }
+
+            if (dryRun && result.Scaffold?.Plan?.Files is not null)
+            {
+                Console.WriteLine("Files that would be created:");
+                foreach (string filePath in result.Scaffold.Plan.Files.Keys)
+                {
+                    Console.WriteLine($"  + {filePath}");
+                }
+
+                Console.WriteLine();
+                Console.WriteLine(result.Message);
+            }
+            else if (result.WriteResult is not null)
+            {
+                if (result.WriteResult.Written.Count > 0)
+                {
+                    Console.WriteLine("Files written:");
+                    foreach (string filePath in result.WriteResult.Written)
+                    {
+                        Console.WriteLine($"  + {filePath}");
+                    }
+                }
+
+                if (result.WriteResult.Skipped.Count > 0)
+                {
+                    Console.WriteLine("Files skipped (already exist, use --force to overwrite):");
+                    foreach (string filePath in result.WriteResult.Skipped)
+                    {
+                        Console.WriteLine($"  ~ {filePath}");
+                    }
+                }
+
+                Console.WriteLine();
+                Console.WriteLine(result.Message);
+            }
+
+            if (result.Scaffold?.Plan?.Notes is not null)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"Notes: {result.Scaffold.Plan.Notes}");
+            }
+
+            return 0;
         });
 
         return command;
