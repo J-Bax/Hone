@@ -79,7 +79,7 @@ ScaleTest:
 Hooks:
   Prepare:
     Type: Command
-    Command: .hone/hooks/prepare.sh
+    Value: .hone/hooks/prepare.sh
   Build:
     Type: BuiltIn
     Name: dotnet-build
@@ -115,7 +115,7 @@ Hook `Type` values must match the HookType enum exactly:
 | Type | When to use |
 |------|-------------|
 | `BuiltIn` | Standard operations with a matching shared hook (requires `Name`) |
-| `Command` | Custom shell command or script (requires `Command`) |
+| `Command` | Custom shell command or script (requires `Value`) |
 | `Http` | HTTP request to the running API (requires `Method`, `Path`) |
 | `Skip` | Phase not needed for this target |
 
