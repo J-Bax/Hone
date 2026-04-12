@@ -50,11 +50,15 @@ public sealed class MigratorAgentTests(ITestOutputHelper output) : HoneTestBase(
             },
         };
 
-    private static PreProbeData CreatePreProbeWithLegacyHarness(string targetPath)
+    private static PreProbeData CreatePreProbeWithLegacyHarness(
+        string targetPath,
+        params string[] hookScripts)
     {
         // Actual PS files are already created by the TargetBuilder
         string configPath = Path.Combine(targetPath, "config.psd1");
-        string buildScript = Path.Combine(targetPath, "hooks", "Invoke-Build.ps1");
+        string[] discoveredHookScripts = hookScripts.Length > 0
+            ? hookScripts
+            : [Path.Combine(targetPath, "hooks", "Invoke-Build.ps1")];
 
         return new PreProbeData
         {
@@ -70,7 +74,7 @@ public sealed class MigratorAgentTests(ITestOutputHelper output) : HoneTestBase(
             {
                 Detected = true,
                 ConfigPsd1Path = configPath,
-                HookScripts = [buildScript],
+                HookScripts = discoveredHookScripts,
             },
         };
     }
@@ -78,14 +82,14 @@ public sealed class MigratorAgentTests(ITestOutputHelper output) : HoneTestBase(
     // ── Reads PS files and includes content in prompt ────────────────────
 
     [Fact]
-    public async Task MigrateAsync_ReadsPsFilesAndIncludesContentInPrompt()
+    public async Task MigrateAsync_ReadsRelativeHookScriptPathAgainstTargetPath()
     {
         string targetDir = CreateTargetDir("migrator-prompt", b => b
             .AddFile("MyApp.sln", "solution")
             .AddFile("config.psd1", "@{ Name = 'test-project'; BaseBranch = 'main' }")
             .AddFile("hooks/Invoke-Build.ps1", "dotnet build $SolutionPath --configuration Release"));
 
-        PreProbeData preProbe = CreatePreProbeWithLegacyHarness(targetDir);
+        PreProbeData preProbe = CreatePreProbeWithLegacyHarness(targetDir, "hooks/Invoke-Build.ps1");
         CompatibilityReport report = CreateMinimalReport();
 
         string? capturedPrompt = null;
@@ -113,7 +117,48 @@ public sealed class MigratorAgentTests(ITestOutputHelper output) : HoneTestBase(
         _ = capturedPrompt.Should().Contain("Name = 'test-project'");
         // Should contain hook script content
         _ = capturedPrompt.Should().Contain("dotnet build $SolutionPath");
-        _ = capturedPrompt.Should().Contain("Invoke-Build.ps1");
+        _ = capturedPrompt.Should().Contain("### hooks/Invoke-Build.ps1");
+    }
+
+    [Fact]
+    public async Task MigrateAsync_ReadsAbsoluteHookScriptPathAndSkipsMissingHooks()
+    {
+        string targetDir = CreateTargetDir("migrator-absolute-hooks", b => b
+            .AddFile("MyApp.sln", "solution")
+            .AddFile("config.psd1", "@{ Name = 'test-project'; BaseBranch = 'main' }")
+            .AddFile("hooks/Invoke-Build.ps1", "dotnet build $SolutionPath --configuration Release"));
+
+        string absoluteHookPath = Path.Combine(targetDir, "hooks", "Invoke-Build.ps1");
+        PreProbeData preProbe = CreatePreProbeWithLegacyHarness(
+            targetDir,
+            absoluteHookPath,
+            "hooks/Missing.ps1");
+
+        string? capturedPrompt = null;
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                capturedPrompt = callInfo.Arg<AgentInvocation>().Prompt;
+                return Ok(JsonSerializer.Serialize(new MigrationPlan
+                {
+                    Config = new Dictionary<string, object>(StringComparer.Ordinal)
+                    {
+                        ["Name"] = "test-project",
+                    },
+                    HookMappings = [],
+                    Warnings = [],
+                    Notes = "test",
+                }));
+            });
+
+        MigratorAgent sut = CreateSut();
+        MigrationResult result = await sut.MigrateAsync(preProbe, CreateMinimalReport());
+
+        _ = result.Success.Should().BeTrue();
+        _ = capturedPrompt.Should().NotBeNull();
+        _ = capturedPrompt.Should().Contain("dotnet build $SolutionPath");
+        _ = capturedPrompt.Should().Contain($"### {absoluteHookPath}");
+        _ = capturedPrompt.Should().NotContain("Missing.ps1");
     }
 
     // ── Returns plan on valid JSON response ─────────────────────────────

@@ -168,16 +168,19 @@ public sealed class MigratorAgent
 
             foreach (string scriptPath in preProbe.LegacyHarness.HookScripts)
             {
-                if (!File.Exists(scriptPath))
+                string resolvedScriptPath = Path.IsPathRooted(scriptPath)
+                    ? scriptPath
+                    : Path.GetFullPath(scriptPath, preProbe.TargetPath);
+
+                if (!File.Exists(resolvedScriptPath))
                 {
                     continue;
                 }
 
-                string scriptContent = await File.ReadAllTextAsync(scriptPath, ct)
+                string scriptContent = await File.ReadAllTextAsync(resolvedScriptPath, ct)
                     .ConfigureAwait(false);
-                string fileName = Path.GetFileName(scriptPath);
 
-                sb.AppendLine(CultureInfo.InvariantCulture, $"### {fileName}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"### {scriptPath}");
                 sb.AppendLine();
                 sb.AppendLine("```powershell");
                 sb.AppendLine(scriptContent);
