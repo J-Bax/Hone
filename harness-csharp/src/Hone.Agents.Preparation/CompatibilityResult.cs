@@ -6,4 +6,5 @@ namespace Hone.Agents.Preparation;
 public sealed record CompatibilityResult(
     bool Success,
     string Message,
-    CompatibilityReport? Report);
+    CompatibilityReport? Report,
+    PreProbeData? PreProbe = null);

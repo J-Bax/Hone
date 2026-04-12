@@ -54,7 +54,8 @@ public sealed class CompatibilityAgent
             return new CompatibilityResult(
                 Success: false,
                 Message: $"Target directory not found: {fullPath}",
-                Report: null);
+                Report: null,
+                PreProbe: null);
         }
 
         // Pre-probe
@@ -82,7 +83,8 @@ public sealed class CompatibilityAgent
             return new CompatibilityResult(
                 Success: false,
                 Message: "Agent timed out",
-                Report: null);
+                Report: null,
+                PreProbe: preProbe);
         }
 
         if (!agentResult.Success || agentResult.ParsedResult is null)
@@ -90,7 +92,8 @@ public sealed class CompatibilityAgent
             return new CompatibilityResult(
                 Success: false,
                 Message: "Agent response was not valid JSON",
-                Report: null);
+                Report: null,
+                PreProbe: preProbe);
         }
 
         CompatibilityReport report = agentResult.ParsedResult;
@@ -99,7 +102,8 @@ public sealed class CompatibilityAgent
         return new CompatibilityResult(
             Success: true,
             Message: message,
-            Report: report);
+            Report: report,
+            PreProbe: preProbe);
     }
 
     private static string BuildPrompt(PreProbeData preProbe)

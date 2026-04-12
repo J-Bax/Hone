@@ -229,17 +229,17 @@ the JSON, no code blocks wrapping it. The JSON must have this exact structure:
   "implementationPlan": {
     "hookRecommendations": {
       "prepare": {
-        "type": "Script|Shared|Command|Http|Skip",
+        "type": "BuiltIn|Command|Http|Skip",
         "name": "shared-hook-name-if-applicable",
         "path": ".hone/hooks/prepare.ps1",
         "reason": "Why this type was chosen"
       },
-      "start": { "type": "Shared", "name": "dotnet-start", "reason": "Standard .NET launch via dotnet run" },
-      "ready": { "type": "Shared", "name": "health-poll", "reason": "Health endpoint detected" },
+      "start": { "type": "BuiltIn", "name": "dotnet-start", "reason": "Standard .NET launch via dotnet run" },
+      "ready": { "type": "BuiltIn", "name": "health-poll", "reason": "Health endpoint detected" },
       "warmup": { "type": "Skip", "reason": "Warmup handled by ScaleTest.WarmupEnabled" },
-      "active": { "type": "Shared", "name": "k6-run", "reason": "Standard k6 execution" },
+      "active": { "type": "BuiltIn", "name": "k6-run", "reason": "Standard k6 execution" },
       "cooldown": { "type": "Http", "method": "POST", "path": "/diag/gc", "reason": "GC trigger" },
-      "stop": { "type": "Shared", "name": "dotnet-stop", "reason": "Standard .NET shutdown" },
+      "stop": { "type": "BuiltIn", "name": "dotnet-stop", "reason": "Standard .NET shutdown" },
       "cleanup": { "type": "Skip", "reason": "No cleanup needed" }
     },
     "requiredCodeChanges": [
@@ -255,7 +255,7 @@ the JSON, no code blocks wrapping it. The JSON must have this exact structure:
       "authSetup": "None needed",
       "notes": "Focus on read-heavy endpoints first for baseline"
     },
-    "configTemplate": "Generated .hone/config.psd1 content as a string"
+    "configTemplate": "Generated .hone/config.yaml content as a string"
   }
 }
 ```
@@ -321,5 +321,6 @@ script should do.
    actionable steps — not vague advice.
 
 7. **Config template.** The `configTemplate` field should contain a complete,
-   valid `.hone/config.psd1` file content that the user could drop in directly
+   valid `.hone/config.yaml` file content (YAML format with PascalCase keys matching
+   C# property names) that the user could drop in directly
    (with minor adjustments). Use the detected values from your investigation.

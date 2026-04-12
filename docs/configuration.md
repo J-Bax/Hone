@@ -16,6 +16,8 @@ Target-level overrides are section-level: a target that overrides `Api.BaseUrl` 
 
 All YAML keys use **PascalCase** to match C# record property names, which `YamlDotNet` deserializes via its `PascalCaseNamingConvention`.
 
+> **Tip:** For new projects, use `hone init --target <path>` to auto-generate `.hone/config.yaml` from a compatibility assessment. See [Onboarding Guide](onboarding.md).
+
 ## Key Configuration Sections
 
 - **Api** — Solution path, project path, test project, base URL, health endpoint, results directory, source code paths
