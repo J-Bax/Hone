@@ -2,6 +2,7 @@ using FluentAssertions;
 using Hone.Core.Models;
 using Hone.Core.Observability;
 using Hone.TestInfrastructure;
+using System.Text;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -52,6 +53,31 @@ public sealed class HoneEventBusTests(ITestOutputHelper output) : HoneTestBase(o
         _ = sink3.Events.Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task EventBus_SerializesSharedConsoleSinkWrites_DuringConcurrentEmission()
+    {
+        var bus = new HoneEventBus();
+        var writer = new DetectConcurrentWriteTextWriter();
+        var sink = new ConsoleEventSink(writer);
+
+        bus.Register(sink);
+
+        using var start = new ManualResetEventSlim(initialState: false);
+        Task[] tasks = [.. Enumerable.Range(0, 32)
+            .Select(i => Task.Run(() =>
+            {
+                start.Wait();
+                bus.Emit(new StatusMessage(
+                    $"message-{i}", LogLevel.Info, DateTimeOffset.UtcNow, Experiment: i));
+            })),];
+
+        start.Set();
+        await Task.WhenAll(tasks);
+
+        _ = writer.ConcurrentWriteDetected.Should().BeFalse();
+        _ = writer.LineCount.Should().Be(32);
+    }
+
     private sealed class RecordingSink : IHoneEventSink
     {
         public List<HoneEvent> Events { get; } = [];
@@ -67,6 +93,35 @@ public sealed class HoneEventBusTests(ITestOutputHelper output) : HoneTestBase(o
         public void Emit(HoneEvent @event)
         {
             throw new InvalidOperationException("Sink failure");
+        }
+    }
+
+    private sealed class DetectConcurrentWriteTextWriter : TextWriter
+    {
+        private int _activeWriters;
+
+        public override Encoding Encoding => Encoding.UTF8;
+
+        public bool ConcurrentWriteDetected { get; private set; }
+
+        public int LineCount { get; private set; }
+
+        public override void WriteLine(string? value)
+        {
+            if (Interlocked.Increment(ref _activeWriters) != 1)
+            {
+                ConcurrentWriteDetected = true;
+            }
+
+            try
+            {
+                _ = SpinWait.SpinUntil(static () => false, millisecondsTimeout: 10);
+                LineCount++;
+            }
+            finally
+            {
+                _ = Interlocked.Decrement(ref _activeWriters);
+            }
         }
     }
 }
