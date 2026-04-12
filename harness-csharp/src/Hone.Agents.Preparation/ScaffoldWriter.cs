@@ -31,6 +31,12 @@ public static class ScaffoldWriter
 
         var written = new List<string>();
         var skipped = new List<string>();
+        string normalizedTargetRoot = Path.GetFullPath(targetPath);
+
+        if (!normalizedTargetRoot.EndsWith(Path.DirectorySeparatorChar))
+        {
+            normalizedTargetRoot += Path.DirectorySeparatorChar;
+        }
 
         if (plan.Files is null || plan.Files.Count == 0)
         {
@@ -44,7 +50,22 @@ public static class ScaffoldWriter
             string relativePath = entry.Key;
             string content = entry.Value;
 
-            string fullPath = Path.Combine(targetPath, relativePath);
+            if (Path.IsPathRooted(relativePath))
+            {
+                throw new ArgumentException(
+                    $"Scaffold file path '{relativePath}' must be a target-relative path and cannot be rooted.",
+                    nameof(plan));
+            }
+
+            string fullPath = Path.GetFullPath(Path.Combine(targetPath, relativePath));
+
+            if (!fullPath.StartsWith(normalizedTargetRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Scaffold file path '{relativePath}' escapes the target root '{targetPath}'.",
+                    nameof(plan));
+            }
+
             string? directory = Path.GetDirectoryName(fullPath);
 
             if (directory is not null)

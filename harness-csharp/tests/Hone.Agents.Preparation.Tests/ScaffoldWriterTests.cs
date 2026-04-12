@@ -132,4 +132,41 @@ public sealed class ScaffoldWriterTests(ITestOutputHelper output) : HoneTestBase
         _ = result.Skipped.Should().HaveCount(1);
         _ = result.Skipped.Should().Contain(".hone/config.yaml");
     }
+
+    [Fact]
+    public async Task WriteAsync_RejectsTraversalPaths()
+    {
+        string targetDir = CreateTargetDir("write-traversal");
+
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["../outside.txt"] = "escaped",
+        };
+
+        Func<Task> act = () => ScaffoldWriter.WriteAsync(
+            targetDir, CreatePlan(files), force: false);
+
+        FluentAssertions.Specialized.ExceptionAssertions<ArgumentException> assertion =
+            await act.Should().ThrowAsync<ArgumentException>().ConfigureAwait(true);
+        _ = assertion.Which.Message.Should().Contain("escapes the target root");
+    }
+
+    [Fact]
+    public async Task WriteAsync_RejectsRootedPaths()
+    {
+        string targetDir = CreateTargetDir("write-rooted");
+        string rootedPath = Path.Combine(Path.GetPathRoot(targetDir)!, "outside.txt");
+
+        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [rootedPath] = "escaped",
+        };
+
+        Func<Task> act = () => ScaffoldWriter.WriteAsync(
+            targetDir, CreatePlan(files), force: false);
+
+        FluentAssertions.Specialized.ExceptionAssertions<ArgumentException> assertion =
+            await act.Should().ThrowAsync<ArgumentException>().ConfigureAwait(true);
+        _ = assertion.Which.Message.Should().Contain("cannot be rooted");
+    }
 }
