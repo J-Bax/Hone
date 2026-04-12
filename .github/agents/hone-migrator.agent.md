@@ -55,7 +55,7 @@ no code blocks wrapping it. The JSON must have this exact structure:
     "Api": {
       "BaseUrl": "http://localhost:0",
       "HealthEndpoint": "/health",
-      "StartupTimeoutSec": 60,
+      "StartupTimeout": 60,
       "ResultsPath": ".hone/results"
     },
     "Hooks": {
@@ -63,9 +63,10 @@ no code blocks wrapping it. The JSON must have this exact structure:
       "Test": { "Type": "BuiltIn", "Name": "dotnet-test" }
     },
     "ScaleTest": {
-      "ScenarioDir": ".hone/scenarios",
-      "Duration": "30s",
-      "Vus": 10
+      "ScenarioPath": ".hone/scenarios/baseline.js",
+      "WarmupScenarioPath": ".hone/scenarios/warmup.js",
+      "MeasuredRuns": 5,
+      "CooldownSeconds": 3
     }
   },
   "hookMappings": [
@@ -99,10 +100,11 @@ Map PowerShell data types to YAML/C# equivalents:
 | `SourceCodePaths`        | `SourceCodePaths`        |
 | `HealthEndpoint`         | `Api.HealthEndpoint`     |
 | `BaseUrl`                | `Api.BaseUrl`            |
-| `StartupTimeoutSec`      | `Api.StartupTimeoutSec`  |
-| `ScenarioDir`            | `ScaleTest.ScenarioDir`  |
-| `Duration`               | `ScaleTest.Duration`     |
-| `Vus`                    | `ScaleTest.Vus`          |
+| `StartupTimeout`         | `Api.StartupTimeout`     |
+| `ScenarioPath`           | `ScaleTest.ScenarioPath` |
+| `WarmupScenarioPath`     | `ScaleTest.WarmupScenarioPath` |
+| `MeasuredRuns`           | `ScaleTest.MeasuredRuns` |
+| `CooldownSeconds`        | `ScaleTest.CooldownSeconds` |
 
 All config keys use **PascalCase**.
 
