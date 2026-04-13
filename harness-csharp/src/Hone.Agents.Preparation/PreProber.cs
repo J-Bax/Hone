@@ -54,15 +54,27 @@ internal static class PreProber
         string honeDir = Path.Combine(fullPath, ".hone");
         bool honeExists = Directory.Exists(honeDir);
 
+        Dictionary<string, List<string>> projectFiles = ScanProjectFiles(fullPath);
+        SourceCodePathDetector.DetectionResult detection = SourceCodePathDetector.Detect(fullPath, projectFiles);
+
         var data = new PreProbeData
         {
             TargetPath = fullPath,
             Git = git,
-            ProjectFiles = ScanProjectFiles(fullPath),
+            ProjectFiles = projectFiles,
             TopLevelDirs = ListTopLevelDirectories(fullPath),
             TopLevelFiles = ListTopLevelFiles(fullPath),
             ExistingHoneDir = honeExists,
             HoneDirContents = honeExists ? ListHoneDirContents(honeDir) : null,
+            DetectedSourceCodePaths = detection.SourceCodePaths.Count > 0
+                ? [.. detection.SourceCodePaths]
+                : null,
+            DetectedSourceFileGlob = !string.IsNullOrEmpty(detection.SourceFileGlob)
+                ? detection.SourceFileGlob
+                : null,
+            DetectedStack = !string.IsNullOrEmpty(detection.DetectedStack) && !string.Equals(detection.DetectedStack, "unknown", StringComparison.Ordinal)
+                ? detection.DetectedStack
+                : null,
             LegacyHarness = ProbeLegacyHarness(fullPath),
         };
 

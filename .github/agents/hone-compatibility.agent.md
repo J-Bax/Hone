@@ -58,6 +58,12 @@ then actively investigate using the tools available to you.
 - Locate the primary buildable project/entry point
 - **Run the build command** and report success/failure
 - Identify source code directories containing application logic
+- **Validate and refine `detectedSourceCodePaths`** from the pre-probe data:
+  - Confirm each path contains application logic (controllers, services, models, data access)
+  - Remove directories that only contain generated code, config files, or migrations
+  - Add any source directories the automated detector missed (check project references,
+    namespace declarations, and folder conventions)
+  - Return the refined list in `detectedConfig.sourceCodePaths` (relative to project root)
 
 ### Phase 3: Test Suite
 

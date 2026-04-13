@@ -56,9 +56,53 @@ public static class AnalysisContextBuilder
         string projectPath = Path.Combine(targetDir, api.ProjectPath);
         string glob = string.IsNullOrEmpty(api.SourceFileGlob) ? "*.*" : api.SourceFileGlob;
 
+        List<string> results = CollectFromPaths(targetDir, projectPath, api.SourceCodePaths, glob);
+
+        // Fallback: if configured paths yielded zero files, auto-detect source directories
+        if (results.Count == 0 && Directory.Exists(projectPath))
+        {
+            foreach (string fallbackGlob in GetFallbackSourceFileGlobs(glob))
+            {
+                IReadOnlyList<string> detectedPaths = DetectSourceDirectories(projectPath, fallbackGlob);
+                results = CollectFromPaths(targetDir, projectPath, detectedPaths, fallbackGlob);
+
+                if (results.Count > 0)
+                {
+                    break;
+                }
+            }
+        }
+
+        return results;
+    }
+
+    private static List<string> GetFallbackSourceFileGlobs(string preferredGlob)
+    {
+        List<string> globs = [];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(preferredGlob) && seen.Add(preferredGlob))
+        {
+            globs.Add(preferredGlob);
+        }
+
+        foreach (string glob in CommonFallbackSourceFileGlobs)
+        {
+            if (!string.IsNullOrWhiteSpace(glob) && seen.Add(glob))
+            {
+                globs.Add(glob);
+            }
+        }
+
+        return globs;
+    }
+
+    private static List<string> CollectFromPaths(
+        string targetDir, string projectPath, IReadOnlyList<string> subPaths, string glob)
+    {
         List<string> results = [];
 
-        foreach (string subPath in api.SourceCodePaths)
+        foreach (string subPath in subPaths)
         {
             string searchDir = Path.Combine(projectPath, subPath);
             if (!Directory.Exists(searchDir))
@@ -68,7 +112,6 @@ public static class AnalysisContextBuilder
 
             foreach (string file in Directory.EnumerateFiles(searchDir, glob, SearchOption.AllDirectories))
             {
-                // Return paths relative to targetDir
                 string relative = Path.GetRelativePath(targetDir, file);
                 results.Add(relative);
             }
@@ -76,6 +119,92 @@ public static class AnalysisContextBuilder
 
         return results;
     }
+
+    /// <summary>
+    /// Lightweight auto-detection of source directories under a project path.
+    /// Scans for subdirectories containing files matching the glob, excluding
+    /// well-known non-source directories (build output, dependencies, tests).
+    /// </summary>
+    internal static IReadOnlyList<string> DetectSourceDirectories(string projectPath, string glob)
+    {
+        List<string> detected = [];
+
+        try
+        {
+            foreach (string dir in Directory.EnumerateDirectories(projectPath, "*", SearchOption.AllDirectories))
+            {
+                string dirName = Path.GetFileName(dir);
+
+                if (IsExcludedDirectory(dirName))
+                {
+                    continue;
+                }
+
+                // Check if any parent in the relative path is excluded
+                string relative = Path.GetRelativePath(projectPath, dir);
+                if (HasExcludedAncestor(relative))
+                {
+                    continue;
+                }
+
+                bool hasFiles = Directory.EnumerateFiles(dir, glob, SearchOption.TopDirectoryOnly).Any();
+                if (hasFiles)
+                {
+                    detected.Add(relative.Replace('\\', '/'));
+                }
+            }
+        }
+        catch (IOException)
+        {
+            // Expected: inaccessible directories during filesystem enumeration
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Expected: insufficient permissions for filesystem enumeration
+        }
+
+        detected.Sort(StringComparer.OrdinalIgnoreCase);
+        return detected;
+    }
+
+    private static bool IsExcludedDirectory(string dirName) =>
+        dirName.StartsWith('.') ||
+        FallbackExcludedDirs.Contains(dirName) ||
+        dirName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) ||
+        dirName.EndsWith(".Tests", StringComparison.OrdinalIgnoreCase) ||
+        dirName.EndsWith("Test", StringComparison.OrdinalIgnoreCase) ||
+        dirName.EndsWith(".Test", StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasExcludedAncestor(string relativePath)
+    {
+        foreach (string segment in relativePath.Replace('\\', '/').Split('/'))
+        {
+            if (IsExcludedDirectory(segment))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly HashSet<string> FallbackExcludedDirs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bin", "obj", "out", "build", "dist", "publish", "artifacts",
+        "node_modules", "packages", "vendor", "__pycache__",
+        "wwwroot", "static", "Migrations", "migrations",
+    };
+
+    private static readonly string[] CommonFallbackSourceFileGlobs =
+    [
+        "*.cs",
+        "*.ts",
+        "*.js",
+        "*.go",
+        "*.py",
+        "*.rs",
+        "*.java",
+    ];
 
     // ── Counter metrics context ──────────────────────────────────────────────
 

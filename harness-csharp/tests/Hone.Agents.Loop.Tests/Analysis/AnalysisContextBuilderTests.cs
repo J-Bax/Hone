@@ -555,4 +555,87 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
         int zetaPos = result.ProfilingContext.IndexOf("### Zeta", StringComparison.Ordinal);
         _ = alphaPos.Should().BeLessThan(zetaPos, "reports should be sorted alphabetically");
     }
+
+    // ── Source path fallback (auto-detection) ────────────────────────────
+
+    [Fact]
+    public async Task ContextBuilder_FallsBackToAutoDetection_WhenConfiguredPathsYieldZeroFiles()
+    {
+        // Configure paths that don't exist, but provide real source dirs
+        string targetDir = CreateTargetDir("fallback", b => b
+            .AddFile("myapi/Handlers/GetItems.cs", "// handler")
+            .AddFile("myapi/Repositories/ItemRepo.cs", "// repo"));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers", "Models"],  // These don't exist
+                SourceFileGlob: "*.cs"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        // Fallback should detect Handlers and Repositories
+        _ = result.SourceFilePaths.Should().HaveCountGreaterThan(0);
+        _ = result.SourceFilePaths.Should().Contain(p => p.Contains("GetItems.cs", StringComparison.Ordinal));
+        _ = result.SourceFilePaths.Should().Contain(p => p.Contains("ItemRepo.cs", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ContextBuilder_FallsBackToCommonRuntimeGlobs_WhenConfiguredGlobMissesNodeSource()
+    {
+        string targetDir = CreateTargetDir("fallback-node", b => b
+            .AddFile("myapi/src/server.ts", "// typescript entrypoint"));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers", "Models"]));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.SourceFilePaths.Should().ContainSingle()
+            .Which.Should().Contain("server.ts");
+    }
+
+    [Fact]
+    public async Task ContextBuilder_DoesNotFallback_WhenConfiguredPathsYieldFiles()
+    {
+        string targetDir = CreateTargetDir("no-fallback", b => b
+            .AddFile("myapi/Controllers/HomeController.cs", "// controller")
+            .AddFile("myapi/Extra/SomeService.cs", "// extra service"));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers"],
+                SourceFileGlob: "*.cs"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        // Should only have the configured path, not auto-detected extras
+        _ = result.SourceFilePaths.Should().ContainSingle()
+            .Which.Should().Contain("HomeController.cs");
+    }
+
+    [Fact]
+    public void DetectSourceDirectories_ExcludesTestAndBuildDirs()
+    {
+        string targetDir = CreateTargetDir("detect-exclude", b => b
+            .AddFile("src/MyApp/Services/AuthService.cs", "// auth")
+            .AddFile("src/MyApp/bin/Debug/SomeFile.cs", "// build output")
+            .AddFile("src/MyApp.Tests/UnitTest1.cs", "// test"));
+
+        string projectPath = Path.Combine(targetDir, "src/MyApp");
+
+        IReadOnlyList<string> detected =
+            AnalysisContextBuilder.DetectSourceDirectories(projectPath, "*.cs");
+
+        _ = detected.Should().Contain("Services");
+        _ = detected.Should().NotContain(p =>
+            p.Contains("bin", StringComparison.OrdinalIgnoreCase) ||
+            p.Contains("Test", StringComparison.OrdinalIgnoreCase));
+    }
 }
