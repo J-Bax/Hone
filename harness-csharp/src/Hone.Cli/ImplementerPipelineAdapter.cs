@@ -257,7 +257,12 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
             timeout: null,
             ct).ConfigureAwait(false);
 
-        return result.Output ?? string.Empty;
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Output))
+        {
+            return string.Empty;
+        }
+
+        return result.Output;
     }
 
     /// <summary>

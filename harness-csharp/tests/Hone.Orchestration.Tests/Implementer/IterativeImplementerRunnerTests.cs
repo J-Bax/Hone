@@ -530,6 +530,10 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         _ = result.Result.Success.Should().BeTrue();
         _ = result.Result.AttemptCount.Should().Be(1);
         _ = result.Result.ExitReason.Should().Be("success");
+        _ = result.Result.IterationLog.Should().NotBeNull();
+        _ = result.Result.IterationLog!.Attempts.Should().ContainSingle();
+        _ = result.Result.IterationLog.Attempts[0].Stage.Should().Be("critic");
+        _ = result.Result.IterationLog.Attempts[0].Outcome.Should().Be("passed");
 
         // Critic was called once
         _ = await pipeline.Received(1).InvokeCriticAgentAsync(
@@ -629,6 +633,10 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
 
         // Assert — critic never called
         _ = result.Result.Success.Should().BeTrue();
+        _ = result.Result.IterationLog.Should().NotBeNull();
+        _ = result.Result.IterationLog!.Attempts.Should().ContainSingle();
+        _ = result.Result.IterationLog.Attempts[0].Stage.Should().Be("test");
+        _ = result.Result.IterationLog.Attempts[0].Outcome.Should().Be("passed");
         _ = await pipeline.DidNotReceive().InvokeCriticAgentAsync(
             Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>());
     }

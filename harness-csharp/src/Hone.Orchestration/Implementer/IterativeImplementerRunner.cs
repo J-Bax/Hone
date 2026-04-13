@@ -316,6 +316,8 @@ internal sealed class IterativeImplementerRunner
             }
 
             // ── Critic review ────────────────────────────────────────────────
+            string successStage = "test";
+
             if (options.CriticConfig.Enabled && iterativeMode)
             {
                 string criticResponsePath = Path.Combine(attemptDir, "critic-response.json");
@@ -366,12 +368,14 @@ internal sealed class IterativeImplementerRunner
                         exitReason: "retry_budget_exhausted",
                         failureDetail: lastFailureDetail, entries);
                 }
+
+                successStage = "critic";
             }
 
             // ── Success ─────────────────────────────────────────────────────
             timer.Stop();
             entries.Add(new AttemptLogEntry(
-                attempt, "test", "passed",
+                attempt, successStage, "passed",
                 RoundDuration(timer), diffLines,
                 CommitSha: applyResult.CommitSha,
                 Artifacts: artifacts));

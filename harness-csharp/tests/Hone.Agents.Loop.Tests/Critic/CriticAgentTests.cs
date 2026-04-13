@@ -272,4 +272,34 @@ public sealed class CriticAgentTests(ITestOutputHelper output) : HoneTestBase(ou
         _ = result.Approved.Should().BeFalse("missing verdict should default to reject");
         _ = result.Verdict.Should().Be("REJECT");
     }
+
+    [Fact]
+    public async Task ReviewAsync_InvalidVerdict_ReturnsReject()
+    {
+        string json = JsonSerializer.Serialize(new
+        {
+            verdict = "maybe",
+            confidence = "low",
+            issues = Array.Empty<object>(),
+            summary = "Unsure about this change.",
+        });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        CriticAgent sut = CreateSut();
+
+        CriticResult result = await sut.ReviewAsync(
+            filePath: "Controllers/ItemsController.cs",
+            explanation: "Optimize endpoint",
+            diff: "+ some change",
+            classificationScope: "NARROW",
+            targetLabel: "SampleApi",
+            workingDirectory: null);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Approved.Should().BeFalse();
+        _ = result.Verdict.Should().Be("REJECT");
+        _ = result.Summary.Should().Contain("invalid verdict 'maybe'");
+    }
 }

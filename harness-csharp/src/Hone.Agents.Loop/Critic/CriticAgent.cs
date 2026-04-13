@@ -61,11 +61,24 @@ public sealed class CriticAgent(AgentInvoker agentInvoker)
         }
 
         CriticResponse parsed = result.ParsedResult;
-        string verdict = parsed.Verdict?.ToUpperInvariant() ?? "REJECT";
-        bool approved = string.Equals(verdict, "APPROVE", StringComparison.Ordinal);
+        string? rawVerdict = parsed.Verdict?.Trim();
+        bool approved = string.Equals(rawVerdict, "APPROVE", StringComparison.OrdinalIgnoreCase);
+        bool rejected = string.Equals(rawVerdict, "REJECT", StringComparison.OrdinalIgnoreCase);
+        string verdict = approved ? "APPROVE" : "REJECT";
 
         IReadOnlyList<CriticIssue> issues = MapIssues(parsed.Issues);
         string? feedback = FormatBlockingFeedback(issues);
+        string? summary = parsed.Summary;
+
+        if (!approved && !rejected)
+        {
+            string invalidVerdictDetail = string.IsNullOrWhiteSpace(rawVerdict)
+                ? "Critic response did not include a valid verdict; treating response as REJECT."
+                : $"Critic response used invalid verdict '{rawVerdict}'; treating response as REJECT.";
+            summary = string.IsNullOrWhiteSpace(summary)
+                ? invalidVerdictDetail
+                : $"{invalidVerdictDetail} {summary}";
+        }
 
         return new CriticResult(
             Success: true,
@@ -74,7 +87,7 @@ public sealed class CriticAgent(AgentInvoker agentInvoker)
             Confidence: parsed.Confidence,
             Issues: issues,
             Feedback: feedback,
-            Summary: parsed.Summary,
+            Summary: summary,
             Response: result.RawOutput);
     }
 
