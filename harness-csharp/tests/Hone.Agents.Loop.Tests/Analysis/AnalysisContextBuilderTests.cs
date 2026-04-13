@@ -582,6 +582,24 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
     }
 
     [Fact]
+    public async Task ContextBuilder_FallsBackToCommonRuntimeGlobs_WhenConfiguredGlobMissesNodeSource()
+    {
+        string targetDir = CreateTargetDir("fallback-node", b => b
+            .AddFile("myapi/src/server.ts", "// typescript entrypoint"));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "myapi",
+                SourceCodePaths: ["Controllers", "Models"]));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.SourceFilePaths.Should().ContainSingle()
+            .Which.Should().Contain("server.ts");
+    }
+
+    [Fact]
     public async Task ContextBuilder_DoesNotFallback_WhenConfiguredPathsYieldFiles()
     {
         string targetDir = CreateTargetDir("no-fallback", b => b

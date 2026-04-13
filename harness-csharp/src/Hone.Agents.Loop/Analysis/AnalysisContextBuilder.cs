@@ -61,11 +61,40 @@ public static class AnalysisContextBuilder
         // Fallback: if configured paths yielded zero files, auto-detect source directories
         if (results.Count == 0 && Directory.Exists(projectPath))
         {
-            IReadOnlyList<string> detectedPaths = DetectSourceDirectories(projectPath, glob);
-            results = CollectFromPaths(targetDir, projectPath, detectedPaths, glob);
+            foreach (string fallbackGlob in GetFallbackSourceFileGlobs(glob))
+            {
+                IReadOnlyList<string> detectedPaths = DetectSourceDirectories(projectPath, fallbackGlob);
+                results = CollectFromPaths(targetDir, projectPath, detectedPaths, fallbackGlob);
+
+                if (results.Count > 0)
+                {
+                    break;
+                }
+            }
         }
 
         return results;
+    }
+
+    private static List<string> GetFallbackSourceFileGlobs(string preferredGlob)
+    {
+        List<string> globs = [];
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(preferredGlob) && seen.Add(preferredGlob))
+        {
+            globs.Add(preferredGlob);
+        }
+
+        foreach (string glob in CommonFallbackSourceFileGlobs)
+        {
+            if (!string.IsNullOrWhiteSpace(glob) && seen.Add(glob))
+            {
+                globs.Add(glob);
+            }
+        }
+
+        return globs;
     }
 
     private static List<string> CollectFromPaths(
@@ -165,6 +194,17 @@ public static class AnalysisContextBuilder
         "node_modules", "packages", "vendor", "__pycache__",
         "wwwroot", "static", "Migrations", "migrations",
     };
+
+    private static readonly string[] CommonFallbackSourceFileGlobs =
+    [
+        "*.cs",
+        "*.ts",
+        "*.js",
+        "*.go",
+        "*.py",
+        "*.rs",
+        "*.java",
+    ];
 
     // ── Counter metrics context ──────────────────────────────────────────────
 
