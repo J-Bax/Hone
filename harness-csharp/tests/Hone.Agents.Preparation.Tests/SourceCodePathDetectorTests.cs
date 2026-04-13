@@ -139,6 +139,31 @@ public sealed class SourceCodePathDetectorTests(ITestOutputHelper output) : Hone
         _ = result.SourceCodePaths.Should().Contain("src/models");
     }
 
+    [Fact]
+    public void Detect_NodeProject_WithoutTsConfig_FindsJavaScriptDirectories()
+    {
+        string targetDir = CreateTargetDir("node-js-proj", b => b
+            .AddFile("package.json", "{}")
+            .AddFile("src/controllers/userController.js", "export class UserController {}")
+            .AddFile("src/services/authService.js", "export class AuthService {}")
+            .AddFile("src/models/user.js", "export const user = {};")
+            .AddFile("src/services/authService.test.js", "test('auth', () => {})"));
+
+        var projectFiles = new Dictionary<string, List<string>>(StringComparer.Ordinal)
+        {
+            ["node-package"] = ["package.json"],
+        };
+
+        SourceCodePathDetector.DetectionResult result =
+            SourceCodePathDetector.Detect(targetDir, projectFiles);
+
+        _ = result.DetectedStack.Should().Be("node");
+        _ = result.SourceFileGlob.Should().Be("*.js");
+        _ = result.SourceCodePaths.Should().Contain("src/controllers");
+        _ = result.SourceCodePaths.Should().Contain("src/services");
+        _ = result.SourceCodePaths.Should().Contain("src/models");
+    }
+
     // ── Python stack detection ──────────────────────────────────────────
 
     [Fact]

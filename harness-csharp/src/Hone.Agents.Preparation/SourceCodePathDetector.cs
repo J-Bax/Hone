@@ -58,7 +58,8 @@ internal static class SourceCodePathDetector
         IReadOnlyDictionary<string, List<string>> projectFiles)
     {
         string stack = InferStack(projectFiles);
-        if (!StackGlobs.TryGetValue(stack, out StackGlobInfo? globInfo))
+        StackGlobInfo? globInfo = GetGlobInfo(stack, projectFiles);
+        if (globInfo is null)
         {
             return DetectionResult.Empty;
         }
@@ -70,6 +71,25 @@ internal static class SourceCodePathDetector
         List<string> paths = [.. sourceDirs.Take(MaxPaths)];
 
         return new DetectionResult(paths, globInfo.PrimaryGlob, stack);
+    }
+
+    private static StackGlobInfo? GetGlobInfo(
+        string stack,
+        IReadOnlyDictionary<string, List<string>> projectFiles)
+    {
+        if (!StackGlobs.TryGetValue(stack, out StackGlobInfo? globInfo))
+        {
+            return null;
+        }
+
+        if (!string.Equals(stack, "node", StringComparison.OrdinalIgnoreCase))
+        {
+            return globInfo;
+        }
+
+        return projectFiles.ContainsKey("node-tsconfig")
+            ? globInfo
+            : new("*.js", ["*.spec.js", "*.test.js"]);
     }
 
     private static void ScanDirectory(
