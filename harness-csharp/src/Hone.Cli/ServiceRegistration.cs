@@ -2,6 +2,7 @@ using Hone.Agents.CopilotCli;
 using Hone.Agents.Core;
 using Hone.Agents.Loop.Analysis;
 using Hone.Agents.Loop.Classification;
+using Hone.Agents.Loop.Critic;
 using Hone.Agents.Loop.Implementer;
 using Hone.Agents.Preparation;
 using Hone.Core.Config;
@@ -58,6 +59,7 @@ internal static class ServiceRegistration
         var analysisAgent = new AnalysisAgent(agentInvoker);
         var classificationAgent = new ClassificationAgent(agentInvoker);
         var implementerAgent = new ImplementerAgent(agentInvoker);
+        var criticAgent = new CriticAgent(agentInvoker);
         var compatibilityAgent = new CompatibilityAgent(agentInvoker, processRunner);
 
         // ── Measurement ──────────────────────────────────────────────────
@@ -101,6 +103,7 @@ internal static class ServiceRegistration
 
         IImplementerPipeline implementerPipeline = new ImplementerPipelineAdapter(
             implementerAgent,
+            criticAgent,
             versionControl,
             processRunner,
             eventBus,

@@ -8,4 +8,5 @@ public sealed record AgentConfig(
     string? AnalysisModel = "claude-opus-4.6",
     string? ClassificationModel = "claude-opus-4.6",
     string? ImplementerModel = "claude-sonnet-4.6",
+    string? CriticModel = null,
     int AgentTimeoutSec = 1800);

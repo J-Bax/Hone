@@ -1,5 +1,6 @@
 using System.Globalization;
 
+using Hone.Agents.Loop.Critic;
 using Hone.Agents.Loop.Implementer;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
@@ -16,6 +17,7 @@ namespace Hone.Cli;
 internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
 {
     private readonly ImplementerAgent _implementerAgent;
+    private readonly CriticAgent _criticAgent;
     private readonly IVersionControl _versionControl;
     private readonly IProcessRunner _processRunner;
     private readonly IHoneEventSink _eventSink;
@@ -25,6 +27,7 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
 
     internal ImplementerPipelineAdapter(
         ImplementerAgent implementerAgent,
+        CriticAgent criticAgent,
         IVersionControl versionControl,
         IProcessRunner processRunner,
         IHoneEventSink eventSink,
@@ -33,6 +36,7 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
         TargetConfig? targetConfig = null)
     {
         _implementerAgent = implementerAgent;
+        _criticAgent = criticAgent;
         _versionControl = versionControl;
         _processRunner = processRunner;
         _eventSink = eventSink;
@@ -205,6 +209,60 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
 
         return [.. result.Output
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),];
+    }
+
+    /// <inheritdoc />
+    public async Task<CriticStepResult> InvokeCriticAgentAsync(CriticStepInput input, CancellationToken ct)
+    {
+        CriticResult result = await _criticAgent.ReviewAsync(
+            input.FilePath,
+            input.Explanation,
+            input.Diff,
+            input.ClassificationScope,
+            targetLabel: input.TargetName ?? Path.GetFileName(input.TargetDir) ?? "target",
+            workingDirectory: input.TargetDir,
+            ct).ConfigureAwait(false);
+
+        // Persist raw critic response alongside other attempt artifacts
+        string? responsePath = null;
+        if (input.AdditionalResponsePath is not null)
+        {
+            string? dir = Path.GetDirectoryName(input.AdditionalResponsePath);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            await File.WriteAllTextAsync(input.AdditionalResponsePath, result.Response, ct)
+                .ConfigureAwait(false);
+            responsePath = input.AdditionalResponsePath;
+        }
+
+        return new CriticStepResult(
+            Success: result.Success,
+            Approved: result.Approved,
+            Feedback: result.Feedback,
+            Summary: result.Summary,
+            Confidence: result.Confidence,
+            ResponsePath: responsePath);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> GetDiffContentAsync(string workingDir, string filePath, CancellationToken ct)
+    {
+        ProcessResult result = await _processRunner.RunAsync(
+            "git",
+            ["diff", "HEAD~1", "--", filePath],
+            workingDir,
+            timeout: null,
+            ct).ConfigureAwait(false);
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Output))
+        {
+            return string.Empty;
+        }
+
+        return result.Output;
     }
 
     /// <summary>

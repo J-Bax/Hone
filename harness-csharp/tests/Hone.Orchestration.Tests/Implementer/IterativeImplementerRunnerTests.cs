@@ -22,6 +22,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         int maxAttempts = 1,
         double maxDiffGrowthFactor = 0,
         bool testFileGuard = false,
+        bool criticEnabled = false,
         IReadOnlyList<string>? testProjectPaths = null,
         string resultsPath = "results",
         string branchPrefix = "hone/opt")
@@ -35,6 +36,7 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
             TargetDir: targetDir,
             TargetName: null,
             Config: new ImplementerConfig(maxAttempts, maxDiffGrowthFactor, testFileGuard),
+            CriticConfig: new CriticConfig(Enabled: criticEnabled),
             TestProjectPaths: testProjectPaths,
             BranchPrefix: branchPrefix,
             ResultsPath: resultsPath);
@@ -59,6 +61,16 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
 
     private static TestStepResult FailTest(string output = "Assert.Equal failed") =>
         new(Success: false, Output: output);
+
+    private static CriticStepResult OkCritic() =>
+        new(Success: true, Approved: true, Feedback: null,
+            Summary: "LGTM", Confidence: "high", ResponsePath: null);
+
+    private static CriticStepResult RejectCritic(
+        string feedback = "Cache lacks invalidation",
+        string summary = "Missing cache invalidation") =>
+        new(Success: true, Approved: false, Feedback: feedback,
+            Summary: summary, Confidence: "high", ResponsePath: null);
 
     // ── 1. SingleAttempt_BuildPasses_Success ────────────────────────────────
 
@@ -479,5 +491,199 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         _ = attempts[2].GetProperty("attempt").GetInt32().Should().Be(3);
         _ = attempts[2].GetProperty("stage").GetString().Should().Be("test");
         _ = attempts[2].GetProperty("outcome").GetString().Should().Be("passed");
+    }
+
+    // ── 9. CriticApproves_Succeeds ──────────────────────────────────────────
+
+    [Fact]
+    public async Task CriticApproves_Succeeds()
+    {
+        // Arrange
+        string targetDir = CreateTargetDir("critic-approve", b =>
+            b.AddFile("src/Service.cs", "// original code"));
+
+        IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
+        IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkFix()));
+        _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkApply()));
+        _ = pipeline.GetDiffLineCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(10));
+        _ = pipeline.BuildProjectAsync(Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkBuild()));
+        _ = pipeline.RunTestsAsync(Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkTest()));
+        _ = pipeline.GetDiffContentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("+ optimized code"));
+        _ = pipeline.InvokeCriticAgentAsync(Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkCritic()));
+
+        ImplementerOptions options = MakeOptions(targetDir, maxAttempts: 3, criticEnabled: true);
+        var runner = new IterativeImplementerRunner(pipeline, sink);
+
+        // Act
+        ImplementerRunResult result = await runner.RunAsync(options);
+
+        // Assert
+        _ = result.Result.Success.Should().BeTrue();
+        _ = result.Result.AttemptCount.Should().Be(1);
+        _ = result.Result.ExitReason.Should().Be("success");
+        _ = result.Result.IterationLog.Should().NotBeNull();
+        _ = result.Result.IterationLog!.Attempts.Should().ContainSingle();
+        _ = result.Result.IterationLog.Attempts[0].Stage.Should().Be("critic");
+        _ = result.Result.IterationLog.Attempts[0].Outcome.Should().Be("passed");
+
+        // Critic was called once
+        _ = await pipeline.Received(1).InvokeCriticAgentAsync(
+            Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── 10. CriticRejects_RetriesWithFeedback ───────────────────────────────
+
+    [Fact]
+    public async Task CriticRejects_RetriesWithFeedback()
+    {
+        // Arrange
+        string targetDir = CreateTargetDir("critic-reject", b =>
+            b.AddFile("src/Service.cs", "// original code"));
+
+        IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
+        IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkFix()));
+        _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkApply()));
+        _ = pipeline.GetDiffLineCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(10));
+        _ = pipeline.BuildProjectAsync(Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkBuild()));
+        _ = pipeline.RunTestsAsync(Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkTest()));
+        _ = pipeline.GetDiffContentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("+ optimized code"));
+
+        // Critic: reject first, then approve
+        _ = pipeline.InvokeCriticAgentAsync(Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Task.FromResult(RejectCritic()),
+                Task.FromResult(OkCritic()));
+
+        ImplementerOptions options = MakeOptions(targetDir, maxAttempts: 3, criticEnabled: true);
+        var runner = new IterativeImplementerRunner(pipeline, sink);
+
+        // Act
+        ImplementerRunResult result = await runner.RunAsync(options);
+
+        // Assert
+        _ = result.Result.Success.Should().BeTrue();
+        _ = result.Result.AttemptCount.Should().Be(2);
+
+        // Revert was called once (after critic rejection)
+        await pipeline.Received(1).RevertForRetryAsync(
+            Arg.Any<RevertInput>(), Arg.Any<CancellationToken>());
+
+        // Second fix call received critic feedback
+        IReadOnlyList<FixStepInput> fixCalls =
+            [.. pipeline.ReceivedCalls()
+                .Where(c => string.Equals(c.GetMethodInfo().Name, nameof(IImplementerPipeline.InvokeImplementerAgentAsync), StringComparison.Ordinal))
+                .Select(c => (FixStepInput)c.GetArguments()[0]!),];
+
+        _ = fixCalls.Should().HaveCount(2);
+        _ = fixCalls[0].PreviousErrors.Should().BeNull();
+        _ = fixCalls[1].PreviousErrors.Should().NotBeNull()
+            .And.Contain("Critic Review Feedback");
+
+        // Iteration log records critic rejection
+        _ = result.Result.IterationLog.Should().NotBeNull();
+        _ = result.Result.IterationLog!.Attempts[0].Stage.Should().Be("critic");
+        _ = result.Result.IterationLog.Attempts[0].Outcome.Should().Be("rejected");
+    }
+
+    // ── 11. CriticDisabled_SkipsCriticStep ──────────────────────────────────
+
+    [Fact]
+    public async Task CriticDisabled_SkipsCriticStep()
+    {
+        // Arrange
+        string targetDir = CreateTargetDir("critic-disabled", b =>
+            b.AddFile("src/Service.cs", "// original code"));
+
+        IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
+        IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkFix()));
+        _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkApply()));
+        _ = pipeline.GetDiffLineCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(10));
+        _ = pipeline.BuildProjectAsync(Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkBuild()));
+        _ = pipeline.RunTestsAsync(Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkTest()));
+
+        ImplementerOptions options = MakeOptions(targetDir, maxAttempts: 3, criticEnabled: false);
+        var runner = new IterativeImplementerRunner(pipeline, sink);
+
+        // Act
+        ImplementerRunResult result = await runner.RunAsync(options);
+
+        // Assert — critic never called
+        _ = result.Result.Success.Should().BeTrue();
+        _ = result.Result.IterationLog.Should().NotBeNull();
+        _ = result.Result.IterationLog!.Attempts.Should().ContainSingle();
+        _ = result.Result.IterationLog.Attempts[0].Stage.Should().Be("test");
+        _ = result.Result.IterationLog.Attempts[0].Outcome.Should().Be("passed");
+        _ = await pipeline.DidNotReceive().InvokeCriticAgentAsync(
+            Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>());
+    }
+
+    // ── 12. CriticRejectsAllAttempts_BudgetExhausted ────────────────────────
+
+    [Fact]
+    public async Task CriticRejectsAllAttempts_BudgetExhausted()
+    {
+        // Arrange
+        string targetDir = CreateTargetDir("critic-exhaust", b =>
+            b.AddFile("src/Service.cs", "// original code"));
+
+        IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
+        IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+
+        _ = pipeline.InvokeImplementerAgentAsync(Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkFix()));
+        _ = pipeline.ApplySuggestionAsync(Arg.Any<ApplyStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkApply()));
+        _ = pipeline.GetDiffLineCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(10));
+        _ = pipeline.BuildProjectAsync(Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkBuild()));
+        _ = pipeline.RunTestsAsync(Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OkTest()));
+        _ = pipeline.GetDiffContentAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("+ bad code"));
+
+        // Critic always rejects
+        _ = pipeline.InvokeCriticAgentAsync(Arg.Any<CriticStepInput>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(RejectCritic()));
+
+        ImplementerOptions options = MakeOptions(targetDir, maxAttempts: 2, criticEnabled: true);
+        var runner = new IterativeImplementerRunner(pipeline, sink);
+
+        // Act
+        ImplementerRunResult result = await runner.RunAsync(options);
+
+        // Assert
+        _ = result.Result.Success.Should().BeFalse();
+        _ = result.Result.ExitReason.Should().Be("retry_budget_exhausted");
+        _ = result.Result.AttemptCount.Should().Be(2);
+        _ = result.Result.FailureDetail.Should().Contain("cache invalidation");
+
+        // Revert called once (after first critic rejection; not after last)
+        await pipeline.Received(1).RevertForRetryAsync(
+            Arg.Any<RevertInput>(), Arg.Any<CancellationToken>());
     }
 }

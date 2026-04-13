@@ -315,10 +315,67 @@ internal sealed class IterativeImplementerRunner
                     failureDetail: lastFailureDetail, entries);
             }
 
+            // ── Critic review ────────────────────────────────────────────────
+            string successStage = "test";
+
+            if (options.CriticConfig.Enabled && iterativeMode)
+            {
+                string criticResponsePath = Path.Combine(attemptDir, "critic-response.json");
+                string diff = await _pipeline.GetDiffContentAsync(
+                    options.TargetDir, targetFile, ct).ConfigureAwait(false);
+
+                CriticStepResult criticResult = await _pipeline.InvokeCriticAgentAsync(
+                    new CriticStepInput(
+                        targetFile, options.Explanation, diff,
+                        options.ClassificationScope,
+                        options.TargetName, options.TargetDir,
+                        options.Experiment, attempt, criticResponsePath),
+                    ct).ConfigureAwait(false);
+
+                if (criticResult.ResponsePath is not null)
+                {
+                    artifacts["criticResponse"] = ToRelativePath(
+                        criticResult.ResponsePath, options.TargetDir);
+                }
+
+                if (!criticResult.Approved)
+                {
+                    string criticDetail = criticResult.Summary ?? "Critic rejected the implementation.";
+                    string criticFeedback = criticResult.Feedback is not null
+                        ? $"## Critic Review Feedback\n\n{criticResult.Feedback}"
+                        : $"## Critic Review Feedback\n\n{criticDetail}";
+
+                    bool canRetry = HandleStepFailure(
+                        "critic", "rejected", criticDetail, criticFeedback,
+                        timer, attempt, maxAttempts, diffLines, applyResult.CommitSha,
+                        artifacts, entries, out lastFailureDetail, out previousErrors);
+
+                    currentFileContent = await ReadFileContentAsync(fullTargetPath, ct)
+                        .ConfigureAwait(false);
+
+                    if (canRetry)
+                    {
+                        await _pipeline.RevertForRetryAsync(
+                            new RevertInput(branchName, targetFile,
+                                options.Experiment, options.TargetDir),
+                            ct).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    return BuildFinalResult(
+                        options, branchName, targetFile, fullTargetPath,
+                        lastCommitSha, success: false,
+                        exitReason: "retry_budget_exhausted",
+                        failureDetail: lastFailureDetail, entries);
+                }
+
+                successStage = "critic";
+            }
+
             // ── Success ─────────────────────────────────────────────────────
             timer.Stop();
             entries.Add(new AttemptLogEntry(
-                attempt, "test", "passed",
+                attempt, successStage, "passed",
                 RoundDuration(timer), diffLines,
                 CommitSha: applyResult.CommitSha,
                 Artifacts: artifacts));

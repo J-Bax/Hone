@@ -238,9 +238,11 @@ internal sealed class HoneLoopRunner
                 TargetDir: targetDir,
                 TargetName: targetName,
                 Config: config.Implementer,
+                CriticConfig: config.Critic,
                 TestProjectPaths: null,
                 BranchPrefix: config.Loop.BranchPrefix,
-                ResultsPath: resultsPath), ct)
+                ResultsPath: resultsPath,
+                ClassificationScope: item.Scope.ToString().ToUpperInvariant()), ct)
             .ConfigureAwait(false);
 
         if (!implResult.Result.Success)

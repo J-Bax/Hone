@@ -519,6 +519,7 @@ public sealed class HoneLoopIntegrationTests(ITestOutputHelper output)
             TargetDir: targetDir,
             TargetName: null,
             Config: new ImplementerConfig(MaxAttempts: 2, TestFileGuard: true),
+            CriticConfig: new CriticConfig(Enabled: false),
             TestProjectPaths: ["tests/"],
             BranchPrefix: "hone/experiment",
             ResultsPath: resultsPath);

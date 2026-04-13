@@ -36,6 +36,7 @@ public sealed class AgentInvoker
             ["AnalysisModel"] = agentConfig.AnalysisModel,
             ["ClassificationModel"] = agentConfig.ClassificationModel,
             ["ImplementerModel"] = agentConfig.ImplementerModel,
+            ["CriticModel"] = agentConfig.CriticModel,
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     }
 

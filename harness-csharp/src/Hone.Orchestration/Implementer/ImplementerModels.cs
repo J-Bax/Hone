@@ -40,6 +40,17 @@ internal sealed record RevertInput(
     int Experiment,
     string TargetDir);
 
+internal sealed record CriticStepInput(
+    string FilePath,
+    string Explanation,
+    string Diff,
+    string? ClassificationScope,
+    string? TargetName,
+    string TargetDir,
+    int Experiment,
+    int Attempt,
+    string? AdditionalResponsePath);
+
 // ── Step results ────────────────────────────────────────────────────────────
 
 internal sealed record FixStepResult(
@@ -58,6 +69,14 @@ internal sealed record ApplyStepResult(
 internal sealed record BuildStepResult(bool Success, string? Output);
 
 internal sealed record TestStepResult(bool Success, string? Output);
+
+internal sealed record CriticStepResult(
+    bool Success,
+    bool Approved,
+    string? Feedback,
+    string? Summary,
+    string? Confidence,
+    string? ResponsePath);
 
 // ── Internal log types (for iteration-log.json serialisation) ───────────────
 

@@ -164,6 +164,7 @@ Agents:
   AnalysisModel: "claude-opus-4.6"
   ClassificationModel: "claude-opus-4.6"    # needs strong reasoning for scope decisions
   ImplementerModel: "claude-sonnet-4.6"
+  CriticModel: "claude-opus-4.6"         # cross-vendor diversity catches generator blind spots
 
   # Maximum seconds to wait for an agent invocation before killing it
   AgentTimeoutSec: 1800
@@ -180,6 +181,14 @@ Implementer:
 
   # Reject iterations that modify files under test-project paths.
   TestFileGuard: true
+
+# ── Critic Review Gate ────────────────────────────────────────────────────────
+# AI code-review gate that evaluates optimization diffs for correctness,
+# scope adherence, and performance risk before proceeding to load testing.
+Critic:
+  # Enable the critic review gate. When disabled, the iterative fixer
+  # proceeds directly from passing build+test to measurement.
+  Enabled: true
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 Logging:
