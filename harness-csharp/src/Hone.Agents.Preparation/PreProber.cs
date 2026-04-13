@@ -75,6 +75,7 @@ internal static class PreProber
             DetectedStack = !string.IsNullOrEmpty(detection.DetectedStack) && !string.Equals(detection.DetectedStack, "unknown", StringComparison.Ordinal)
                 ? detection.DetectedStack
                 : null,
+            LegacyHarness = ProbeLegacyHarness(fullPath),
         };
 
         return data;
@@ -292,5 +293,77 @@ internal static class PreProber
         }
 
         return contents;
+    }
+
+    /// <summary>
+    /// Detects a PowerShell-based legacy harness by searching for config.psd1,
+    /// Invoke-*.ps1 scripts, and harness-legacy/ directories.
+    /// </summary>
+    internal static LegacyHarnessInfo ProbeLegacyHarness(string targetPath)
+    {
+        string? configPsd1Path = FindConfigPsd1(targetPath);
+        List<string> hookScripts = FindInvokeScripts(targetPath);
+        bool hasLegacyDir = Directory.Exists(Path.Combine(targetPath, "harness-legacy"));
+
+        bool detected = configPsd1Path is not null || hookScripts.Count > 0 || hasLegacyDir;
+
+        return new LegacyHarnessInfo
+        {
+            Detected = detected,
+            ConfigPsd1Path = configPsd1Path,
+            HookScripts = hookScripts.Count > 0 ? hookScripts : null,
+        };
+    }
+
+    private static string? FindConfigPsd1(string targetPath)
+    {
+        // Search target path and up to 2 parent directories
+        string? current = targetPath;
+
+        for (int i = 0; i <= 2 && current is not null; i++)
+        {
+            string candidate = Path.Combine(current, "config.psd1");
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            current = Path.GetDirectoryName(current);
+        }
+
+        return null;
+    }
+
+    private static List<string> FindInvokeScripts(string targetPath)
+    {
+        var scripts = new List<string>();
+        int targetPathLength = targetPath.Length;
+
+        try
+        {
+            var options = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                MaxRecursionDepth = MaxDirectoryDepth,
+                IgnoreInaccessible = true,
+                MatchCasing = MatchCasing.CaseInsensitive,
+            };
+
+            foreach (string file in Directory.EnumerateFiles(targetPath, "Invoke-*.ps1", options))
+            {
+                string relative = file[targetPathLength..].TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                scripts.Add(relative);
+            }
+        }
+        catch (IOException)
+        {
+            // Expected: inaccessible or missing directories during filesystem enumeration
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Expected: insufficient permissions for filesystem enumeration
+        }
+
+        return scripts;
     }
 }

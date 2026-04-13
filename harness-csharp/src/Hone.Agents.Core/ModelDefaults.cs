@@ -10,5 +10,7 @@ public static class ModelDefaults
     public const string Implementation = "claude-opus-4.6";
     public const string Compatibility = "claude-opus-4.6";
     public const string Default = "claude-sonnet-4.6";
+    public const string Scaffolder = "claude-sonnet-4.6";
+    public const string Migrator = "claude-sonnet-4.6";
     public const string CopilotCli = "claude-sonnet-4.6";
 }

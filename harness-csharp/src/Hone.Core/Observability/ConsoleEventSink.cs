@@ -12,6 +12,7 @@ public sealed class ConsoleEventSink(TextWriter writer) : IHoneEventSink
 {
     private const string BoxDrawingChars = "━═─╔╚╗╝║╠╣╦╩";
 
+    private readonly Lock _lock = new();
     private readonly TextWriter _writer = writer ?? throw new ArgumentNullException(nameof(writer));
 
     /// <inheritdoc/>
@@ -31,7 +32,10 @@ public sealed class ConsoleEventSink(TextWriter writer) : IHoneEventSink
             _ => FormatTimestamped(honeEvent.Timestamp, honeEvent.ToString()),
         };
 
-        _writer.WriteLine(line);
+        lock (_lock)
+        {
+            _writer.WriteLine(line);
+        }
     }
 
     private static string FormatStatusMessage(StatusMessage sm)

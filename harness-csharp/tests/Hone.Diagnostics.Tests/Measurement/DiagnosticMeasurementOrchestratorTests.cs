@@ -293,6 +293,67 @@ public sealed class DiagnosticMeasurementOrchestratorTests(ITestOutputHelper out
         _ = result.Reports.Should().NotContainKey("bad-analyzer");
     }
 
+    [Fact]
+    public async Task AnalyzersRunInParallel()
+    {
+        // Arrange — both analyzers must reach the same point before either can finish
+        using var bothStarted = new CountdownEvent(2);
+        var completionGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int completedAnalyzers = 0;
+
+        IAnalyzerPlugin analyzerA = Substitute.For<IAnalyzerPlugin>();
+        _ = analyzerA.Name.Returns("analyzer-a");
+        _ = analyzerA.RequiredCollectors.Returns([]);
+        _ = analyzerA.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                _ = bothStarted.Signal();
+                await completionGate.Task.WaitAsync(callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                _ = Interlocked.Increment(ref completedAnalyzers);
+                return new AnalyzerResult(Success: true, Summary: "A done");
+            });
+
+        IAnalyzerPlugin analyzerB = Substitute.For<IAnalyzerPlugin>();
+        _ = analyzerB.Name.Returns("analyzer-b");
+        _ = analyzerB.RequiredCollectors.Returns([]);
+        _ = analyzerB.AnalyzeAsync(Arg.Any<AnalyzerContext>(), Arg.Any<CancellationToken>())
+            .Returns(async callInfo =>
+            {
+                _ = bothStarted.Signal();
+                await completionGate.Task.WaitAsync(callInfo.Arg<CancellationToken>()).ConfigureAwait(false);
+                _ = Interlocked.Increment(ref completedAnalyzers);
+                return new AnalyzerResult(Success: true, Summary: "B done");
+            });
+
+        DiagnosticMeasurementOrchestrator sut = CreateOrchestrator(
+            analyzerPlugins: [("analyzer-a", analyzerA), ("analyzer-b", analyzerB)]);
+
+        var mergedData = new Dictionary<string, CollectorExportResult>(StringComparer.Ordinal);
+        string outputDir = Path.Combine(TempDir, "analysis");
+
+        // Act
+        Task<DiagnosticAnalysisResult> runTask = sut.RunAnalyzersAsync(
+            [MakeAnalyzer("analyzer-a"), MakeAnalyzer("analyzer-b")],
+            mergedData,
+            currentMetrics: null,
+            experiment: 1,
+            outputDir: outputDir);
+
+        bool bothReachedBarrier = bothStarted.Wait(TimeSpan.FromSeconds(1));
+        _ = completionGate.TrySetResult();
+
+        DiagnosticAnalysisResult result = await runTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Assert — neither analyzer could finish until both had started
+        _ = bothReachedBarrier.Should().BeTrue();
+        _ = result.Success.Should().BeTrue();
+        _ = result.Reports.Should().ContainKey("analyzer-a");
+        _ = result.Reports.Should().ContainKey("analyzer-b");
+        _ = result.Reports["analyzer-a"].Summary.Should().Be("A done");
+        _ = result.Reports["analyzer-b"].Summary.Should().Be("B done");
+        _ = completedAnalyzers.Should().Be(2);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private static DiscoveredCollector MakeCollector(string name, string group = "default")

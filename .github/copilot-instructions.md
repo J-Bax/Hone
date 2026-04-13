@@ -86,8 +86,10 @@ Hone is an **agentic performance optimization harness** that automatically impro
 | `hone baseline --target <path>` | Establish a performance baseline |
 | `hone results --target <path>` | Display experiment results |
 | `hone dashboard --target <path>` | Generate HTML dashboard |
+| `hone assess --target <path>` | Assess target project compatibility (read-only) |
+| `hone init --target <path>` | Scaffold `.hone/` directory from compatibility assessment |
 
-Common flags: `--max-experiments N`, `--dry-run`, `--model <model>`
+Common flags: `--max-experiments N`, `--dry-run`, `--model <model>`, `--force`, `--json`
 
 ## Important Design Decisions
 
