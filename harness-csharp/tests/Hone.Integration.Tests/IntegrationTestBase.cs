@@ -1,5 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
@@ -22,9 +23,11 @@ namespace Hone.Integration.Tests;
 [SuppressMessage("Design", "CA1515:Consider making public types internal", Justification = "xUnit requires public test classes")]
 public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBase(output)
 {
-    private static readonly JsonSerializerOptions MetadataJsonOptions = new()
+    private protected static readonly JsonSerializerOptions MetadataJsonOptions = new()
     {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     // ── Shared metric / comparison factories ─────────────────────────────────
@@ -207,7 +210,7 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
                 }
 
                 string json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
-                return JsonSerializer.Deserialize<RunMetadata>(json);
+                return JsonSerializer.Deserialize<RunMetadata>(json, MetadataJsonOptions);
             });
         _ = pipeline.SaveRunMetadataAsync(
                 Arg.Any<string>(), Arg.Any<RunMetadata>(), Arg.Any<CancellationToken>())

@@ -17,11 +17,6 @@ namespace Hone.Integration.Tests;
 public sealed class HarnessScenarioFrameworkTests(ITestOutputHelper output)
     : IntegrationTestBase(output)
 {
-    private static readonly JsonSerializerOptions IndentedJsonOptions = new()
-    {
-        WriteIndented = true,
-    };
-
     private static Dictionary<string, HarnessLoopScenario> ScenarioCatalog { get; } =
         new Dictionary<string, HarnessLoopScenario>(StringComparer.Ordinal)
         {
@@ -94,7 +89,9 @@ public sealed class HarnessScenarioFrameworkTests(ITestOutputHelper output)
 
         string metadataPath = Path.Combine(harness.TargetDir, "hone-results", "run-metadata.json");
         RunMetadata runMetadata = capturedMetadata
-            ?? JsonSerializer.Deserialize<RunMetadata>(await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false))
+            ?? JsonSerializer.Deserialize<RunMetadata>(
+                await File.ReadAllTextAsync(metadataPath).ConfigureAwait(false),
+                MetadataJsonOptions)
             ?? throw new InvalidOperationException($"Run metadata was not captured for scenario '{scenario.Name}'.");
 
         return new HarnessScenarioRunResult(
@@ -944,7 +941,7 @@ public sealed class HarnessScenarioFrameworkTests(ITestOutputHelper output)
             Directory.CreateDirectory(directory);
         }
 
-        string json = JsonSerializer.Serialize(payload, IndentedJsonOptions);
+        string json = JsonSerializer.Serialize(payload, MetadataJsonOptions);
 #pragma warning disable CA1849, RS0030 // Test helper intentionally uses sync I/O for deterministic setup
         File.WriteAllText(path, json);
 #pragma warning restore CA1849, RS0030
