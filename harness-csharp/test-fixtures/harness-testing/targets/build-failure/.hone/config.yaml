@@ -1,0 +1,4 @@
+Name: fixture-build-failure
+BaseBranch: main
+Loop:
+  SkipClassification: true

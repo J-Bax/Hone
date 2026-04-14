@@ -1,0 +1,26 @@
+[
+  {
+    "filePath": "src/Service1.cs",
+    "title": "Optimize hot path 1",
+    "explanation": "Method has O(n^2) complexity #1",
+    "scope": "Narrow",
+    "rootCause": "Linear scan inside the request loop.",
+    "impactEstimate": "High-traffic endpoint."
+  },
+  {
+    "filePath": "src/Service2.cs",
+    "title": "Optimize hot path 2",
+    "explanation": "Method has O(n^2) complexity #2",
+    "scope": "Narrow",
+    "rootCause": "Repeated string allocations inside a loop.",
+    "impactEstimate": "Medium-traffic endpoint."
+  },
+  {
+    "filePath": "src/Service3.cs",
+    "title": "Optimize hot path 3",
+    "explanation": "Method has O(n^2) complexity #3",
+    "scope": "Narrow",
+    "rootCause": "Uncached lookup on the request path.",
+    "impactEstimate": "High-traffic endpoint."
+  }
+]

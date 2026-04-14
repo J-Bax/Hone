@@ -1,0 +1,4 @@
+Name: fixture-happy-path
+BaseBranch: main
+Loop:
+  SkipClassification: true

@@ -8,7 +8,8 @@ namespace Hone.TestInfrastructure;
 /// </summary>
 public abstract class HoneTestBase : IDisposable
 {
-    private static readonly string SolutionRoot = FindSolutionRoot();
+    private static string SolutionRoot { get; } = FindSolutionRoot();
+    protected static string TestFixturesRootPath => Path.Combine(SolutionRoot, "test-fixtures");
 
     /// <summary>
     /// Gets a unique per-test temporary directory (similar to Pester TestDrive).
@@ -54,7 +55,7 @@ public abstract class HoneTestBase : IDisposable
     /// </summary>
     protected string CopyFixtureTarget(string fixtureName)
     {
-        string sourcePath = Path.Combine(SolutionRoot, "test-fixtures", fixtureName);
+        string sourcePath = Path.Combine(TestFixturesRootPath, fixtureName);
 
         if (!Directory.Exists(sourcePath))
         {

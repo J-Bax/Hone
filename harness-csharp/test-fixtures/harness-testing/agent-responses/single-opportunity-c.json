@@ -1,0 +1,10 @@
+[
+  {
+    "filePath": "src/Service3.cs",
+    "title": "Optimize hot path 3",
+    "explanation": "Method has O(n^2) complexity #3",
+    "scope": "Narrow",
+    "rootCause": "Uncached lookup on the request path.",
+    "impactEstimate": "High-traffic endpoint."
+  }
+]

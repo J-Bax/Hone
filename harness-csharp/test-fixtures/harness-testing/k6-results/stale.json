@@ -1,0 +1,22 @@
+{
+  "timestamp": "2024-01-01T00:00:00Z",
+  "experiment": 1,
+  "run": 1,
+  "httpReqDuration": {
+    "avg": 100,
+    "p50": 90,
+    "p90": 140,
+    "p95": 150,
+    "p99": 180,
+    "max": 250
+  },
+  "httpReqs": {
+    "count": 10000,
+    "rate": 500
+  },
+  "httpReqFailed": {
+    "count": 0,
+    "rate": 0
+  },
+  "summaryPath": null
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "filePath": "src/Service2.cs",
+    "title": "Optimize hot path 2",
+    "explanation": "Method has O(n^2) complexity #2",
+    "scope": "Narrow",
+    "rootCause": "Repeated string allocations inside a loop.",
+    "impactEstimate": "Medium-traffic endpoint."
+  }
+]

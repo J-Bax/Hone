@@ -1,4 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
@@ -8,6 +10,7 @@ using Hone.Orchestration.Implementer;
 using Hone.Orchestration.Loop;
 using Hone.Orchestration.Queue;
 using Hone.TestInfrastructure;
+using Hone.TestInfrastructure.HarnessTesting;
 using NSubstitute;
 using Xunit.Abstractions;
 
@@ -20,6 +23,13 @@ namespace Hone.Integration.Tests;
 [SuppressMessage("Design", "CA1515:Consider making public types internal", Justification = "xUnit requires public test classes")]
 public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBase(output)
 {
+    private protected static readonly JsonSerializerOptions MetadataJsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     // ── Shared metric / comparison factories ─────────────────────────────────
 
     protected static readonly MetricSet BaselineMetrics = new(
@@ -102,14 +112,20 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
     private protected TestHarness CreateHarness(
         Action<ILoopPipeline>? configurePipeline = null,
         Action<IImplementerPipeline>? configureImplementer = null,
-        HoneConfig? config = null)
+        HoneConfig? config = null,
+        string? targetFixture = null,
+        Action<string>? configureTarget = null)
     {
-        string targetDir = CreateTargetDir("target", b =>
-        {
-            _ = b.AddFile("src/Service1.cs", "// original code 1");
-            _ = b.AddFile("src/Service2.cs", "// original code 2");
-            _ = b.AddFile("src/Service3.cs", "// original code 3");
-        });
+        string targetDir = string.IsNullOrEmpty(targetFixture)
+            ? CreateTargetDir("target", b =>
+            {
+                _ = b.AddFile("src/Service1.cs", "// original code 1");
+                _ = b.AddFile("src/Service2.cs", "// original code 2");
+                _ = b.AddFile("src/Service3.cs", "// original code 3");
+            })
+            : CopyFixtureTarget(Path.Combine("harness-testing", "targets", targetFixture));
+
+        configureTarget?.Invoke(targetDir);
 
         string metadataDir = Path.Combine(targetDir, "hone-results", "metadata");
         Directory.CreateDirectory(metadataDir);
@@ -129,9 +145,20 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
         _ = implPipeline.GetDiffLineCountAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(5));
         _ = implPipeline.BuildProjectAsync(Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new BuildStepResult(Success: true, Output: null)));
+            .Returns(async callInfo =>
+            {
+                BuildStepInput input = callInfo.Arg<BuildStepInput>();
+                await WriteTextIfRequestedAsync(input.AdditionalLogPath, "Build succeeded").ConfigureAwait(false);
+                return new BuildStepResult(Success: true, Output: null);
+            });
         _ = implPipeline.RunTestsAsync(Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new TestStepResult(Success: true, Output: null)));
+            .Returns(async callInfo =>
+            {
+                TestStepInput input = callInfo.Arg<TestStepInput>();
+                await WriteTextIfRequestedAsync(input.AdditionalLogPath, "Tests passed").ConfigureAwait(false);
+                await WriteTextIfRequestedAsync(input.AdditionalTrxPath, "<TestRun />").ConfigureAwait(false);
+                return new TestStepResult(Success: true, Output: null);
+            });
         _ = implPipeline.GetChangedFilesAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<string>>(["src/Service1.cs"]));
         configureImplementer?.Invoke(implPipeline);
@@ -174,10 +201,32 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
             .Returns(Task.FromResult(TestMachine));
         _ = pipeline.LoadRunMetadataAsync(
                 Arg.Any<string>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<RunMetadata?>(null));
+            .Returns(async callInfo =>
+            {
+                string path = callInfo.ArgAt<string>(0);
+                if (!File.Exists(path))
+                {
+                    return null;
+                }
+
+                string json = await File.ReadAllTextAsync(path).ConfigureAwait(false);
+                return JsonSerializer.Deserialize<RunMetadata>(json, MetadataJsonOptions);
+            });
         _ = pipeline.SaveRunMetadataAsync(
                 Arg.Any<string>(), Arg.Any<RunMetadata>(), Arg.Any<CancellationToken>())
-            .Returns(Task.CompletedTask);
+            .Returns(async callInfo =>
+            {
+                string path = callInfo.ArgAt<string>(0);
+                RunMetadata metadata = callInfo.ArgAt<RunMetadata>(1);
+                string? directory = Path.GetDirectoryName(path);
+                if (directory is not null)
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                string json = JsonSerializer.Serialize(metadata, MetadataJsonOptions);
+                await File.WriteAllTextAsync(path, json).ConfigureAwait(false);
+            });
         _ = pipeline.PushBranchAsync(
                 Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new PushResult(Success: true, Output: null)));
@@ -231,6 +280,25 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Cleaned up", Duration: TimeSpan.Zero,
                 Artifacts: [], BaseUrl: null)));
+    }
+
+    private protected static HarnessFixtureCatalog CreateHarnessFixtureCatalog() =>
+        new(Path.Combine(TestFixturesRootPath, "harness-testing"));
+
+    private static async Task WriteTextIfRequestedAsync(string? path, string content)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        string? directory = Path.GetDirectoryName(path);
+        if (directory is not null)
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await File.WriteAllTextAsync(path, content).ConfigureAwait(false);
     }
 
     // ── Test harness record ──────────────────────────────────────────────────
