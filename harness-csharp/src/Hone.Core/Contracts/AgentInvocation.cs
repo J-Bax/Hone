@@ -8,4 +8,5 @@ public sealed record AgentInvocation(
     string Prompt,
     string? Model = null,
     TimeSpan? Timeout = null,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    IReadOnlyList<string>? AdditionalAllowedDirectories = null);

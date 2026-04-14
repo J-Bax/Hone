@@ -25,6 +25,7 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
         _ = args.Should().Contain("-s");
         _ = args.Should().Contain("--no-auto-update");
         _ = args.Should().Contain("--no-ask-user");
+        _ = args.Should().ContainInOrder("--output-format", "json");
         _ = args.Should().NotContain("--no-custom-instructions");
     }
 
@@ -37,6 +38,21 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
         List<string> args = CopilotCliAgentRunner.BuildArguments(invocation);
 
         _ = args.Should().Contain("--no-custom-instructions");
+    }
+
+    [Fact]
+    public void BuildArguments_AdditionalAllowedDirectories_AddsAddDirFlags()
+    {
+        var invocation = new AgentInvocation(
+            "my-agent",
+            "do stuff",
+            Model: "gpt-4o",
+            AdditionalAllowedDirectories: [@"C:\target-a", @"C:\target-b"]);
+
+        List<string> args = CopilotCliAgentRunner.BuildArguments(invocation);
+
+        _ = args.Should().ContainInOrder("--add-dir", @"C:\target-a");
+        _ = args.Should().ContainInOrder("--add-dir", @"C:\target-b");
     }
 
     [Fact]
@@ -151,6 +167,37 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
 
         _ = result.Success.Should().BeTrue();
         _ = result.Output.Trim().Should().Be(utf8Text);
+    }
+
+    [Fact]
+    public void NormalizeOutput_JsonlAssistantMessages_ReturnsLastNonEmptyAssistantContent()
+    {
+        string jsonl =
+            """
+            {"type":"assistant.message","data":{"content":"","toolRequests":[{"name":"view"}]}}
+            {"type":"assistant.reasoning","data":{"content":"thinking"}}
+            {"type":"assistant.message","data":{"content":"{\"value\":1}"}}
+            """;
+
+        string normalizedOutput = CopilotCliAgentRunner.NormalizeOutput(jsonl, string.Empty, exitCode: 0);
+
+        _ = normalizedOutput.Should().Be("{\"value\":1}");
+    }
+
+    [Fact]
+    public void NormalizeOutput_NonJsonlFailure_UsesStderrWhenStdoutEmpty()
+    {
+        string normalizedOutput = CopilotCliAgentRunner.NormalizeOutput(string.Empty, "No such agent", exitCode: 1);
+
+        _ = normalizedOutput.Should().Be("No such agent");
+    }
+
+    [Fact]
+    public void NormalizeOutput_PlainTextOutput_FallsBackToStdout()
+    {
+        string normalizedOutput = CopilotCliAgentRunner.NormalizeOutput("plain text output", string.Empty, exitCode: 0);
+
+        _ = normalizedOutput.Should().Be("plain text output");
     }
 
     [Fact]

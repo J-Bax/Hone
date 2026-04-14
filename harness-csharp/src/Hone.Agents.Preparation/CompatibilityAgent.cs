@@ -20,9 +20,15 @@ public sealed class CompatibilityAgent
     private const string DefaultModel = ModelDefaults.Compatibility;
     private const string ModelConfigKey = "AnalysisModel";
     private const string AgentName = "hone-compatibility";
-    private const int MaxRetries = 1;
+    private const int MaxRetries = 2;
     private const string RetryPromptSuffix =
-        "Your previous response was not valid JSON. Please respond with ONLY a JSON object matching the output schema.";
+        """
+        Your previous response was not valid JSON.
+        Do not re-run the investigation or add narration.
+        Repair the previous response into ONLY the final JSON object matching the required schema.
+        Do NOT include any prefixed chatter, progress narration, markdown fences, summaries, or trailing notes.
+        The first non-whitespace character of your response must be '{' and the last non-whitespace character must be '}'.
+        """;
 
     private readonly AgentInvoker _invoker;
     private readonly IProcessRunner? _processRunner;
@@ -49,6 +55,7 @@ public sealed class CompatibilityAgent
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
         string fullPath = Path.GetFullPath(targetPath);
+        string? agentWorkingDirectory = ResolveAgentWorkingDirectory();
         if (!Directory.Exists(fullPath))
         {
             return new CompatibilityResult(
@@ -65,7 +72,8 @@ public sealed class CompatibilityAgent
         // Build prompt
         string prompt = BuildPrompt(preProbe);
 
-        // Invoke agent
+        // Invoke agent from the Hone repo so the custom agent remains discoverable.
+        // The prompt carries the absolute target path and we explicitly allow that directory.
         var options = new AgentInvocationOptions(
             AgentName: AgentName,
             Prompt: prompt,
@@ -73,7 +81,9 @@ public sealed class CompatibilityAgent
             DefaultModel: model ?? DefaultModel,
             MaxRetries: MaxRetries,
             RetryPromptSuffix: RetryPromptSuffix,
-            WorkingDirectory: fullPath);
+            WorkingDirectory: agentWorkingDirectory,
+            AdditionalAllowedDirectories: [fullPath],
+            IncludePreviousOutputInRetryPrompt: true);
 
         AgentResult<CompatibilityReport> agentResult =
             await _invoker.InvokeAgentAsync<CompatibilityReport>(options, ct).ConfigureAwait(false);
@@ -91,7 +101,7 @@ public sealed class CompatibilityAgent
         {
             return new CompatibilityResult(
                 Success: false,
-                Message: "Agent response was not valid JSON",
+                Message: GetFailureMessage(agentResult.RawOutput),
                 Report: null,
                 PreProbe: preProbe);
         }
@@ -126,6 +136,7 @@ public sealed class CompatibilityAgent
             3. Actively investigate by reading key files and running commands.
             4. For build and test commands, run them from the target directory: {preProbe.TargetPath}
             5. Produce a complete compatibility assessment following your output schema.
+            6. Your current working directory may not start in the target project. Change into {preProbe.TargetPath} before reading files or running shell commands against the target, or use absolute paths within that directory.
 
             ## Source Code Path Detection
 
@@ -149,7 +160,15 @@ public sealed class CompatibilityAgent
             - Run the test command to verify test suite health.
             - Read configuration files (appsettings.json, Program.cs, Startup.cs, etc.) to detect endpoints, health checks, database config.
             - If .hone/ already exists, validate it against the adapter contract.
-            - Produce ONLY the JSON output. No other text.
+            
+            ## Final Output Contract
+
+            - Produce ONLY the final JSON object. No other text.
+            - Do NOT narrate your investigation, planning, or progress.
+            - Do NOT use markdown fences.
+            - The first non-whitespace character of your response must be an opening curly brace.
+            - The last non-whitespace character of your response must be a closing curly brace.
+            - Any text before or after the JSON object will be treated as a failure and trigger a retry.
             """;
     }
 
@@ -161,5 +180,60 @@ public sealed class CompatibilityAgent
             : "N/A";
 
         return $"Assessment complete: {overall} ({score})";
+    }
+
+    private static string GetFailureMessage(string rawOutput)
+    {
+        if (!string.IsNullOrWhiteSpace(rawOutput)
+            && rawOutput.Contains("content exclusion policy", StringComparison.OrdinalIgnoreCase))
+        {
+            return rawOutput.Trim();
+        }
+
+        return "Agent response was not valid JSON";
+    }
+
+    private static string? ResolveAgentWorkingDirectory()
+    {
+        string agentFileName = $"{AgentName}.agent.md";
+        var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string? startPath in new string?[]
+            {
+                Environment.CurrentDirectory,
+                AppContext.BaseDirectory,
+                Path.GetDirectoryName(typeof(CompatibilityAgent).Assembly.Location),
+            })
+        {
+            if (string.IsNullOrWhiteSpace(startPath))
+            {
+                continue;
+            }
+
+            string? resolved = FindAgentAncestor(startPath, agentFileName);
+            if (!string.IsNullOrWhiteSpace(resolved))
+            {
+                _ = roots.Add(resolved);
+            }
+        }
+
+        return roots.FirstOrDefault();
+    }
+
+    private static string? FindAgentAncestor(string startPath, string agentFileName)
+    {
+        DirectoryInfo? directory = new(Path.GetFullPath(startPath));
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, ".github", "agents", agentFileName);
+            if (File.Exists(candidate))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return null;
     }
 }

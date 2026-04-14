@@ -58,7 +58,7 @@ public sealed class AgentInvoker
         for (int attempt = 0; attempt <= options.MaxRetries; attempt++)
         {
             string effectivePrompt = attempt > 0 && options.RetryPromptSuffix is not null
-                ? $"{options.Prompt}\n\n{options.RetryPromptSuffix}"
+                ? BuildRetryPrompt(options, lastRunResult)
                 : options.Prompt;
 
             var invocation = new AgentInvocation(
@@ -66,7 +66,8 @@ public sealed class AgentInvoker
                 Prompt: effectivePrompt,
                 Model: model,
                 Timeout: timeout,
-                WorkingDirectory: options.WorkingDirectory);
+                WorkingDirectory: options.WorkingDirectory,
+                AdditionalAllowedDirectories: options.AdditionalAllowedDirectories);
 
             try
             {
@@ -161,5 +162,17 @@ public sealed class AgentInvoker
 
         // 3. Global default from AgentConfig
         return _agentConfig.DefaultModel;
+    }
+
+    private static string BuildRetryPrompt(AgentInvocationOptions options, AgentRunResult? previousRunResult)
+    {
+        string prompt = $"{options.Prompt}\n\n{options.RetryPromptSuffix}";
+
+        if (!options.IncludePreviousOutputInRetryPrompt || string.IsNullOrWhiteSpace(previousRunResult?.Output))
+        {
+            return prompt;
+        }
+
+        return $"{prompt}\n\n## Previous Invalid Response To Repair\n```text\n{previousRunResult.Output}\n```";
     }
 }

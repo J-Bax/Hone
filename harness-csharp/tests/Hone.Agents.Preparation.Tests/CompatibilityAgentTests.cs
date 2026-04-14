@@ -141,10 +141,12 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
 
         // We spy on what prompt the agent receives to verify pre-probe content
         string? capturedPrompt = null;
+        AgentInvocation? capturedInvocation = null;
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
                 AgentInvocation invocation = callInfo.Arg<AgentInvocation>();
+                capturedInvocation = invocation;
                 capturedPrompt = invocation.Prompt;
                 return Ok(JsonSerializer.Serialize(new CompatibilityReport
                 {
@@ -161,6 +163,10 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
         _ = capturedPrompt.Should().Contain("dotnet-global");
         _ = capturedPrompt.Should().Contain("node-package");
         _ = capturedPrompt.Should().Contain("README.md");
+        _ = capturedPrompt.Should().Contain($"Change into {targetDir} before reading files or running shell commands against the target");
+        _ = capturedInvocation.Should().NotBeNull();
+        _ = capturedInvocation!.WorkingDirectory.Should().NotBeNullOrWhiteSpace();
+        _ = capturedInvocation.AdditionalAllowedDirectories.Should().Contain(targetDir);
     }
 
     // ── Invalid target path ─────────────────────────────────────────────
@@ -200,19 +206,87 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
     // ── Agent returns invalid JSON ──────────────────────────────────────
 
     [Fact]
+    public async Task CompatibilityAgent_PrefixedChatterBeforeJson_ReturnsSuccess()
+    {
+        string targetDir = CreateTargetDir("chatty-json", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        string agentOutput =
+            """
+            Let me check one more thing.
+            Example remediation: Build: { Type: BuiltIn, Name: dotnet-build }
+            Final answer:
+            {"compatibility":{"overall":"compatible","score":88}}
+            """;
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(Ok(agentOutput));
+
+        CompatibilityAgent sut = CreateSut();
+        CompatibilityResult result = await sut.AssessAsync(targetDir);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Report.Should().NotBeNull();
+        _ = result.Report!.Compatibility!.Overall.Should().Be("compatible");
+        _ = result.Report.Compatibility.Score.Should().Be(88);
+    }
+
+    [Fact]
     public async Task CompatibilityAgent_InvalidJson_ReturnsFailure()
     {
         string targetDir = CreateTargetDir("badjson", b => b
             .AddFile("MyApp.sln", "solution"));
 
+        var prompts = new List<string>();
         _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
-            .Returns(Ok("not json at all"), Ok("still not json"));
+            .Returns(
+                callInfo =>
+                {
+                    prompts.Add(callInfo.Arg<AgentInvocation>().Prompt);
+                    return Ok("not json at all");
+                },
+                callInfo =>
+                {
+                    prompts.Add(callInfo.Arg<AgentInvocation>().Prompt);
+                    return Ok("still not json");
+                },
+                callInfo =>
+                {
+                    prompts.Add(callInfo.Arg<AgentInvocation>().Prompt);
+                    return Ok("third bad response");
+                });
 
         CompatibilityAgent sut = CreateSut();
         CompatibilityResult result = await sut.AssessAsync(targetDir);
 
         _ = result.Success.Should().BeFalse();
         _ = result.Message.Should().Contain("not valid JSON");
+        _ = prompts.Should().HaveCount(3);
+        _ = prompts[1].Should().Contain("The first non-whitespace character of your response must be '{'");
+        _ = prompts[1].Should().Contain("Repair the previous response into ONLY the final JSON object");
+        _ = prompts[1].Should().Contain("Do NOT include any prefixed chatter");
+        _ = prompts[1].Should().Contain("not json at all");
+        _ = prompts[2].Should().Contain("still not json");
+        _ = prompts[2].Should().Contain("last non-whitespace character must be '}'");
+    }
+
+    [Fact]
+    public async Task CompatibilityAgent_ContentExclusionPolicy_ReturnsRestrictionMessage()
+    {
+        string targetDir = CreateTargetDir("policy-blocked", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        const string PolicyMessage =
+            "The target project files are restricted by your organization's content exclusion policy.";
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(Ok(PolicyMessage));
+
+        CompatibilityAgent sut = CreateSut();
+        CompatibilityResult result = await sut.AssessAsync(targetDir);
+
+        _ = result.Success.Should().BeFalse();
+        _ = result.Message.Should().Be(PolicyMessage);
     }
 
     // ── Model and agent name passed correctly ───────────────────────────
@@ -401,6 +475,62 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
     }
 
     // ── Report includes detectedConfig with sourceCodePaths ─────────────
+
+    [Fact]
+    public async Task CompatibilityAgent_Report_ParsesNullableProbeFlags_AndOnboardingTitles()
+    {
+        string targetDir = CreateTargetDir("nullable-probes", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        const string ReportJson =
+            """
+            {
+              "target": { "name": "SampleApi" },
+              "compatibility": { "overall": "compatible", "score": 88 },
+              "probeResults": {
+                "build": {
+                  "command": "dotnet build SampleApi.sln --configuration Release",
+                  "success": null,
+                  "durationSeconds": null,
+                  "notes": "Build not executed"
+                },
+                "tests": {
+                  "command": "dotnet test SampleApi.Tests --configuration Release",
+                  "success": null,
+                  "totalTests": 42,
+                  "passedTests": null,
+                  "failedTests": null,
+                  "framework": "xUnit",
+                  "testStyle": "integration",
+                  "notes": "Tests not executed"
+                }
+              },
+              "onboardingPlan": {
+                "summary": "Ready after a few fixes",
+                "phases": [
+                  {
+                    "phase": 1,
+                    "title": "Fix config",
+                    "steps": [ "Add missing hooks" ]
+                  }
+                ]
+              }
+            }
+            """;
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(Ok(ReportJson));
+
+        CompatibilityAgent sut = CreateSut();
+        CompatibilityResult result = await sut.AssessAsync(targetDir);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Report!.ProbeResults!.Build!.Success.Should().BeNull();
+        _ = result.Report.ProbeResults.Tests!.Success.Should().BeNull();
+        _ = result.Report.OnboardingPlan!.Phases.Should().HaveCount(1);
+        _ = result.Report.OnboardingPlan.Phases![0].Phase.Should().Be(1);
+        _ = result.Report.OnboardingPlan.Phases[0].Title.Should().Be("Fix config");
+    }
 
     [Fact]
     public async Task CompatibilityAgent_Report_ParsesDetectedConfig()

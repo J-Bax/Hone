@@ -109,6 +109,31 @@ public sealed class AgentInvokerTests(ITestOutputHelper output) : HoneTestBase(o
     }
 
     [Fact]
+    public async Task AgentInvoker_PrefixedChatterWithBraceNoise_ParsesLargestValidJson()
+    {
+        string agentOutput =
+            """
+            Let me verify the target.
+            Example remediation: Build: { Type: BuiltIn, Name: dotnet-build }
+            Final answer:
+            {"value": 42, "name": "parsed"}
+            """;
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(Ok(agentOutput));
+
+        AgentInvoker sut = CreateSut();
+        var options = new AgentInvocationOptions(AgentName: "test", Prompt: "go");
+
+        AgentResult<SimpleDto> result = await sut.InvokeAgentAsync<SimpleDto>(options);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.ParsedResult.Should().NotBeNull();
+        _ = result.ParsedResult!.Value.Should().Be(42);
+        _ = result.ParsedResult.Name.Should().Be("parsed");
+    }
+
+    [Fact]
     public async Task AgentInvoker_JsonParseFailed_RetriesWithSanitization()
     {
         string nanJson = "{\"value\": NaN}";
@@ -238,7 +263,41 @@ public sealed class AgentInvokerTests(ITestOutputHelper output) : HoneTestBase(o
                 Arg.Is<AgentInvocation>(inv => inv.Prompt == "original prompt"),
                 Arg.Any<CancellationToken>());
             _ = _runner.InvokeAsync(
-                Arg.Is<AgentInvocation>(inv => inv.Prompt.Contains("RETRY SUFFIX", StringComparison.Ordinal)),
+                Arg.Is<AgentInvocation>(inv =>
+                    inv.Prompt.Contains("RETRY SUFFIX", StringComparison.Ordinal)
+                    && !inv.Prompt.Contains("bad json", StringComparison.Ordinal)),
+                Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task AgentInvoker_RetryPrompt_CanIncludePreviousInvalidOutput()
+    {
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Ok("bad json"),
+                Ok("{\"value\": 1}"));
+
+        AgentInvoker sut = CreateSut();
+        var options = new AgentInvocationOptions(
+            AgentName: "test",
+            Prompt: "original prompt",
+            MaxRetries: 1,
+            RetryPromptSuffix: "RETRY SUFFIX",
+            IncludePreviousOutputInRetryPrompt: true);
+
+        _ = await sut.InvokeAgentAsync<SimpleDto>(options);
+
+        Received.InOrder(() =>
+        {
+            _ = _runner.InvokeAsync(
+                Arg.Is<AgentInvocation>(inv => inv.Prompt == "original prompt"),
+                Arg.Any<CancellationToken>());
+            _ = _runner.InvokeAsync(
+                Arg.Is<AgentInvocation>(inv =>
+                    inv.Prompt.Contains("RETRY SUFFIX", StringComparison.Ordinal)
+                    && inv.Prompt.Contains("Previous Invalid Response To Repair", StringComparison.Ordinal)
+                    && inv.Prompt.Contains("bad json", StringComparison.Ordinal)),
                 Arg.Any<CancellationToken>());
         });
     }

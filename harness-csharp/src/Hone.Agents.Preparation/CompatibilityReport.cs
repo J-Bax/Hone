@@ -95,7 +95,10 @@ public sealed record OnboardingPlanSection
 public sealed record OnboardingPhase
 {
     [JsonPropertyName("phase")]
-    public string? Phase { get; init; }
+    public int? Phase { get; init; }
+
+    [JsonPropertyName("title")]
+    public string? Title { get; init; }
 
     [JsonPropertyName("description")]
     public string? Description { get; init; }
@@ -155,7 +158,7 @@ public sealed record BuildProbeResult
     public string? Command { get; init; }
 
     [JsonPropertyName("success")]
-    public bool Success { get; init; }
+    public bool? Success { get; init; }
 
     [JsonPropertyName("durationSeconds")]
     public double? DurationSeconds { get; init; }
@@ -170,7 +173,7 @@ public sealed record TestProbeResult
     public string? Command { get; init; }
 
     [JsonPropertyName("success")]
-    public bool Success { get; init; }
+    public bool? Success { get; init; }
 
     [JsonPropertyName("totalTests")]
     public int? TotalTests { get; init; }
