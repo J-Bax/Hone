@@ -87,6 +87,16 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
             PromptPath: null, ResponsePath: null,
             AttemptPromptPath: null, AttemptResponsePath: null);
 
+    private static HoneConfig CreateIterativeFailureConfig(
+        int maxAttempts = 2,
+        double maxDiffGrowthFactor = 3.0) =>
+        new(
+            Loop: new LoopConfig(SkipClassification: true),
+            Implementer: new ImplementerConfig(
+                MaxAttempts: maxAttempts,
+                MaxDiffGrowthFactor: maxDiffGrowthFactor,
+                TestFileGuard: false));
+
     /// <summary>
     /// Builds a fully wired HoneLoopRunner with mocked pipeline and real
     /// queue manager, implementer runner, and failure handler.
@@ -442,6 +452,119 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         _ = result.ExperimentsRun.Should().Be(2);
         _ = result.SuccessCount.Should().Be(0);
         _ = result.FailedExperiments.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task IterativeBuildExhaustion_MapsToBuildFailed()
+    {
+        RunMetadata? savedMetadata = null;
+        TestHarness h = CreateHarness(
+            configurePipeline: pipeline =>
+            {
+                _ = pipeline.RunAnalysisAsync(
+                        Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new AnalysisResult(
+                        Success: true, Opportunities: MakeOpportunities(count: 1))));
+                _ = pipeline.SaveRunMetadataAsync(
+                        Arg.Any<string>(), Arg.Any<RunMetadata>(), Arg.Any<CancellationToken>())
+                    .Returns(callInfo =>
+                    {
+                        savedMetadata = callInfo.Arg<RunMetadata>();
+                        return Task.CompletedTask;
+                    });
+            },
+            configureImplementer: implPipeline =>
+                _ = implPipeline.BuildProjectAsync(
+                        Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new BuildStepResult(
+                        Success: false, Output: "build failed"))),
+            config: CreateIterativeFailureConfig());
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.SuccessCount.Should().Be(0);
+        _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
+        _ = savedMetadata.Should().NotBeNull();
+        _ = savedMetadata!.Experiments.Should().ContainSingle();
+        _ = savedMetadata.Experiments[0].Outcome.Should().Be(ExperimentOutcome.BuildFailed);
+    }
+
+    [Fact]
+    public async Task IterativeTestExhaustion_MapsToTestFailed()
+    {
+        RunMetadata? savedMetadata = null;
+        TestHarness h = CreateHarness(
+            configurePipeline: pipeline =>
+            {
+                _ = pipeline.RunAnalysisAsync(
+                        Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new AnalysisResult(
+                        Success: true, Opportunities: MakeOpportunities(count: 1))));
+                _ = pipeline.SaveRunMetadataAsync(
+                        Arg.Any<string>(), Arg.Any<RunMetadata>(), Arg.Any<CancellationToken>())
+                    .Returns(callInfo =>
+                    {
+                        savedMetadata = callInfo.Arg<RunMetadata>();
+                        return Task.CompletedTask;
+                    });
+            },
+            configureImplementer: implPipeline =>
+                _ = implPipeline.RunTestsAsync(
+                        Arg.Any<TestStepInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new TestStepResult(
+                        Success: false, Output: "tests failed"))),
+            config: CreateIterativeFailureConfig());
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.SuccessCount.Should().Be(0);
+        _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
+        _ = savedMetadata.Should().NotBeNull();
+        _ = savedMetadata!.Experiments.Should().ContainSingle();
+        _ = savedMetadata.Experiments[0].Outcome.Should().Be(ExperimentOutcome.TestFailed);
+    }
+
+    [Fact]
+    public async Task IterativeNonBuildOrTestExhaustion_FallsBackToImplementationFailed()
+    {
+        RunMetadata? savedMetadata = null;
+        int diffCallCount = 0;
+        int buildCallCount = 0;
+        TestHarness h = CreateHarness(
+            configurePipeline: pipeline =>
+            {
+                _ = pipeline.RunAnalysisAsync(
+                        Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new AnalysisResult(
+                        Success: true, Opportunities: MakeOpportunities(count: 1))));
+                _ = pipeline.SaveRunMetadataAsync(
+                        Arg.Any<string>(), Arg.Any<RunMetadata>(), Arg.Any<CancellationToken>())
+                    .Returns(callInfo =>
+                    {
+                        savedMetadata = callInfo.Arg<RunMetadata>();
+                        return Task.CompletedTask;
+                    });
+            },
+            configureImplementer: implPipeline =>
+            {
+                _ = implPipeline.GetDiffLineCountAsync(
+                        Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(_ => Task.FromResult(Interlocked.Increment(ref diffCallCount) == 1 ? 1 : 10));
+                _ = implPipeline.BuildProjectAsync(
+                        Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+                    .Returns(_ => Task.FromResult(Interlocked.Increment(ref buildCallCount) == 1
+                        ? new BuildStepResult(Success: false, Output: "build failed")
+                        : new BuildStepResult(Success: true, Output: null)));
+            },
+            config: CreateIterativeFailureConfig(maxDiffGrowthFactor: 2.0));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.SuccessCount.Should().Be(0);
+        _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
+        _ = savedMetadata.Should().NotBeNull();
+        _ = savedMetadata!.Experiments.Should().ContainSingle();
+        _ = savedMetadata.Experiments[0].Outcome.Should().Be(ExperimentOutcome.ImplementationFailed);
     }
 
     // ── 6. DryRun_SkipsSlowOperations ───────────────────────────────────────

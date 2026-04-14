@@ -245,7 +245,7 @@ internal sealed class HoneLoopRunner
 
         if (!implResult.Result.Success)
         {
-            ExperimentOutcome failureOutcome = MapImplementerFailureOutcome(implResult.Result.ExitReason);
+            ExperimentOutcome failureOutcome = MapImplementerFailureOutcome(implResult.Result);
 
             // Restart API before next experiment even though this one failed
             await TryRestartTargetAsync(targetDir, config, exp, ct).ConfigureAwait(false);
@@ -670,13 +670,32 @@ internal sealed class HoneLoopRunner
             StaleCount: state.StaleCount,
             ConsecutiveFailures: state.ConsecutiveFailures);
 
-    private static ExperimentOutcome MapImplementerFailureOutcome(string exitReason) =>
-        exitReason switch
+    private static ExperimentOutcome MapImplementerFailureOutcome(IterativeFixResult result) =>
+        result.ExitReason switch
         {
             "build_failure" => ExperimentOutcome.BuildFailed,
             "test_failure" => ExperimentOutcome.TestFailed,
+            "retry_budget_exhausted" => MapRetryBudgetExhaustionOutcome(result.IterationLog),
             _ => ExperimentOutcome.ImplementationFailed,
         };
+
+    private static ExperimentOutcome MapRetryBudgetExhaustionOutcome(
+        IterationLog? iterationLog)
+    {
+        IReadOnlyList<IterationAttempt>? attempts = iterationLog?.Attempts;
+        if (attempts is null || attempts.Count == 0)
+        {
+            return ExperimentOutcome.ImplementationFailed;
+        }
+
+        string? stage = attempts[^1].Stage;
+        return stage switch
+        {
+            "build" => ExperimentOutcome.BuildFailed,
+            "test" => ExperimentOutcome.TestFailed,
+            _ => ExperimentOutcome.ImplementationFailed,
+        };
+    }
 
     private static string ToOutcomeName(ExperimentOutcome outcome) =>
         outcome switch
