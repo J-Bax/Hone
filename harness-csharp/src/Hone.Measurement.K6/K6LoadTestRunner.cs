@@ -27,7 +27,7 @@ public sealed class K6LoadTestRunner(IProcessRunner processRunner) : ILoadTestRu
         ProcessResult processResult = await _processRunner.RunAsync(
             executable: "k6",
             arguments: arguments,
-            workingDirectory: null,
+            workingDirectory: options.WorkingDirectory,
             timeout: effectiveTimeout,
             ct: ct).ConfigureAwait(false);
 

@@ -138,7 +138,7 @@ k6 run --env BASE_URL=http://localhost:5000 sample-api/scale-tests/scenarios/bas
 hone baseline --target sample-api
 ```
 
-This starts the API, runs the baseline k6 scenario, saves results to `sample-api/.hone/results/baseline.json`, and stops the API.
+This starts the API, runs the baseline k6 scenario, saves the aggregated baseline summary to `sample-api/.hone/results/baseline/k6-summary.json`, and stops the API.
 
 ### 9. Validate the Target Configuration
 

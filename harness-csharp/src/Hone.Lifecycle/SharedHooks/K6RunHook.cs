@@ -39,7 +39,8 @@ public sealed class K6RunHook(ILoadTestRunner loadTestRunner) : ILifecycleHook
                 OutputDir: outputDir,
                 Experiment: context.Experiment,
                 Run: 1,
-                Timeout: null);
+                Timeout: null,
+                WorkingDirectory: context.TargetPath);
 
             LoadTestResult result = await loadTestRunner.RunAsync(options, ct).ConfigureAwait(false);
 

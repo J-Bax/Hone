@@ -90,12 +90,18 @@ Api:
   SourceFileGlob: "*.cs"                   # file pattern for AI analysis scope
 
 # ── Lifecycle Hooks ──────────────────────────────────────────
-# ALL 8 hooks must be declared. Use Type: Skip for phases not needed.
+# ALL 10 hooks must be declared. Use Type: Skip for phases not needed.
 # Available types: BuiltIn, Command, Http, Skip
 Hooks:
   Prepare:
     Type: BuiltIn
     Name: sqlserver-reset
+  Build:
+    Type: BuiltIn
+    Name: dotnet-build
+  Test:
+    Type: BuiltIn
+    Name: dotnet-test
   Start:
     Type: BuiltIn
     Name: dotnet-start
@@ -157,7 +163,7 @@ ScaleTest:
 | `Api.StartupTimeout` | int | ✅ | Seconds to wait for health check before failing |
 | `Api.SourceCodePaths` | string[] | ✅ | Directories the AI agent analyzes for optimizations |
 | `Api.SourceFileGlob` | string | ✅ | File pattern within source code paths (e.g., `*.cs`) |
-| `Hooks.*` | object | ✅ | All 8 lifecycle hooks — see [Hook Types](#4-hook-types) |
+| `Hooks.*` | object | ✅ | All 10 lifecycle hooks — see [Hook Types](#4-hook-types) |
 | `ScaleTest.ScenarioPath` | string | ✅ | Primary k6 scenario file |
 | `ScaleTest.ScenarioRegistryPath` | string | ✅ | Threshold definitions for pass/fail |
 | `ScaleTest.WarmupEnabled` | bool | ✅ | Whether to run warmup before active measurement |
@@ -355,8 +361,9 @@ Add these rules to your target's `.gitignore`:
 
 .hone/results/*
 !.hone/results/.gitkeep
-!.hone/results/baseline.json
-!.hone/results/baseline-*.json
+!.hone/results/baseline/
+.hone/results/baseline/*
+!.hone/results/baseline/k6-summary.json
 !.hone/results/run-metadata.json
 !.hone/results/hone.jsonl
 !.hone/results/metadata/
@@ -378,7 +385,7 @@ Add these rules to your target's `.gitignore`:
 
 | Category | Files | Committed? | Why |
 |----------|-------|-----------|-----|
-| Baselines | `baseline.json`, `baseline-*.json` | ✅ | Reference metrics for comparison |
+| Baselines | `baseline/k6-summary.json` | ✅ | Reference metrics for comparison |
 | k6 summaries | `k6-summary*.json` | ✅ | Compact performance data for PR evidence |
 | Agent analysis | `*-prompt.md`, `*-response.json` | ✅ | Shows AI reasoning for reviewers |
 | Classification | `classification-response.json` | ✅ | Scope assessment for each optimization |

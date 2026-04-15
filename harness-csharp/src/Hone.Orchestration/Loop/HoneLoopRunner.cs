@@ -51,8 +51,36 @@ internal sealed class HoneLoopRunner
         _eventSink.Emit(new PhaseStarted("loop", DateTimeOffset.UtcNow, Experiment: null));
         var sw = Stopwatch.StartNew();
 
+        // ── Prepare (once per run, before any experiments) ──────────────────
+        HookResult prepareResult = await _pipeline.PrepareAsync(targetDir, config, ct)
+            .ConfigureAwait(false);
+        if (!prepareResult.Success)
+        {
+            _eventSink.Emit(new StatusMessage(
+                $"Prepare hook failed: {prepareResult.Message}",
+                LogLevel.Warning, DateTimeOffset.UtcNow, Experiment: null));
+        }
+
         // ── Baseline ────────────────────────────────────────────────────────
-        MetricSet baseline = await _pipeline.LoadOrCreateBaselineAsync(targetDir, config, ct)
+        Uri? baselineBaseUrl = null;
+        if (!HasPersistedBaseline(targetDir, config))
+        {
+            HookResult baselineStartResult = await _pipeline.StartTargetAsync(targetDir, config, experiment: 0, ct)
+                .ConfigureAwait(false);
+            if (!baselineStartResult.Success)
+            {
+                _eventSink.Emit(new StatusMessage(
+                    $"Start hook failed before baseline: {baselineStartResult.Message}",
+                    LogLevel.Error, DateTimeOffset.UtcNow, Experiment: null));
+
+                throw new InvalidOperationException(
+                    $"Unable to start the target for baseline creation: {baselineStartResult.Message}");
+            }
+
+            baselineBaseUrl = baselineStartResult.BaseUrl;
+        }
+
+        MetricSet baseline = await _pipeline.LoadOrCreateBaselineAsync(targetDir, config, baselineBaseUrl, ct)
             .ConfigureAwait(false);
         double baselineP95 = baseline.HttpReqDuration.P95;
 
@@ -76,16 +104,6 @@ internal sealed class HoneLoopRunner
             CurrentBranch = options.DefaultBranch,
         };
         ResumeState(state, experiments);
-
-        // ── Prepare (once per run, before any experiments) ──────────────────
-        HookResult prepareResult = await _pipeline.PrepareAsync(targetDir, config, ct)
-            .ConfigureAwait(false);
-        if (!prepareResult.Success)
-        {
-            _eventSink.Emit(new StatusMessage(
-                $"Prepare hook failed: {prepareResult.Message}",
-                LogLevel.Warning, DateTimeOffset.UtcNow, Experiment: null));
-        }
 
         // ── Experiment loop ─────────────────────────────────────────────────
         int maxExp = options.MaxExperimentsOverride ?? config.Loop.MaxExperiments;
@@ -274,7 +292,7 @@ internal sealed class HoneLoopRunner
 
         // ── Verify ──────────────────────────────────────────────────────────
         MetricSet? experimentMetrics = await VerifyAsync(
-            exp, reference, options, targetDir, resultsPath, ct)
+            exp, reference, startResult.BaseUrl, options, targetDir, resultsPath, ct)
             .ConfigureAwait(false);
 
         if (experimentMetrics is null)
@@ -353,6 +371,7 @@ internal sealed class HoneLoopRunner
     private async Task<MetricSet?> VerifyAsync(
         int experiment,
         MetricSet reference,
+        Uri? baseUrl,
         LoopOptions options,
         string targetDir,
         string resultsPath,
@@ -364,7 +383,7 @@ internal sealed class HoneLoopRunner
         }
 
         LoadTestResult loadResult = await _pipeline.RunLoadTestAsync(
-            new LoadTestInput(targetDir, experiment, resultsPath), ct)
+            new LoadTestInput(targetDir, experiment, resultsPath, baseUrl), ct)
             .ConfigureAwait(false);
 
         if (!loadResult.Success || loadResult.Metrics is null)
@@ -376,6 +395,13 @@ internal sealed class HoneLoopRunner
         }
 
         return loadResult.Metrics;
+    }
+
+    private static bool HasPersistedBaseline(string targetDir, HoneConfig config)
+    {
+        string baselineSummaryPath = Path.Combine(
+            targetDir, config.Api.ResultsPath, "baseline", "k6-summary.json");
+        return File.Exists(baselineSummaryPath);
     }
 
     // ── Lifecycle helpers ────────────────────────────────────────────────────

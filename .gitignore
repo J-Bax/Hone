@@ -75,8 +75,9 @@ tools/
 #   - PerfView ETL/CSV/logs, dotnet-counters, k6 JSON summaries
 sample-api/.hone/results/*
 !sample-api/.hone/results/.gitkeep
-!sample-api/.hone/results/baseline.json
-!sample-api/.hone/results/baseline-*.json
+!sample-api/.hone/results/baseline/
+sample-api/.hone/results/baseline/*
+!sample-api/.hone/results/baseline/k6-summary.json
 !sample-api/.hone/results/run-metadata.json
 !sample-api/.hone/results/hone.jsonl
 !sample-api/.hone/results/metadata/

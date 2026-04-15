@@ -201,6 +201,44 @@ public sealed class K6LoadTestRunnerTests(ITestOutputHelper output) : HoneTestBa
     }
 
     [Fact]
+    public async Task RunAsync_WorkingDirectory_PassedToK6()
+    {
+        // Arrange
+        string outputDir = Path.Combine(TempDir, "output");
+        string workingDirectory = Path.Combine(TempDir, "target");
+        LoadTestOptions options = new(
+            ScenarioPath: ".hone\\scenarios\\baseline.js",
+            BaseUrl: new Uri("http://localhost:5000"),
+            OutputDir: outputDir,
+            Experiment: 1,
+            Run: 1,
+            Timeout: null,
+            WorkingDirectory: workingDirectory);
+
+        IProcessRunner processRunner = Substitute.For<IProcessRunner>();
+        _ = processRunner.RunAsync(
+            executable: "k6",
+            arguments: Arg.Any<IEnumerable<string>>(),
+            workingDirectory: workingDirectory,
+            timeout: Arg.Any<TimeSpan?>(),
+            ct: Arg.Any<CancellationToken>())
+            .Returns(new ProcessResult(Success: true, Output: "", ExitCode: 0, TimedOut: false));
+
+        K6LoadTestRunner sut = new(processRunner);
+
+        // Act
+        _ = await sut.RunAsync(options);
+
+        // Assert
+        _ = await processRunner.Received(1).RunAsync(
+            executable: "k6",
+            arguments: Arg.Any<IEnumerable<string>>(),
+            workingDirectory: workingDirectory,
+            timeout: Arg.Any<TimeSpan?>(),
+            ct: Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task RunAsync_CreatesOutputDirectory()
     {
         // Arrange

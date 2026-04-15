@@ -87,6 +87,12 @@ public sealed class LifecycleHookDispatcherTests(ITestOutputHelper output) : Hon
         _ = result.Success.Should().BeTrue();
         _ = result.Message.Should().Be("Command completed");
         _ = result.Duration.Should().BePositive();
+        _ = await _processRunner.Received(1).RunAsync(
+            Arg.Any<string>(),
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Is<string?>(workingDirectory => workingDirectory == "/tmp/target"),
+            Arg.Any<TimeSpan?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
