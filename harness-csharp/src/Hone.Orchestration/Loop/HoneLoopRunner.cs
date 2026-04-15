@@ -63,6 +63,7 @@ internal sealed class HoneLoopRunner
 
         // ── Baseline ────────────────────────────────────────────────────────
         Uri? baselineBaseUrl = null;
+        bool baselineStartedTarget = false;
         if (!HasPersistedBaseline(targetDir, config))
         {
             HookResult baselineStartResult = await _pipeline.StartTargetAsync(targetDir, config, experiment: 0, ct)
@@ -78,6 +79,7 @@ internal sealed class HoneLoopRunner
             }
 
             baselineBaseUrl = baselineStartResult.BaseUrl;
+            baselineStartedTarget = true;
         }
 
         MetricSet baseline = await _pipeline.LoadOrCreateBaselineAsync(targetDir, config, baselineBaseUrl, ct)
@@ -129,9 +131,26 @@ internal sealed class HoneLoopRunner
                 targetName, machineInfo, experiments, metadataPath, ct)
                 .ConfigureAwait(false);
 
+            if (expCtx.TargetLifecycleTakenOver)
+            {
+                baselineStartedTarget = false;
+            }
+
             if (expCtx.ShouldBreak)
             {
                 break;
+            }
+        }
+
+        if (baselineStartedTarget)
+        {
+            HookResult stopResult = await _pipeline.StopTargetAsync(targetDir, config, experiment: 0, ct)
+                .ConfigureAwait(false);
+            if (!stopResult.Success)
+            {
+                _eventSink.Emit(new StatusMessage(
+                    $"Stop hook failed: {stopResult.Message}",
+                    LogLevel.Warning, DateTimeOffset.UtcNow, Experiment: null));
             }
         }
 
@@ -189,6 +208,7 @@ internal sealed class HoneLoopRunner
         var ctx = new ExperimentRunContext(
             exp, startedAt, branchName, baseBranch, state, config, options,
             targetDir, resultsPath, targetName, machineInfo, experiments, metadataPath);
+        bool targetLifecycleTakenOver = false;
 
         // ── Analyse (if queue empty) ────────────────────────────────────────
         if (!_queueManager.HasActionable())
@@ -198,7 +218,7 @@ internal sealed class HoneLoopRunner
             if (!analysisOk)
             {
                 state.ExitReason = "no_opportunities";
-                return ExperimentContext.Break;
+                return new ExperimentContext(ShouldBreak: true, TargetLifecycleTakenOver: targetLifecycleTakenOver);
             }
         }
 
@@ -211,7 +231,7 @@ internal sealed class HoneLoopRunner
             if (item is null)
             {
                 state.ExitReason = "queue_exhausted";
-                return ExperimentContext.Break;
+                return new ExperimentContext(ShouldBreak: true, TargetLifecycleTakenOver: targetLifecycleTakenOver);
             }
 
             if (config.Loop.SkipClassification)
@@ -236,6 +256,7 @@ internal sealed class HoneLoopRunner
         // Prevents file-lock failures on Windows when the API runs from bin/Release.
         _eventSink.Emit(new StatusMessage(
             "Stopping target API for build", LogLevel.Info, DateTimeOffset.UtcNow, exp));
+        targetLifecycleTakenOver = true;
         HookResult stopResult = await _pipeline.StopTargetAsync(targetDir, config, exp, ct)
             .ConfigureAwait(false);
         if (!stopResult.Success)
@@ -269,10 +290,11 @@ internal sealed class HoneLoopRunner
 
             // Restart API before next experiment even though this one failed
             await TryRestartTargetAsync(targetDir, config, exp, ct).ConfigureAwait(false);
-            return await HandleFailedExperimentAsync(
+            ExperimentContext failedContext = await HandleFailedExperimentAsync(
                 ctx, failureOutcome,
                 experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
+            return failedContext with { TargetLifecycleTakenOver = targetLifecycleTakenOver };
         }
 
         // ── Restart target API for load testing ─────────────────────────────
@@ -284,10 +306,11 @@ internal sealed class HoneLoopRunner
         {
             _eventSink.Emit(new StatusMessage(
                 $"Start hook failed: {startResult.Message}", LogLevel.Error, DateTimeOffset.UtcNow, exp));
-            return await HandleFailedExperimentAsync(
+            ExperimentContext failedContext = await HandleFailedExperimentAsync(
                 ctx, ExperimentOutcome.StartFailed,
                 experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
+            return failedContext with { TargetLifecycleTakenOver = targetLifecycleTakenOver };
         }
 
         // ── Verify ──────────────────────────────────────────────────────────
@@ -297,10 +320,11 @@ internal sealed class HoneLoopRunner
 
         if (experimentMetrics is null)
         {
-            return await HandleFailedExperimentAsync(
+            ExperimentContext failedContext = await HandleFailedExperimentAsync(
                 ctx, ExperimentOutcome.LoadTestFailed,
                 experimentMetrics: null, queueItemId: item.Id, ct)
                 .ConfigureAwait(false);
+            return failedContext with { TargetLifecycleTakenOver = targetLifecycleTakenOver };
         }
 
         // ── Compare ─────────────────────────────────────────────────────────
@@ -314,16 +338,28 @@ internal sealed class HoneLoopRunner
         return comparison.Outcome switch
         {
             ExperimentOutcome.Improved or ExperimentOutcome.EfficiencyWin =>
-                await HandleAcceptedAsync(
-                    ctx, item, experimentMetrics, comparison, ct).ConfigureAwait(false),
+                (await HandleAcceptedAsync(
+                    ctx, item, experimentMetrics, comparison, ct).ConfigureAwait(false))
+                with
+                {
+                    TargetLifecycleTakenOver = targetLifecycleTakenOver,
+                },
 
             ExperimentOutcome.Regressed =>
-                await HandleFailedExperimentAsync(
-                    ctx, ExperimentOutcome.Regressed, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
+                (await HandleFailedExperimentAsync(
+                    ctx, ExperimentOutcome.Regressed, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false))
+                with
+                {
+                    TargetLifecycleTakenOver = targetLifecycleTakenOver,
+                },
 
             ExperimentOutcome.Stale =>
-                await HandleFailedExperimentAsync(
-                    ctx, ExperimentOutcome.Stale, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false),
+                (await HandleFailedExperimentAsync(
+                    ctx, ExperimentOutcome.Stale, experimentMetrics, queueItemId: item.Id, ct).ConfigureAwait(false))
+                with
+                {
+                    TargetLifecycleTakenOver = targetLifecycleTakenOver,
+                },
 
             ExperimentOutcome.ImplementationFailed
                 or ExperimentOutcome.BuildFailed
@@ -760,9 +796,9 @@ internal sealed class HoneLoopRunner
     // ── Helper types ────────────────────────────────────────────────────────
 
     /// <summary>Signals whether the loop should continue or break after an experiment.</summary>
-    private readonly record struct ExperimentContext(bool ShouldBreak)
+    private readonly record struct ExperimentContext(bool ShouldBreak, bool TargetLifecycleTakenOver)
     {
-        internal static ExperimentContext Break { get; } = new(ShouldBreak: true);
-        internal static ExperimentContext Continue { get; } = new(ShouldBreak: false);
+        internal static ExperimentContext Break { get; } = new(ShouldBreak: true, TargetLifecycleTakenOver: false);
+        internal static ExperimentContext Continue { get; } = new(ShouldBreak: false, TargetLifecycleTakenOver: false);
     }
 }

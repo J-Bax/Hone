@@ -272,6 +272,25 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 Arg.Is<Uri?>(uri => uri == new Uri("http://localhost:5050")),
                 Arg.Any<CancellationToken>());
         });
+
+        _ = await h.Pipeline.Received(1).StopTargetAsync(
+            h.TargetDir, h.Config, 0, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_StopsBaselineTargetWhenLoopExitsBeforeFirstExperimentLifecycle()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+            _ = pipeline.RunAnalysisAsync(
+                    Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new AnalysisResult(
+                    Success: true, Opportunities: []))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.ExitReason.Should().Be("no_opportunities");
+        _ = await h.Pipeline.Received(1).StopTargetAsync(
+            h.TargetDir, h.Config, 0, Arg.Any<CancellationToken>());
     }
 
     [Fact]

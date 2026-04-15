@@ -209,17 +209,17 @@ internal static class Program
             IServiceProvider services = ServiceRegistration.Build(targetDir, config, configPath);
             var pipeline = (ILoopPipeline)services.GetService(typeof(ILoopPipeline))!;
 
-            HookResult prepareResult = await pipeline.PrepareAsync(targetDir, config, ct).ConfigureAwait(false);
-            if (!prepareResult.Success)
-            {
-                await Console.Error.WriteLineAsync($"Prepare hook failed: {prepareResult.Message}").ConfigureAwait(false);
-                return 1;
-            }
-
             bool started = false;
 
             try
             {
+                HookResult prepareResult = await pipeline.PrepareAsync(targetDir, config, ct).ConfigureAwait(false);
+                if (!prepareResult.Success)
+                {
+                    await Console.Error.WriteLineAsync($"Prepare hook failed: {prepareResult.Message}").ConfigureAwait(false);
+                    return 1;
+                }
+
                 HookResult startResult = await pipeline.StartTargetAsync(targetDir, config, experiment: 0, ct)
                     .ConfigureAwait(false);
                 if (!startResult.Success)

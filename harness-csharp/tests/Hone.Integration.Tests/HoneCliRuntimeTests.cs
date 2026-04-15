@@ -256,6 +256,57 @@ Hooks:
         _ = persistedSummary.Should().Be("{\"summary\":true}");
     }
 
+    [Fact]
+    public async Task BaselineCommand_RunsCleanupWhenPrepareFails()
+    {
+        string targetDir = CreateTargetDir("baseline-prepare-failure", builder =>
+        {
+            _ = builder.AddFile("MyApp.sln", string.Empty);
+            _ = builder.AddFile("MyApp\\app.csproj", "<Project />");
+            _ = builder.AddFile(".hone\\scenarios\\baseline.js", "export default function () {}");
+            _ = builder.AddFile(".hone\\config.yaml", """
+Name: "CleanupTarget"
+BaseBranch: "main"
+Api:
+  SolutionPath: "MyApp.sln"
+  ProjectPath: "MyApp"
+  BaseUrl: "http://localhost:5000"
+  ResultsPath: "hone-results"
+  MetadataPath: "hone-results/metadata"
+ScaleTest:
+  ScenarioPath: ".hone/scenarios/baseline.js"
+Hooks:
+  Prepare:
+    Type: Command
+    Value: "exit 7"
+  Build:
+    Type: Skip
+  Test:
+    Type: Skip
+  Start:
+    Type: Skip
+  Stop:
+    Type: Skip
+  Ready:
+    Type: Skip
+  Warmup:
+    Type: Skip
+  Active:
+    Type: Skip
+  Cooldown:
+    Type: Skip
+  Cleanup:
+    Type: Command
+    Value: "echo cleaned> cleanup-ran.txt"
+""");
+        });
+
+        int exitCode = await Program.Main(["baseline", "--target", targetDir, "--force"]);
+
+        _ = exitCode.Should().Be(1);
+        _ = File.Exists(Path.Combine(targetDir, "cleanup-ran.txt")).Should().BeTrue();
+    }
+
     private static HoneConfig CreateConfig(string baseUrl, string resultsPath, bool warmupEnabled) =>
         new(
             Api: new ApiConfig(
