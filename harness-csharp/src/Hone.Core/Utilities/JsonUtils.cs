@@ -1,10 +1,11 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Hone.Core.Utilities;
 
 /// <summary>
 /// JSON pre-processing helpers for sanitising k6 output and extracting
-/// code blocks from markdown-fenced LLM responses.
+/// JSON/code blocks from noisy LLM responses.
 /// </summary>
 public static partial class JsonUtils
 {
@@ -22,30 +23,15 @@ public static partial class JsonUtils
     }
 
     /// <summary>
-    /// Extracts the first JSON block from markdown-fenced text
-    /// (<c>```json … ```</c>).  Falls back to generic fences, then
-    /// attempts to find an unfenced JSON object/array, and finally
-    /// returns the original text when nothing matches.
+    /// Extracts the largest valid JSON object/array embedded anywhere in
+    /// the text. This tolerates markdown fences, prefixed chatter, and
+    /// inline brace noise before the real payload.
     /// </summary>
     public static string ExtractJsonBlock(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        Match match = JsonFencePattern().Match(text);
-        if (match.Success)
-        {
-            return match.Groups["content"].Value.Trim();
-        }
-
-        match = GenericFencePattern().Match(text);
-        if (match.Success)
-        {
-            return match.Groups["content"].Value.Trim();
-        }
-
-        // Fallback: find the first '{' or '[' that starts a JSON object/array
-        // and match it to the last corresponding '}' or ']'.
-        return TryExtractUnfencedJson(text) ?? text;
+        return TryExtractLargestValidJson(text) ?? text;
     }
 
     /// <summary>
@@ -71,51 +57,129 @@ public static partial class JsonUtils
     }
 
     /// <summary>
-    /// Attempts to locate an unfenced JSON object or array in the text by finding the
-    /// first <c>{</c> or <c>[</c> and matching it to the last corresponding <c>}</c> or <c>]</c>.
+    /// Attempts to locate the largest valid JSON object or array anywhere in
+    /// the text by scanning for balanced JSON fragments and validating each
+    /// candidate with <see cref="JsonDocument"/>.
     /// </summary>
-    private static string? TryExtractUnfencedJson(string text)
+    private static string? TryExtractLargestValidJson(string text)
     {
-        int openBrace = text.IndexOf('{', StringComparison.Ordinal);
-        int openBracket = text.IndexOf('[', StringComparison.Ordinal);
+        string? bestCandidate = null;
 
-        int start;
-        char closeChar;
-        if (openBrace < 0 && openBracket < 0)
+        for (int i = 0; i < text.Length; i++)
         {
-            return null;
-        }
+            if (text[i] is not ('{' or '['))
+            {
+                continue;
+            }
 
-        if (openBrace < 0)
-        {
-            start = openBracket;
-            closeChar = ']';
-        }
-        else if (openBracket < 0 || openBrace < openBracket)
-        {
-            start = openBrace;
-            closeChar = '}';
-        }
-        else
-        {
-            start = openBracket;
-            closeChar = ']';
+            if (!TryExtractBalancedJson(text, i, out string? candidate)
+                || candidate is null
+                || !IsValidJson(candidate))
+            {
+                continue;
+            }
+
+            if (bestCandidate is null || candidate.Length > bestCandidate.Length)
+            {
+                bestCandidate = candidate;
+            }
         }
 
-        int end = text.LastIndexOf(closeChar);
-        if (end <= start)
+        return bestCandidate;
+    }
+
+    private static bool TryExtractBalancedJson(string text, int startIndex, out string? candidate)
+    {
+        candidate = null;
+
+        var stack = new Stack<char>();
+        bool inString = false;
+        bool escaping = false;
+
+        for (int i = startIndex; i < text.Length; i++)
         {
-            return null;
+            char ch = text[i];
+
+            if (inString)
+            {
+                if (escaping)
+                {
+                    escaping = false;
+                    continue;
+                }
+
+                if (ch == '\\')
+                {
+                    escaping = true;
+                    continue;
+                }
+
+                if (ch == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (ch is '{' or '[')
+            {
+                stack.Push(ch);
+                continue;
+            }
+
+            if (ch is not ('}' or ']'))
+            {
+                continue;
+            }
+
+            if (stack.Count == 0 || !IsMatchingJsonDelimiter(stack.Peek(), ch))
+            {
+                return false;
+            }
+
+            _ = stack.Pop();
+            if (stack.Count == 0)
+            {
+                candidate = text[startIndex..(i + 1)];
+                return true;
+            }
         }
 
-        return text[start..(end + 1)];
+        return false;
+    }
+
+    private static bool IsValidJson(string candidate)
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(SanitizeNaN(candidate));
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsMatchingJsonDelimiter(char open, char close)
+    {
+        return open switch
+        {
+            '{' => close == '}',
+            '[' => close == ']',
+            _ => false,
+        };
     }
 
     [GeneratedRegex(@":\s*-?(?:NaN|Infinity)\b", RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
     private static partial Regex NaNPattern();
-
-    [GeneratedRegex(@"```json\s*\n(?<content>.*?)\n\s*```", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
-    private static partial Regex JsonFencePattern();
 
     [GeneratedRegex(@"```csharp\s*\n(?<content>.*?)\n\s*```", RegexOptions.Singleline | RegexOptions.ExplicitCapture | RegexOptions.NonBacktracking)]
     private static partial Regex CSharpFencePattern();

@@ -195,7 +195,7 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
     private static void ConfigureDefaultPipeline(ILoopPipeline pipeline)
     {
         _ = pipeline.LoadOrCreateBaselineAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(BaselineMetrics));
         _ = pipeline.GetMachineInfoAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(TestMachine));
@@ -266,12 +266,12 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
                 Success: true, Message: "Prepared", Duration: TimeSpan.FromSeconds(2),
                 Artifacts: [], BaseUrl: null)));
         _ = pipeline.WarmupAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Warmed up", Duration: TimeSpan.Zero,
                 Artifacts: [], BaseUrl: null)));
         _ = pipeline.CooldownAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Cooled down", Duration: TimeSpan.Zero,
                 Artifacts: [], BaseUrl: null)));

@@ -45,6 +45,30 @@ public sealed class JsonUtilsTests
         _ = result.Should().Be("{\"a\": 1}");
     }
 
+    [Fact]
+    public void ExtractJsonBlock_PrefixedChatterWithBraceNoise_ReturnsLargestValidJsonObject()
+    {
+        string input =
+            """
+            Let me check one more thing.
+            Example remediation: Build: { Type: BuiltIn, Name: dotnet-build }
+            Final answer:
+            {"target":{"name":"SampleApi"},"compatibility":{"overall":"compatible","score":92}}
+            """;
+
+        string result = JsonUtils.ExtractJsonBlock(input);
+
+        _ = result.Should().Be("{\"target\":{\"name\":\"SampleApi\"},\"compatibility\":{\"overall\":\"compatible\",\"score\":92}}");
+    }
+
+    [Fact]
+    public void ExtractJsonBlock_NoJson_ReturnsOriginal()
+    {
+        string plain = "not json at all";
+        string result = JsonUtils.ExtractJsonBlock(plain);
+        _ = result.Should().Be(plain);
+    }
+
     // ── ExtractCodeBlock ────────────────────────────────────────────────
 
     [Fact]

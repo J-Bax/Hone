@@ -1,9 +1,6 @@
-using System.Collections;
-using System.Reflection;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using YamlDotNet.Serialization.ObjectFactories;
 
 namespace Hone.Core.Config;
 
@@ -58,50 +55,4 @@ public static class ConfigLoader
                 $"Failed to parse YAML configuration from '{yamlPath}': {ex.Message}", ex);
         }
     }
-
-    /// <summary>
-    /// Object factory that supports C# records with all-default constructor parameters.
-    /// YamlDotNet's <see cref="DefaultObjectFactory"/> requires a parameterless constructor,
-    /// but positional records with default parameter values don't generate one.
-    /// </summary>
-    private sealed class RecordAwareObjectFactory : IObjectFactory
-    {
-        private readonly DefaultObjectFactory _inner = new();
-
-        public object Create(Type type)
-        {
-            // Try constructor with all-default parameters (positional records).
-            // Use the constructor with the most parameters to pick the primary
-            // record constructor reliably across runtimes.
-            ConstructorInfo[] ctors = type.GetConstructors();
-            if (ctors.Length > 0)
-            {
-                ConstructorInfo ctor = ctors.OrderByDescending(c => c.GetParameters().Length).First();
-                ParameterInfo[] parameters = ctor.GetParameters();
-                if (parameters.Length > 0 && Array.TrueForAll(parameters, static p => p.HasDefaultValue))
-                {
-                    object?[] args = Array.ConvertAll(parameters, static p => p.DefaultValue);
-                    return ctor.Invoke(args);
-                }
-            }
-
-            return _inner.Create(type);
-        }
-
-        public object? CreatePrimitive(Type type) => _inner.CreatePrimitive(type);
-
-        public bool GetDictionary(IObjectDescriptor descriptor, out IDictionary? dictionary, out Type[]? genericArguments)
-            => _inner.GetDictionary(descriptor, out dictionary, out genericArguments);
-
-        public Type GetValueType(Type type) => _inner.GetValueType(type);
-
-        public void ExecuteOnDeserializing(object value) => _inner.ExecuteOnDeserializing(value);
-
-        public void ExecuteOnDeserialized(object value) => _inner.ExecuteOnDeserialized(value);
-
-        public void ExecuteOnSerializing(object value) => _inner.ExecuteOnSerializing(value);
-
-        public void ExecuteOnSerialized(object value) => _inner.ExecuteOnSerialized(value);
-    }
 }
-

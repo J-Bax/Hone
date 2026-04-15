@@ -25,4 +25,5 @@ internal sealed record ClassificationResult(
 internal sealed record LoadTestInput(
     string TargetDir,
     int Experiment,
-    string ResultsPath);
+    string ResultsPath,
+    Uri? BaseUrl);

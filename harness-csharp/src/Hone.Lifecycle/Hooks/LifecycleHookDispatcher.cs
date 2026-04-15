@@ -26,7 +26,7 @@ public sealed class LifecycleHookDispatcher(
         return hook.Type switch
         {
             HookType.BuiltIn => await DispatchBuiltInAsync(hookName, hook, context, ct).ConfigureAwait(false),
-            HookType.Command => await DispatchCommandAsync(hook, stopwatch, ct).ConfigureAwait(false),
+            HookType.Command => await DispatchCommandAsync(hook, context, stopwatch, ct).ConfigureAwait(false),
             HookType.Http => await DispatchHttpAsync(hook, context, stopwatch, ct).ConfigureAwait(false),
             HookType.Skip => new HookResult(
                 Success: true,
@@ -55,7 +55,7 @@ public sealed class LifecycleHookDispatcher(
     }
 
     private async Task<HookResult> DispatchCommandAsync(
-        ResolvedHook hook, Stopwatch stopwatch, CancellationToken ct)
+        ResolvedHook hook, HookContext context, Stopwatch stopwatch, CancellationToken ct)
     {
         try
         {
@@ -65,6 +65,7 @@ public sealed class LifecycleHookDispatcher(
                 arguments: OperatingSystem.IsWindows()
                     ? ["/c", hook.Command!]
                     : ["-c", hook.Command!],
+                workingDirectory: context.TargetPath,
                 timeout: null,
                 ct: ct).ConfigureAwait(false);
 

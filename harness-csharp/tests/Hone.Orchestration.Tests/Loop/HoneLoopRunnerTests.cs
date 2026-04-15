@@ -167,7 +167,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
     private static void ConfigureDefaultPipeline(ILoopPipeline pipeline)
     {
         _ = pipeline.LoadOrCreateBaselineAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(BaselineMetrics));
         _ = pipeline.GetMachineInfoAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(TestMachine));
@@ -216,12 +216,12 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 Success: true, Message: "Prepared", Duration: TimeSpan.FromSeconds(2),
                 Artifacts: [], BaseUrl: null)));
         _ = pipeline.WarmupAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Warmed up", Duration: TimeSpan.Zero,
                 Artifacts: [], BaseUrl: null)));
         _ = pipeline.CooldownAsync(
-                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<Uri?>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new HookResult(
                 Success: true, Message: "Cooled down", Duration: TimeSpan.Zero,
                 Artifacts: [], BaseUrl: null)));
@@ -253,6 +253,73 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 ResultsPath: "hone-results",
                 DryRun: dryRun,
                 MaxExperimentsOverride: maxExperiments);
+    }
+
+    [Fact]
+    public async Task RunAsync_CreatesBaselineAfterPrepareAndStart()
+    {
+        TestHarness h = CreateHarness();
+
+        _ = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+
+        Received.InOrder(() =>
+        {
+            _ = h.Pipeline.PrepareAsync(h.TargetDir, h.Config, Arg.Any<CancellationToken>());
+            _ = h.Pipeline.StartTargetAsync(h.TargetDir, h.Config, 0, Arg.Any<CancellationToken>());
+            _ = h.Pipeline.LoadOrCreateBaselineAsync(
+                h.TargetDir,
+                h.Config,
+                Arg.Is<Uri?>(uri => uri == new Uri("http://localhost:5050")),
+                Arg.Any<CancellationToken>());
+        });
+
+        _ = await h.Pipeline.Received(1).StopTargetAsync(
+            h.TargetDir, h.Config, 0, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_StopsBaselineTargetWhenLoopExitsBeforeFirstExperimentLifecycle()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+            _ = pipeline.RunAnalysisAsync(
+                    Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new AnalysisResult(
+                    Success: true, Opportunities: []))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.ExitReason.Should().Be("no_opportunities");
+        _ = await h.Pipeline.Received(1).StopTargetAsync(
+            h.TargetDir, h.Config, 0, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_PassesRuntimeBaseUrlIntoLoadTests()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+        {
+            _ = pipeline.RunAnalysisAsync(
+                    Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new AnalysisResult(
+                    Success: true, Opportunities: MakeOpportunities(count: 1))));
+            _ = pipeline.RunLoadTestAsync(
+                    Arg.Any<LoadTestInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new LoadTestResult(
+                    Success: true, Metrics: MakeImprovedMetrics(experiment: 1),
+                    SummaryPath: null, Output: null)));
+            _ = pipeline.CompareMetrics(
+                    Arg.Any<MetricSet>(), Arg.Any<MetricSet>(), Arg.Any<MetricSet?>(),
+                    Arg.Any<int>(), Arg.Any<HoneConfig>())
+                .Returns(ImprovedComparison());
+        });
+
+        _ = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = await h.Pipeline.Received(1).RunLoadTestAsync(
+            Arg.Is<LoadTestInput>(input =>
+                input.Experiment == 1
+                && input.BaseUrl == new Uri("http://localhost:5050")),
+            Arg.Any<CancellationToken>());
     }
 
     // ── 1. HappyPath_SingleExperiment_Accepted ──────────────────────────────

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Hone.Agents.Core;
 using Hone.Core.Contracts;
 
@@ -81,9 +82,10 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             throw;
         }
 
-        string output = await stdoutTask.ConfigureAwait(false);
+        string stdout = await stdoutTask.ConfigureAwait(false);
         // Ensure stderr is fully consumed to avoid orphaned tasks
-        _ = await stderrTask.ConfigureAwait(false);
+        string stderr = await stderrTask.ConfigureAwait(false);
+        string output = NormalizeOutput(stdout, stderr, process.ExitCode);
 
         return new AgentRunResult(
             Success: process.ExitCode == 0,
@@ -105,6 +107,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             "-s",
             "--no-auto-update",
             "--no-ask-user",
+            "--output-format", "json",
         ];
 
         if (!string.IsNullOrEmpty(invocation.WorkingDirectory))
@@ -114,7 +117,81 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             args.Add("--no-custom-instructions");
         }
 
+        if (invocation.AdditionalAllowedDirectories is not null)
+        {
+            foreach (string directory in invocation.AdditionalAllowedDirectories
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                args.Add("--add-dir");
+                args.Add(directory);
+            }
+        }
+
         return args;
+    }
+
+    internal static string NormalizeOutput(string stdout, string stderr, int exitCode)
+    {
+        if (TryExtractAssistantMessageContent(stdout, out string? assistantContent))
+        {
+            return assistantContent!;
+        }
+
+        if (exitCode != 0 && string.IsNullOrWhiteSpace(stdout) && !string.IsNullOrWhiteSpace(stderr))
+        {
+            return stderr;
+        }
+
+        return stdout;
+    }
+
+    internal static bool TryExtractAssistantMessageContent(string output, out string? content)
+    {
+        ArgumentNullException.ThrowIfNull(output);
+
+        content = null;
+        using var reader = new StringReader(output);
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(line);
+                JsonElement root = document.RootElement;
+
+                if (!root.TryGetProperty("type", out JsonElement typeElement)
+                    || !string.Equals(typeElement.GetString(), "assistant.message", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!root.TryGetProperty("data", out JsonElement dataElement)
+                    || !dataElement.TryGetProperty("content", out JsonElement contentElement)
+                    || contentElement.ValueKind is not JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                string? messageContent = contentElement.GetString();
+                if (!string.IsNullOrWhiteSpace(messageContent))
+                {
+                    content = messageContent;
+                }
+            }
+            catch (JsonException)
+            {
+                // Skip chatter and keep scanning for valid JSONL assistant messages.
+                continue;
+            }
+        }
+
+        return !string.IsNullOrWhiteSpace(content);
     }
 
     private static void TryKillProcess(Process process)

@@ -10,4 +10,6 @@ public sealed record AgentInvocationOptions(
     string? DefaultModel = null,
     int MaxRetries = 0,
     string? RetryPromptSuffix = null,
-    string? WorkingDirectory = null);
+    string? WorkingDirectory = null,
+    IReadOnlyList<string>? AdditionalAllowedDirectories = null,
+    bool IncludePreviousOutputInRetryPrompt = false);

@@ -1,7 +1,7 @@
 using System.CommandLine;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -11,9 +11,9 @@ using Hone.Agents.Preparation;
 using Hone.Core.Config;
 using Hone.Core.Contracts;
 using Hone.Core.Models;
+using Hone.Lifecycle.Hooks;
 using Hone.Lifecycle.Validation;
 using Hone.Measurement.K6;
-using Hone.Measurement.Orchestration;
 using Hone.Orchestration.Loop;
 using Hone.Reporting.Console;
 using Hone.Reporting.Dashboard;
@@ -40,7 +40,7 @@ internal static class Program
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    private static async Task<int> Main(string[] args)
+    internal static async Task<int> Main(string[] args)
     {
         RootCommand rootCommand = new("Hone optimization harness")
         {
@@ -139,31 +139,10 @@ internal static class Program
 
             (string targetDir, string configPath) = ResolveTarget(targetPath);
             HoneConfig config = LoadAndMergeConfig(configPath);
+            TargetConfig targetConfig = LoadTargetConfig(configPath);
 
-            ValidationResult result = ConfigValidator.ValidateEngineConfig(config, targetDir);
-
-            if (result.Warnings.Count > 0)
-            {
-                Console.WriteLine("Warnings:");
-                foreach (string warning in result.Warnings)
-                {
-                    Console.WriteLine($"  \u26a0 {warning}");
-                }
-            }
-
-            if (result.Errors.Count > 0)
-            {
-                Console.WriteLine("Errors:");
-                foreach (string error in result.Errors)
-                {
-                    Console.WriteLine($"  \u2717 {error}");
-                }
-            }
-
-            if (result.IsValid)
-            {
-                Console.WriteLine("Configuration is valid.");
-            }
+            ValidationResult result = ValidateConfiguration(config, targetConfig, targetDir);
+            WriteValidationResult(result);
 
             return result.IsValid ? 0 : 1;
         });
@@ -194,6 +173,7 @@ internal static class Program
 
             (string targetDir, string configPath) = ResolveTarget(targetPath);
             HoneConfig config = LoadAndMergeConfig(configPath);
+            TargetConfig targetConfig = LoadTargetConfig(configPath);
 
             string resultsPath = Path.Combine(targetDir, config.Api.ResultsPath);
             string baselineDir = Path.Combine(resultsPath, "baseline");
@@ -214,49 +194,90 @@ internal static class Program
                 return 0;
             }
 
-            Directory.CreateDirectory(baselineDir);
-
-            IProcessRunner processRunner = new ProcessRunner();
-            ILoadTestRunner loadTestRunner = new K6LoadTestRunner(processRunner);
-            var baseUrl = new Uri(config.Api.BaseUrl);
-
-            Console.WriteLine($"Running baseline measurement against {baseUrl}...");
-
-            ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-                config.ScaleTest, loadTestRunner, baseUrl, baselineDir, experiment: 0, ct: ct)
-                .ConfigureAwait(false);
-
-            if (result.Metrics is null)
+            ValidationResult validation = ValidateConfiguration(config, targetConfig, targetDir);
+            WriteValidationResult(validation, includeSuccessMessage: false);
+            if (!validation.IsValid)
             {
-                await Console.Error.WriteLineAsync("Baseline measurement failed — no metrics produced.").ConfigureAwait(false);
-                await Console.Error.WriteLineAsync("Ensure the target API is running and reachable.").ConfigureAwait(false);
                 return 1;
             }
 
-            // Save run-metadata.json
-            MachineInfo machineInfo = GatherMachineInfo();
-            var metadata = new RunMetadata(
-                TargetName: Path.GetFileName(targetDir),
-                StartedAt: DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
-                MachineInfo: machineInfo,
-                Experiments: []);
+            if (force && Directory.Exists(baselineDir))
+            {
+                Directory.Delete(baselineDir, recursive: true);
+            }
 
-            string metadataPath = Path.Combine(resultsPath, "run-metadata.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(metadataPath)!);
-            string metadataJson = JsonSerializer.Serialize(metadata, MetadataJsonOptions);
-            await File.WriteAllTextAsync(metadataPath, metadataJson, ct).ConfigureAwait(false);
+            IServiceProvider services = ServiceRegistration.Build(targetDir, config, configPath);
+            var pipeline = (ILoopPipeline)services.GetService(typeof(ILoopPipeline))!;
 
-            Console.WriteLine();
-            Console.WriteLine("Baseline established:");
-            Console.WriteLine($"  P95:      {result.Metrics.HttpReqDuration.P95:F1}ms");
-            Console.WriteLine($"  Avg:      {result.Metrics.HttpReqDuration.Avg:F1}ms");
-            Console.WriteLine($"  P99:      {result.Metrics.HttpReqDuration.P99:F1}ms");
-            Console.WriteLine($"  RPS:      {result.Metrics.HttpReqs.Rate:F0}");
-            Console.WriteLine($"  Requests: {result.Metrics.HttpReqs.Count}");
-            Console.WriteLine($"  Errors:   {result.Metrics.HttpReqFailed.Rate:P1}");
-            Console.WriteLine();
-            Console.WriteLine($"Saved to {baselineDir}");
-            return 0;
+            bool started = false;
+
+            try
+            {
+                HookResult prepareResult = await pipeline.PrepareAsync(targetDir, config, ct).ConfigureAwait(false);
+                if (!prepareResult.Success)
+                {
+                    await Console.Error.WriteLineAsync($"Prepare hook failed: {prepareResult.Message}").ConfigureAwait(false);
+                    return 1;
+                }
+
+                HookResult startResult = await pipeline.StartTargetAsync(targetDir, config, experiment: 0, ct)
+                    .ConfigureAwait(false);
+                if (!startResult.Success)
+                {
+                    await Console.Error.WriteLineAsync($"Start hook failed: {startResult.Message}").ConfigureAwait(false);
+                    return 1;
+                }
+
+                started = true;
+                Uri displayBaseUrl = startResult.BaseUrl ?? new Uri(config.Api.BaseUrl);
+                Console.WriteLine($"Running baseline measurement against {displayBaseUrl}...");
+
+                MetricSet baseline = await pipeline.LoadOrCreateBaselineAsync(
+                    targetDir, config, startResult.BaseUrl, ct).ConfigureAwait(false);
+
+                MachineInfo machineInfo = await pipeline.GetMachineInfoAsync(ct).ConfigureAwait(false);
+                var metadata = new RunMetadata(
+                    TargetName: Path.GetFileName(targetDir),
+                    StartedAt: DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
+                    MachineInfo: machineInfo,
+                    Experiments: []);
+
+                string metadataPath = Path.Combine(resultsPath, "run-metadata.json");
+                Directory.CreateDirectory(Path.GetDirectoryName(metadataPath)!);
+                string metadataJson = JsonSerializer.Serialize(metadata, MetadataJsonOptions);
+                await File.WriteAllTextAsync(metadataPath, metadataJson, ct).ConfigureAwait(false);
+
+                Console.WriteLine();
+                Console.WriteLine("Baseline established:");
+                Console.WriteLine($"  P95:      {baseline.HttpReqDuration.P95:F1}ms");
+                Console.WriteLine($"  Avg:      {baseline.HttpReqDuration.Avg:F1}ms");
+                Console.WriteLine($"  P99:      {baseline.HttpReqDuration.P99:F1}ms");
+                Console.WriteLine($"  RPS:      {baseline.HttpReqs.Rate:F0}");
+                Console.WriteLine($"  Requests: {baseline.HttpReqs.Count}");
+                Console.WriteLine($"  Errors:   {baseline.HttpReqFailed.Rate:P1}");
+                Console.WriteLine();
+                Console.WriteLine($"Saved to {baselineDir}");
+                return 0;
+            }
+            finally
+            {
+                if (started)
+                {
+                    HookResult stopResult = await pipeline.StopTargetAsync(targetDir, config, experiment: 0, ct)
+                        .ConfigureAwait(false);
+                    if (!stopResult.Success)
+                    {
+                        await Console.Error.WriteLineAsync($"Stop hook failed: {stopResult.Message}").ConfigureAwait(false);
+                    }
+                }
+
+                HookResult cleanupResult = await pipeline.CleanupAsync(targetDir, config, ct)
+                    .ConfigureAwait(false);
+                if (!cleanupResult.Success)
+                {
+                    await Console.Error.WriteLineAsync($"Cleanup hook failed: {cleanupResult.Message}").ConfigureAwait(false);
+                }
+            }
         });
 
         return command;
@@ -602,28 +623,61 @@ internal static class Program
     /// Loads the target configuration, merges with engine defaults,
     /// and optionally applies CLI overrides.
     /// </summary>
-    private static HoneConfig LoadAndMergeConfig(string configPath, CliOverrides? cli = null)
+    internal static HoneConfig LoadAndMergeConfig(string configPath, CliOverrides? cli = null)
     {
         var engine = new HoneConfig();
         HoneConfig target = ConfigLoader.Load(configPath);
         return ConfigMerger.Merge(engine, target, cli);
     }
 
-    private static MachineInfo GatherMachineInfo()
-    {
-        string cpuName = Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER") ?? "Unknown CPU";
-        int cpuCores = Environment.ProcessorCount;
-        decimal? totalRamGb = null;
-        string osVersion = RuntimeInformation.OSDescription;
-        string dotnetVersion = RuntimeInformation.FrameworkDescription;
+    internal static TargetConfig LoadTargetConfig(string configPath) =>
+        TargetConfigLoader.Load(configPath);
 
-        long totalMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
-        if (totalMemory > 0)
+    internal static ValidationResult ValidateConfiguration(
+        HoneConfig config,
+        TargetConfig targetConfig,
+        string targetDir)
+    {
+        ValidationResult engineResult = ConfigValidator.ValidateEngineConfig(config, targetDir);
+        ValidationResult targetResult = ConfigValidator.ValidateTargetConfig(targetConfig, targetDir);
+
+        List<string> errors = [.. engineResult.Errors, .. targetResult.Errors];
+        List<string> warnings = [.. engineResult.Warnings, .. targetResult.Warnings];
+
+        return new ValidationResult(
+            IsValid: errors.Count == 0,
+            Errors: [.. errors.Distinct(StringComparer.Ordinal)],
+            Warnings: [.. warnings.Distinct(StringComparer.Ordinal)]);
+    }
+
+    [SuppressMessage(
+        "Globalization",
+        "CA1303:Do not pass literals as localized parameters",
+        Justification = "CLI validation output is intentionally fixed English text.")]
+    private static void WriteValidationResult(ValidationResult result, bool includeSuccessMessage = true)
+    {
+        if (result.Warnings.Count > 0)
         {
-            totalRamGb = Math.Round((decimal)totalMemory / (1024 * 1024 * 1024), 1);
+            Console.WriteLine("Warnings:");
+            foreach (string warning in result.Warnings)
+            {
+                Console.WriteLine($"  \u26a0 {warning}");
+            }
         }
 
-        return new MachineInfo(cpuName, cpuCores, totalRamGb, osVersion, dotnetVersion);
+        if (result.Errors.Count > 0)
+        {
+            Console.WriteLine("Errors:");
+            foreach (string error in result.Errors)
+            {
+                Console.WriteLine($"  \u2717 {error}");
+            }
+        }
+
+        if (includeSuccessMessage && result.IsValid)
+        {
+            Console.WriteLine("Configuration is valid.");
+        }
     }
 
     /// <summary>

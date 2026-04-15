@@ -191,6 +191,43 @@ public sealed class ScaleTestOrchestratorTests(ITestOutputHelper output) : HoneT
         _ = scenarioPaths[0].Should().Be("scenarios/baseline.js");
     }
 
+    [Fact]
+    public async Task RunAsync_PassesWorkingDirectoryToRunner()
+    {
+        // Arrange
+        string workingDirectory = Path.Combine(TempDir, "target");
+        var config = new ScaleTestConfig(
+            WarmupEnabled: true,
+            WarmupScenarioPath: "scenarios/warmup.js",
+            ScenarioPath: "scenarios/baseline.js",
+            MeasuredRuns: 2,
+            CooldownSeconds: 0);
+
+        List<string?> workingDirectories = [];
+
+        _ = _runner.RunAsync(Arg.Any<LoadTestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci =>
+            {
+                LoadTestOptions opts = ci.Arg<LoadTestOptions>();
+                workingDirectories.Add(opts.WorkingDirectory);
+                return MakeLoadTestResult(p95: 100, run: opts.Run);
+            });
+
+        // Act
+        _ = await ScaleTestOrchestrator.RunAsync(
+            config,
+            _runner,
+            TestBaseUrl,
+            TempDir,
+            experiment: 1,
+            ct: default,
+            workingDirectory: workingDirectory);
+
+        // Assert
+        _ = workingDirectories.Should().HaveCount(3);
+        _ = workingDirectories.Should().OnlyContain(value => value == workingDirectory);
+    }
+
     #region Helpers
 
     private static LoadTestResult MakeLoadTestResult(double p95, int run)

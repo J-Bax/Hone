@@ -105,7 +105,15 @@ then actively investigate using the tools available to you.
 ## Output Format
 
 You MUST respond with ONLY a JSON object — no markdown, no explanation outside
-the JSON, no code blocks wrapping it. The JSON must have this exact structure:
+the JSON, no code blocks wrapping it.
+
+- Do NOT narrate your investigation or say things like "Now let me check..."
+- Do NOT include prefaces, summaries, bullet points, or trailing notes
+- The first non-whitespace character of your response MUST be `{`
+- The last non-whitespace character of your response MUST be `}`
+- Any text before or after the JSON object is a hard failure
+
+The JSON must have this exact structure:
 
 ```
 {
