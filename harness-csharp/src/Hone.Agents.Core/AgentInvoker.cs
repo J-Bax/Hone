@@ -173,6 +173,10 @@ public sealed class AgentInvoker
             return prompt;
         }
 
-        return $"{prompt}\n\n## Previous Invalid Response To Repair\n```text\n{previousRunResult.Output}\n```";
+        string escapedOutput = EscapeRetryPromptOutput(previousRunResult.Output);
+        return $"{prompt}\n\n## Previous Invalid Response To Repair\n```text\n{escapedOutput}\n```";
     }
+
+    private static string EscapeRetryPromptOutput(string output) =>
+        output.Replace("```", "``\\`", StringComparison.Ordinal);
 }

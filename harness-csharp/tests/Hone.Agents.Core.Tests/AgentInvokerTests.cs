@@ -303,6 +303,39 @@ public sealed class AgentInvokerTests(ITestOutputHelper output) : HoneTestBase(o
     }
 
     [Fact]
+    public async Task AgentInvoker_RetryPrompt_EscapesTripleBackticksInPreviousOutput()
+    {
+        const string PreviousOutput =
+            """
+            before
+            ```
+            after
+            """;
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(
+                Ok(PreviousOutput),
+                Ok("{\"value\": 1}"));
+
+        AgentInvoker sut = CreateSut();
+        var options = new AgentInvocationOptions(
+            AgentName: "test",
+            Prompt: "original prompt",
+            MaxRetries: 1,
+            RetryPromptSuffix: "RETRY SUFFIX",
+            IncludePreviousOutputInRetryPrompt: true);
+
+        _ = await sut.InvokeAgentAsync<SimpleDto>(options);
+
+        _ = await _runner.Received(1).InvokeAsync(
+            Arg.Is<AgentInvocation>(inv =>
+                inv.Prompt.Contains("Previous Invalid Response To Repair", StringComparison.Ordinal)
+                && inv.Prompt.Contains("``\\`", StringComparison.Ordinal)
+                && !inv.Prompt.Contains(PreviousOutput, StringComparison.Ordinal)),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AgentInvoker_TimeoutPropagated_FromAgentConfig()
     {
         var config = new AgentConfig(AgentTimeoutSec: 300);

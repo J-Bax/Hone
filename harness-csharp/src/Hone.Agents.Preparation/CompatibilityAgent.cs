@@ -20,6 +20,7 @@ public sealed class CompatibilityAgent
     private const string DefaultModel = ModelDefaults.Compatibility;
     private const string ModelConfigKey = "AnalysisModel";
     private const string AgentName = "hone-compatibility";
+    private const string AgentRelativePath = ".github/agents/hone-compatibility.agent.md";
     private const int MaxRetries = 2;
     private const string RetryPromptSuffix =
         """
@@ -32,12 +33,24 @@ public sealed class CompatibilityAgent
 
     private readonly AgentInvoker _invoker;
     private readonly IProcessRunner? _processRunner;
+    private readonly Func<string?> _agentWorkingDirectoryResolver;
 
     public CompatibilityAgent(AgentInvoker invoker, IProcessRunner? processRunner = null)
+        : this(invoker, processRunner, ResolveAgentWorkingDirectory)
+    {
+    }
+
+    internal CompatibilityAgent(
+        AgentInvoker invoker,
+        IProcessRunner? processRunner,
+        Func<string?> agentWorkingDirectoryResolver)
     {
         ArgumentNullException.ThrowIfNull(invoker);
+        ArgumentNullException.ThrowIfNull(agentWorkingDirectoryResolver);
+
         _invoker = invoker;
         _processRunner = processRunner;
+        _agentWorkingDirectoryResolver = agentWorkingDirectoryResolver;
     }
 
     /// <summary>
@@ -55,12 +68,21 @@ public sealed class CompatibilityAgent
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
         string fullPath = Path.GetFullPath(targetPath);
-        string? agentWorkingDirectory = ResolveAgentWorkingDirectory();
         if (!Directory.Exists(fullPath))
         {
             return new CompatibilityResult(
                 Success: false,
                 Message: $"Target directory not found: {fullPath}",
+                Report: null,
+                PreProbe: null);
+        }
+
+        string? agentWorkingDirectory = _agentWorkingDirectoryResolver();
+        if (string.IsNullOrWhiteSpace(agentWorkingDirectory))
+        {
+            return new CompatibilityResult(
+                Success: false,
+                Message: $"Could not locate {AgentRelativePath} for the {AgentName} agent.",
                 Report: null,
                 PreProbe: null);
         }

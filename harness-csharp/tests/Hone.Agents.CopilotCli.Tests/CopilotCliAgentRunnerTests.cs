@@ -185,6 +185,21 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
     }
 
     [Fact]
+    public void NormalizeOutput_JsonlWithPrefixedChatter_ReturnsAssistantContent()
+    {
+        string jsonl =
+            """
+            warning: transport warming up
+            {not valid json
+            {"type":"assistant.message","data":{"content":"{\"value\":2}"}}
+            """;
+
+        string normalizedOutput = CopilotCliAgentRunner.NormalizeOutput(jsonl, string.Empty, exitCode: 0);
+
+        _ = normalizedOutput.Should().Be("{\"value\":2}");
+    }
+
+    [Fact]
     public void NormalizeOutput_NonJsonlFailure_UsesStderrWhenStdoutEmpty()
     {
         string normalizedOutput = CopilotCliAgentRunner.NormalizeOutput(string.Empty, "No such agent", exitCode: 1);

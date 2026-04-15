@@ -186,8 +186,8 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             }
             catch (JsonException)
             {
-                // Fall back to raw stdout when the process did not emit JSONL.
-                return false;
+                // Skip chatter and keep scanning for valid JSONL assistant messages.
+                continue;
             }
         }
 

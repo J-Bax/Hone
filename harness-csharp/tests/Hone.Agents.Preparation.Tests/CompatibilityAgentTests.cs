@@ -23,10 +23,15 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
     private static AgentRunResult Ok(string json) =>
         new(Success: true, Output: json, TimedOut: false, ExitCode: 0);
 
-    private CompatibilityAgent CreateSut(AgentConfig? config = null, IProcessRunner? processRunner = null)
+    private CompatibilityAgent CreateSut(
+        AgentConfig? config = null,
+        IProcessRunner? processRunner = null,
+        Func<string?>? agentWorkingDirectoryResolver = null)
     {
         var invoker = new AgentInvoker(_runner, config ?? new AgentConfig());
-        return new CompatibilityAgent(invoker, processRunner);
+        return agentWorkingDirectoryResolver is null
+            ? new CompatibilityAgent(invoker, processRunner)
+            : new CompatibilityAgent(invoker, processRunner, agentWorkingDirectoryResolver);
     }
 
     // ── Compatible target ───────────────────────────────────────────────
@@ -287,6 +292,22 @@ public sealed class CompatibilityAgentTests(ITestOutputHelper output) : HoneTest
 
         _ = result.Success.Should().BeFalse();
         _ = result.Message.Should().Be(PolicyMessage);
+    }
+
+    [Fact]
+    public async Task CompatibilityAgent_MissingAgentWorkingDirectory_ReturnsClearFailure()
+    {
+        string targetDir = CreateTargetDir("missing-agent-root", b => b
+            .AddFile("MyApp.sln", "solution"));
+
+        CompatibilityAgent sut = CreateSut(agentWorkingDirectoryResolver: () => null);
+        CompatibilityResult result = await sut.AssessAsync(targetDir);
+
+        _ = result.Success.Should().BeFalse();
+        _ = result.Message.Should().Be("Could not locate .github/agents/hone-compatibility.agent.md for the hone-compatibility agent.");
+        _ = result.Report.Should().BeNull();
+        _ = result.PreProbe.Should().BeNull();
+        _ = _runner.DidNotReceive().InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>());
     }
 
     // ── Model and agent name passed correctly ───────────────────────────
