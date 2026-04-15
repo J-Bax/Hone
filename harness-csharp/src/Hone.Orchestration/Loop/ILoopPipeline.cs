@@ -6,7 +6,7 @@ namespace Hone.Orchestration.Loop;
 
 internal interface ILoopPipeline
 {
-    public Task<MetricSet> LoadOrCreateBaselineAsync(string targetDir, HoneConfig config, CancellationToken ct);
+    public Task<MetricSet> LoadOrCreateBaselineAsync(string targetDir, HoneConfig config, Uri? baseUrl, CancellationToken ct);
     public Task<MachineInfo> GetMachineInfoAsync(CancellationToken ct);
     public Task<AnalysisResult> RunAnalysisAsync(AnalysisInput input, CancellationToken ct);
     public Task<ClassificationResult> ClassifyAsync(ClassificationInput input, CancellationToken ct);
@@ -48,14 +48,14 @@ internal interface ILoopPipeline
     /// Allows the target to perform custom pre-measurement warmup (e.g. cache priming,
     /// data seeding). Called before each <see cref="RunLoadTestAsync"/> invocation.
     /// </summary>
-    public Task<HookResult> WarmupAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+    public Task<HookResult> WarmupAsync(string targetDir, HoneConfig config, Uri? baseUrl, int experiment, CancellationToken ct);
 
     /// <summary>
     /// Dispatches the Cooldown hook after each k6 run within a scale test.
     /// Replaces the hardcoded GC endpoint callback — allows targets to define
     /// custom inter-run cleanup (GC trigger, cache flush, connection pool reset).
     /// </summary>
-    public Task<HookResult> CooldownAsync(string targetDir, HoneConfig config, int experiment, CancellationToken ct);
+    public Task<HookResult> CooldownAsync(string targetDir, HoneConfig config, Uri? baseUrl, int experiment, CancellationToken ct);
 
     /// <summary>
     /// Dispatches the Cleanup hook once after the experiment loop completes.

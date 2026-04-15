@@ -125,6 +125,7 @@ internal static class ServiceRegistration
         provider.Register<IProcessRunner>(processRunner);
         provider.Register<IVersionControl>(versionControl);
         provider.Register<ICodeHost>(codeHost);
+        provider.Register<ILoopPipeline>(loopPipeline);
         provider.Register<IAgentRunner>(agentRunner);
         provider.Register(agentInvoker);
         provider.Register(analysisAgent);
@@ -142,6 +143,7 @@ internal static class ServiceRegistration
         provider.Register(loopRunner);
         provider.Register(httpClient);
         provider.Register(config);
+        provider.Register(targetConfig);
 
         return provider;
     }

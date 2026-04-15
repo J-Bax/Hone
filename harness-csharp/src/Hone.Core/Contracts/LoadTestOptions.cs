@@ -10,4 +10,5 @@ public sealed record LoadTestOptions(
     int Experiment,
     int Run,
     TimeSpan? Timeout,
-    IReadOnlyDictionary<string, string>? EnvironmentVars = null);
+    IReadOnlyDictionary<string, string>? EnvironmentVars = null,
+    string? WorkingDirectory = null);

@@ -1,5 +1,6 @@
 using Hone.Core.Config;
 using Hone.Lifecycle.Hooks;
+using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -33,15 +34,24 @@ internal static class TargetConfigLoader
             return new TargetConfig();
         }
 
-        IDeserializer deserializer = new DeserializerBuilder()
-            .WithNamingConvention(PascalCaseNamingConvention.Instance)
-            .WithTypeMapping<IReadOnlyDictionary<string, TargetHookConfig>, Dictionary<string, TargetHookConfig>>()
-            .WithTypeMapping<IReadOnlyDictionary<string, CollectorSettingsEntry>, Dictionary<string, CollectorSettingsEntry>>()
-            .WithTypeMapping<IReadOnlyDictionary<string, AnalyzerSettingsEntry>, Dictionary<string, AnalyzerSettingsEntry>>()
-            .IgnoreUnmatchedProperties()
-            .Build();
+        try
+        {
+            IDeserializer deserializer = new DeserializerBuilder()
+                .WithNamingConvention(PascalCaseNamingConvention.Instance)
+                .WithObjectFactory(new RecordAwareObjectFactory())
+                .WithTypeMapping<IReadOnlyDictionary<string, TargetHookConfig>, Dictionary<string, TargetHookConfig>>()
+                .WithTypeMapping<IReadOnlyDictionary<string, CollectorSettingsEntry>, Dictionary<string, CollectorSettingsEntry>>()
+                .WithTypeMapping<IReadOnlyDictionary<string, AnalyzerSettingsEntry>, Dictionary<string, AnalyzerSettingsEntry>>()
+                .IgnoreUnmatchedProperties()
+                .Build();
 
-        TargetConfig? config = deserializer.Deserialize<TargetConfig>(yaml);
-        return config ?? new TargetConfig();
+            TargetConfig? config = deserializer.Deserialize<TargetConfig>(yaml);
+            return config ?? new TargetConfig();
+        }
+        catch (YamlException ex)
+        {
+            throw new InvalidOperationException(
+                $"Failed to parse target configuration from '{yamlPath}': {ex.Message}", ex);
+        }
     }
 }

@@ -65,7 +65,7 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
 
     /// <inheritdoc />
     public async Task<MetricSet> LoadOrCreateBaselineAsync(
-        string targetDir, HoneConfig config, CancellationToken ct)
+        string targetDir, HoneConfig config, Uri? baseUrl, CancellationToken ct)
     {
         string resultsPath = config.Api.ResultsPath;
         string baselinePath = Path.Combine(targetDir, resultsPath, "baseline", "k6-summary.json");
@@ -78,11 +78,18 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
         }
 
         string outputDir = Path.Combine(targetDir, resultsPath, "baseline");
-        var baseUrl = new Uri(config.Api.BaseUrl);
+        Directory.CreateDirectory(outputDir);
+        Uri measurementBaseUrl = ResolveMeasurementBaseUrl(config, baseUrl);
 
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-            config.ScaleTest, _loadTestRunner, baseUrl, outputDir, experiment: 0,
-            BuildCooldownHookCallback(targetDir, experiment: 0), ct).ConfigureAwait(false);
+            config.ScaleTest,
+            _loadTestRunner,
+            measurementBaseUrl,
+            outputDir,
+            experiment: 0,
+            afterRunCallback: BuildCooldownHookCallback(targetDir, measurementBaseUrl, experiment: 0),
+            ct: ct,
+            workingDirectory: targetDir).ConfigureAwait(false);
 
         MetricSet metrics = result.Metrics
             ?? throw new InvalidOperationException("Baseline scale test produced no metrics.");
@@ -172,18 +179,27 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     /// <inheritdoc />
     public async Task<LoadTestResult> RunLoadTestAsync(LoadTestInput input, CancellationToken ct)
     {
+        Uri measurementBaseUrl = ResolveMeasurementBaseUrl(_config, input.BaseUrl);
+
         // Dispatch Warmup hook before the scale test measurement phase
-        _ = await WarmupAsync(input.TargetDir, _config, input.Experiment, ct).ConfigureAwait(false);
+        _ = await WarmupAsync(input.TargetDir, _config, measurementBaseUrl, input.Experiment, ct)
+            .ConfigureAwait(false);
 
         string outputDir = Path.Combine(input.TargetDir, input.ResultsPath, $"experiment-{input.Experiment}");
-        var baseUrl = new Uri(_config.Api.BaseUrl);
 
         // Use Cooldown hook dispatch as the after-run callback (replaces hardcoded GC endpoint)
-        Func<CancellationToken, Task>? afterRunCallback = BuildCooldownHookCallback(input.TargetDir, input.Experiment);
+        Func<CancellationToken, Task>? afterRunCallback = BuildCooldownHookCallback(
+            input.TargetDir, measurementBaseUrl, input.Experiment);
 
         ScaleTestResult result = await ScaleTestOrchestrator.RunAsync(
-            _config.ScaleTest, _loadTestRunner, baseUrl, outputDir, input.Experiment,
-            afterRunCallback, ct).ConfigureAwait(false);
+            _config.ScaleTest,
+            _loadTestRunner,
+            measurementBaseUrl,
+            outputDir,
+            input.Experiment,
+            afterRunCallback: afterRunCallback,
+            ct: ct,
+            workingDirectory: input.TargetDir).ConfigureAwait(false);
 
         if (result.Metrics is null)
         {
@@ -338,41 +354,18 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
 
     /// <inheritdoc />
     public async Task<HookResult> WarmupAsync(
-        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+        string targetDir, HoneConfig config, Uri? baseUrl, int experiment, CancellationToken ct)
     {
-        if (_hookDispatcher is null || _targetConfig is null)
-        {
-            return new HookResult(
-                Success: true,
-                Message: "Lifecycle hooks not configured — skipping warmup",
-                Duration: TimeSpan.Zero,
-                Artifacts: [],
-                BaseUrl: null);
-        }
-
-        ResolvedHook hook = HookResolver.Resolve("Warmup", _targetConfig);
-        var context = new HookContext(targetDir, config, BaseUrl: null, experiment);
-        return await _hookDispatcher.DispatchAsync("Warmup", hook, context, ct).ConfigureAwait(false);
+        return await DispatchLifecycleHookAsync("Warmup", targetDir, config, baseUrl, experiment, ct)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
     public async Task<HookResult> CooldownAsync(
-        string targetDir, HoneConfig config, int experiment, CancellationToken ct)
+        string targetDir, HoneConfig config, Uri? baseUrl, int experiment, CancellationToken ct)
     {
-        if (_hookDispatcher is null || _targetConfig is null)
-        {
-            return new HookResult(
-                Success: true,
-                Message: "Lifecycle hooks not configured — skipping cooldown",
-                Duration: TimeSpan.Zero,
-                Artifacts: [],
-                BaseUrl: null);
-        }
-
-        ResolvedHook hook = HookResolver.Resolve("Cooldown", _targetConfig);
-        var baseUrl = new Uri(config.Api.BaseUrl);
-        var context = new HookContext(targetDir, config, BaseUrl: baseUrl, experiment);
-        return await _hookDispatcher.DispatchAsync("Cooldown", hook, context, ct).ConfigureAwait(false);
+        return await DispatchLifecycleHookAsync("Cooldown", targetDir, config, baseUrl, experiment, ct)
+            .ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -399,12 +392,12 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     /// When hooks are configured, the Cooldown hook handles inter-run cleanup (e.g., GC trigger).
     /// Falls back to the legacy GC endpoint callback when hooks are not configured.
     /// </summary>
-    private Func<CancellationToken, Task>? BuildCooldownHookCallback(string targetDir, int experiment)
+    private Func<CancellationToken, Task>? BuildCooldownHookCallback(string targetDir, Uri? baseUrl, int experiment)
     {
         if (_hookDispatcher is not null && _targetConfig is not null)
         {
             return async ct =>
-                _ = await CooldownAsync(targetDir, _config, experiment, ct).ConfigureAwait(false);
+                _ = await CooldownAsync(targetDir, _config, baseUrl, experiment, ct).ConfigureAwait(false);
         }
 
         // Fallback: legacy hardcoded GC endpoint callback
@@ -413,7 +406,13 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
             return null;
         }
 
-        var gcUri = new Uri(new Uri(_config.Api.BaseUrl), _config.Api.GcEndpoint);
+        Uri? gcBaseUrl = TryGetContextBaseUrl(_config, baseUrl);
+        if (gcBaseUrl is null)
+        {
+            return null;
+        }
+
+        var gcUri = new Uri(gcBaseUrl, _config.Api.GcEndpoint);
 
         return async ct =>
         {
@@ -428,5 +427,51 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
                 // Swallow — GC endpoint is optional
             }
         };
+    }
+
+    private async Task<HookResult> DispatchLifecycleHookAsync(
+        string hookName,
+        string targetDir,
+        HoneConfig config,
+        Uri? baseUrl,
+        int experiment,
+        CancellationToken ct)
+    {
+        if (_hookDispatcher is null || _targetConfig is null)
+        {
+            return new HookResult(
+                Success: true,
+                Message: $"Lifecycle hooks not configured — skipping {hookName}",
+                Duration: TimeSpan.Zero,
+                Artifacts: [],
+                BaseUrl: null);
+        }
+
+        ResolvedHook hook = HookResolver.Resolve(hookName, _targetConfig);
+        var context = new HookContext(
+            targetDir,
+            config,
+            BaseUrl: TryGetContextBaseUrl(config, baseUrl),
+            experiment);
+
+        return await _hookDispatcher.DispatchAsync(hookName, hook, context, ct).ConfigureAwait(false);
+    }
+
+    private static Uri ResolveMeasurementBaseUrl(HoneConfig config, Uri? runtimeBaseUrl)
+    {
+        return TryGetContextBaseUrl(config, runtimeBaseUrl)
+            ?? throw new InvalidOperationException(
+                "Load testing requires a concrete runtime BaseUrl. Start the target before running measurements when Api.BaseUrl uses port 0.");
+    }
+
+    private static Uri? TryGetContextBaseUrl(HoneConfig config, Uri? runtimeBaseUrl)
+    {
+        if (runtimeBaseUrl is not null)
+        {
+            return runtimeBaseUrl;
+        }
+
+        var configuredBaseUrl = new Uri(config.Api.BaseUrl);
+        return configuredBaseUrl.Port == 0 ? null : configuredBaseUrl;
     }
 }

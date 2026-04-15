@@ -18,14 +18,16 @@ public sealed class ScaleTestOrchestrator
     /// <param name="baseUrl">Base URL of the API under test.</param>
     /// <param name="outputDir">Output directory for artifacts.</param>
     /// <param name="experiment">Experiment number (0 for baseline).</param>
-    /// <param name="ct">Cancellation token.</param>
+    /// <param name="workingDirectory">Optional working directory for resolving relative scenario paths.</param>
     /// <param name="afterRunCallback">Optional callback invoked after each k6 run (e.g., trigger server-side GC).</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task<ScaleTestResult> RunAsync(
         ScaleTestConfig config,
         ILoadTestRunner runner,
         Uri baseUrl,
         string outputDir,
         int experiment,
+        string? workingDirectory = null,
         Func<CancellationToken, Task>? afterRunCallback = null,
         CancellationToken ct = default)
     {
@@ -41,7 +43,8 @@ public sealed class ScaleTestOrchestrator
                 OutputDir: outputDir,
                 Experiment: experiment,
                 Run: 0,
-                Timeout: null);
+                Timeout: null,
+                WorkingDirectory: workingDirectory);
 
             _ = await runner.RunAsync(warmupOptions, ct).ConfigureAwait(false);
 
@@ -74,7 +77,8 @@ public sealed class ScaleTestOrchestrator
                 OutputDir: outputDir,
                 Experiment: experiment,
                 Run: run,
-                Timeout: null);
+                Timeout: null,
+                WorkingDirectory: workingDirectory);
 
             LoadTestResult result = await runner.RunAsync(options, ct).ConfigureAwait(false);
 
