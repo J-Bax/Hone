@@ -148,7 +148,9 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
             return null;
         }
 
-        string targetAgentsDirectory = Path.Combine(workingDirectory, ".github", "agents");
+        string githubDirectory = Path.Combine(workingDirectory, ".github");
+        bool githubDirectoryExisted = Directory.Exists(githubDirectory);
+        string targetAgentsDirectory = Path.Combine(githubDirectory, "agents");
         bool targetAgentsDirectoryExisted = Directory.Exists(targetAgentsDirectory);
         Directory.CreateDirectory(targetAgentsDirectory);
 
@@ -182,6 +184,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
 
         return new AgentDefinitionOverlay(
             workingDirectory,
+            githubDirectoryExisted,
             targetAgentsDirectory,
             targetAgentsDirectoryExisted,
             createdFiles,
@@ -289,6 +292,7 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
 
     internal sealed class AgentDefinitionOverlay(
         string workingDirectory,
+        bool githubDirectoryExisted,
         string targetAgentsDirectory,
         bool targetAgentsDirectoryExisted,
         IReadOnlyList<string> createdFiles,
@@ -303,33 +307,89 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
                 return;
             }
 
-            for (int i = backups.Count - 1; i >= 0; i--)
+            try
             {
-                (string destinationPath, string backupPath) = backups[i];
-                File.Copy(backupPath, destinationPath, overwrite: true);
-                File.Delete(backupPath);
-            }
-
-            foreach (string createdFile in createdFiles)
-            {
-                if (File.Exists(createdFile))
+                for (int i = backups.Count - 1; i >= 0; i--)
                 {
-                    File.Delete(createdFile);
+                    (string destinationPath, string backupPath) = backups[i];
+                    TryRestoreBackup(destinationPath, backupPath);
+                    TryDeleteFile(backupPath);
                 }
-            }
 
-            if (!targetAgentsDirectoryExisted && Directory.Exists(targetAgentsDirectory) && !Directory.EnumerateFileSystemEntries(targetAgentsDirectory).Any())
-            {
-                Directory.Delete(targetAgentsDirectory);
+                foreach (string createdFile in createdFiles)
+                {
+                    TryDeleteFile(createdFile);
+                }
 
                 string githubDirectory = Path.Combine(workingDirectory, ".github");
-                if (Directory.Exists(githubDirectory) && !Directory.EnumerateFileSystemEntries(githubDirectory).Any())
+                if (!targetAgentsDirectoryExisted)
                 {
-                    Directory.Delete(githubDirectory);
+                    TryDeleteDirectoryIfEmpty(targetAgentsDirectory);
+                }
+
+                if (!githubDirectoryExisted)
+                {
+                    TryDeleteDirectoryIfEmpty(githubDirectory);
                 }
             }
+            finally
+            {
+                _disposed = true;
+            }
+        }
 
-            _disposed = true;
+        private static void TryRestoreBackup(string destinationPath, string backupPath)
+        {
+            try
+            {
+                File.Copy(backupPath, destinationPath, overwrite: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
+
+        private static void TryDeleteDirectoryIfEmpty(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+                {
+                    Directory.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
         }
     }
 

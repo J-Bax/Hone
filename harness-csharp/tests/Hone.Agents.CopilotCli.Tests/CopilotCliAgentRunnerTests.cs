@@ -119,6 +119,29 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
     }
 
     [Fact]
+    public async Task PrepareAgentDefinitions_PreservesPreExistingEmptyGithubDirectoryOnDispose()
+    {
+        string bundleRoot = Path.Combine(TempDir, "bundle");
+        string agentsDir = Path.Combine(bundleRoot, "agents");
+        Directory.CreateDirectory(agentsDir);
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-analyst.agent.md"), "analyst");
+
+        string workingDirectory = Path.Combine(TempDir, "target");
+        string githubDirectory = Path.Combine(workingDirectory, ".github");
+        Directory.CreateDirectory(githubDirectory);
+
+        using (CopilotCliAgentRunner.AgentDefinitionOverlay? overlay =
+            CopilotCliAgentRunner.PrepareAgentDefinitions(workingDirectory, bundleRoot))
+        {
+            _ = overlay.Should().NotBeNull();
+            _ = Directory.Exists(Path.Combine(githubDirectory, "agents")).Should().BeTrue();
+        }
+
+        _ = Directory.Exists(githubDirectory).Should().BeTrue();
+        _ = Directory.Exists(Path.Combine(githubDirectory, "agents")).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task PrepareAgentDefinitions_RestoresOverwrittenDefinitionsOnDispose()
     {
         string bundleRoot = Path.Combine(TempDir, "bundle");
