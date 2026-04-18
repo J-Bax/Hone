@@ -91,6 +91,15 @@ Hone is an **agentic performance optimization harness** that automatically impro
 
 Common flags: `--max-experiments N`, `--dry-run`, `--model <model>`, `--force`, `--json`
 
+## Git / PR Workflow
+
+- The `Hone` repo enforces **verified signed commits on all branches**. Any branch that will be pushed to GitHub must use **GPG-signed git commits**.
+- When creating or updating a commit for a PR, use **OpenPGP/GPG signing**, not SSH signing. In practice: `git -c gpg.format=openpgp commit -S ...` or `git -c gpg.format=openpgp commit --amend -S ...`.
+- Before pushing, verify the tip commit locally with `git log --show-signature -1`.
+- If a PR branch already has the right content but the tip commit is unsigned, **amend and re-sign the commit, then force-push with lease**. Do not leave an unsigned PR head in place.
+- If GPG signing appears stuck, first test the key in an interactive TTY to unlock or warm up `gpg-agent` (for example: `'probe' | gpg -u <key-id> --clearsign`), then retry `git commit -S`.
+- Do **not** switch to SSH signing or disable the signed-commit ruleset as a first workaround when GPG is already configured on the machine.
+
 ## Important Design Decisions
 
 - The sample API is provided as a reference — the agentic loop discovers performance issues in any target API through measurement, not hints

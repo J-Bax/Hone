@@ -12,11 +12,16 @@ namespace Hone.Agents.CopilotCli;
 public sealed class CopilotCliAgentRunner : IAgentRunner
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(600);
+    private const string AgentFileGlob = "*.agent.md";
 
     /// <inheritdoc />
     public async Task<AgentRunResult> InvokeAsync(AgentInvocation invocation, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(invocation);
+
+        using AgentDefinitionOverlay? overlay = !string.IsNullOrEmpty(invocation.WorkingDirectory)
+            ? PrepareAgentDefinitions(invocation.WorkingDirectory)
+            : null;
 
         TimeSpan timeout = invocation.Timeout ?? DefaultTimeout;
         List<string> args = BuildArguments(invocation);
@@ -131,6 +136,83 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
         return args;
     }
 
+    internal static AgentDefinitionOverlay? PrepareAgentDefinitions(
+        string workingDirectory,
+        string? bundledAgentsBaseDirectory = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(workingDirectory);
+
+        string? sourceAgentsDirectory = ResolveBundledAgentsDirectory(bundledAgentsBaseDirectory);
+        if (string.IsNullOrEmpty(sourceAgentsDirectory))
+        {
+            return null;
+        }
+
+        string githubDirectory = Path.Combine(workingDirectory, ".github");
+        bool githubDirectoryExisted = Directory.Exists(githubDirectory);
+        string targetAgentsDirectory = Path.Combine(githubDirectory, "agents");
+        bool targetAgentsDirectoryExisted = Directory.Exists(targetAgentsDirectory);
+        Directory.CreateDirectory(targetAgentsDirectory);
+
+        var createdFiles = new List<string>();
+        var backups = new List<(string DestinationPath, string BackupPath)>();
+
+        foreach (string sourceFile in Directory.EnumerateFiles(sourceAgentsDirectory, AgentFileGlob, SearchOption.TopDirectoryOnly))
+        {
+            string destinationFile = Path.Combine(targetAgentsDirectory, Path.GetFileName(sourceFile));
+
+            if (File.Exists(destinationFile))
+            {
+                string existingContent = File.ReadAllText(destinationFile, Encoding.UTF8);
+                string sourceContent = File.ReadAllText(sourceFile, Encoding.UTF8);
+                if (string.Equals(existingContent, sourceContent, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string backupPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.agent.md");
+                File.Copy(destinationFile, backupPath, overwrite: true);
+                backups.Add((destinationFile, backupPath));
+            }
+            else
+            {
+                createdFiles.Add(destinationFile);
+            }
+
+            File.Copy(sourceFile, destinationFile, overwrite: true);
+        }
+
+        return new AgentDefinitionOverlay(
+            workingDirectory,
+            githubDirectoryExisted,
+            targetAgentsDirectory,
+            targetAgentsDirectoryExisted,
+            createdFiles,
+            backups);
+    }
+
+    internal static string? ResolveBundledAgentsDirectory(string? startDirectory = null)
+    {
+        string baseDirectory = Path.GetFullPath(startDirectory ?? AppContext.BaseDirectory);
+
+        foreach (string currentDirectory in EnumerateSelfAndParents(baseDirectory))
+        {
+            string bundledAgentsDirectory = Path.Combine(currentDirectory, "agents");
+            if (ContainsAgentDefinitions(bundledAgentsDirectory))
+            {
+                return bundledAgentsDirectory;
+            }
+
+            string repoAgentsDirectory = Path.Combine(currentDirectory, ".github", "agents");
+            if (ContainsAgentDefinitions(repoAgentsDirectory))
+            {
+                return repoAgentsDirectory;
+            }
+        }
+
+        return null;
+    }
+
     internal static string NormalizeOutput(string stdout, string stderr, int exitCode)
     {
         if (TryExtractAssistantMessageContent(stdout, out string? assistantContent))
@@ -192,6 +274,123 @@ public sealed class CopilotCliAgentRunner : IAgentRunner
         }
 
         return !string.IsNullOrWhiteSpace(content);
+    }
+
+    private static bool ContainsAgentDefinitions(string directory) =>
+        Directory.Exists(directory)
+        && Directory.EnumerateFiles(directory, AgentFileGlob, SearchOption.TopDirectoryOnly).Any();
+
+    private static IEnumerable<string> EnumerateSelfAndParents(string directory)
+    {
+        DirectoryInfo? current = new(directory);
+        while (current is not null)
+        {
+            yield return current.FullName;
+            current = current.Parent;
+        }
+    }
+
+    internal sealed class AgentDefinitionOverlay(
+        string workingDirectory,
+        bool githubDirectoryExisted,
+        string targetAgentsDirectory,
+        bool targetAgentsDirectoryExisted,
+        IReadOnlyList<string> createdFiles,
+        IReadOnlyList<(string DestinationPath, string BackupPath)> backups) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                for (int i = backups.Count - 1; i >= 0; i--)
+                {
+                    (string destinationPath, string backupPath) = backups[i];
+                    TryRestoreBackup(destinationPath, backupPath);
+                    TryDeleteFile(backupPath);
+                }
+
+                foreach (string createdFile in createdFiles)
+                {
+                    TryDeleteFile(createdFile);
+                }
+
+                string githubDirectory = Path.Combine(workingDirectory, ".github");
+                if (!targetAgentsDirectoryExisted)
+                {
+                    TryDeleteDirectoryIfEmpty(targetAgentsDirectory);
+                }
+
+                if (!githubDirectoryExisted)
+                {
+                    TryDeleteDirectoryIfEmpty(githubDirectory);
+                }
+            }
+            finally
+            {
+                _disposed = true;
+            }
+        }
+
+        private static void TryRestoreBackup(string destinationPath, string backupPath)
+        {
+            try
+            {
+                File.Copy(backupPath, destinationPath, overwrite: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
+
+        private static void TryDeleteDirectoryIfEmpty(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+                {
+                    Directory.Delete(path);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Best-effort cleanup
+            }
+        }
     }
 
     private static void TryKillProcess(Process process)

@@ -202,6 +202,82 @@ Hooks:
     }
 
     [Fact]
+    public async Task RunLoadTestAsync_CooldownTimeout_DoesNotAbortMeasurement()
+    {
+        string targetDir = CreateTargetDir("adapter-run-timeout-target", builder =>
+        {
+            _ = builder.AddFile("baseline.js", "export default function () {}");
+            _ = builder.AddFile("warmup.js", "export default function () {}");
+        });
+
+        string sourceSummaryPath = Path.Combine(targetDir, "selected-summary-timeout.json");
+        await File.WriteAllTextAsync(sourceSummaryPath, "{\"summary\":true}");
+
+        var observedBaseUrls = new List<Uri>();
+        var capturedRequests = new List<Uri>();
+        Uri runtimeBaseUrl = new("http://127.0.0.1:60124");
+
+        ILoadTestRunner loadTestRunner = Substitute.For<ILoadTestRunner>();
+        _ = loadTestRunner.RunAsync(Arg.Any<LoadTestOptions>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                LoadTestOptions options = callInfo.Arg<LoadTestOptions>();
+                observedBaseUrls.Add(options.BaseUrl);
+
+                return Task.FromResult(new LoadTestResult(
+                    Success: true,
+                    Metrics: CreateMetrics(options.Experiment, options.Run, sourceSummaryPath),
+                    SummaryPath: sourceSummaryPath,
+                    Output: null));
+            });
+
+        using var httpHandler = new TimeoutHttpMessageHandler(capturedRequests);
+        using var httpClient = new HttpClient(httpHandler);
+        IProcessRunner processRunner = Substitute.For<IProcessRunner>();
+        var hookRegistry = new BuiltInHookRegistry(
+            new DotnetBuildHook(processRunner),
+            new DotnetTestHook(processRunner),
+            new DotnetStartHook(httpClient),
+            new DotnetStopHook(),
+            new HealthPollHook(httpClient),
+            new K6RunHook(loadTestRunner));
+        var hookDispatcher = new LifecycleHookDispatcher(hookRegistry, processRunner, httpClient);
+
+        HoneConfig config = CreateConfig(
+            baseUrl: "http://localhost:0",
+            resultsPath: "hone-results",
+            warmupEnabled: true);
+        TargetConfig targetConfig = new(
+            Name: "AdapterTarget",
+            Hooks: new Dictionary<string, TargetHookConfig>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Warmup"] = new("Skip"),
+                ["Cooldown"] = new("Http", Path: "/diag/gc", Method: "POST"),
+            });
+
+        var adapter = new LoopPipelineAdapter(
+            loadTestRunner,
+            analysisAgent: null!,
+            classificationAgent: null!,
+            codeHost: null!,
+            versionControl: null!,
+            config,
+            httpClient,
+            hookDispatcher,
+            targetConfig);
+
+        LoadTestResult result = await adapter.RunLoadTestAsync(
+            new LoadTestInput(targetDir, 1, "hone-results", runtimeBaseUrl),
+            CancellationToken.None);
+
+        _ = result.Success.Should().BeTrue();
+        _ = result.Metrics.Should().NotBeNull();
+        _ = observedBaseUrls.Should().NotBeEmpty();
+        _ = observedBaseUrls.Should().OnlyContain(uri => uri == runtimeBaseUrl);
+        _ = capturedRequests.Should().ContainSingle(uri => uri == new Uri(runtimeBaseUrl, "/diag/gc"));
+    }
+
+    [Fact]
     public async Task LoadOrCreateBaselineAsync_UsesRuntimeBaseUrlWhenCreatingBaseline()
     {
         string targetDir = CreateTargetDir(
@@ -354,6 +430,23 @@ Hooks:
             }
 
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        }
+    }
+
+    private sealed class TimeoutHttpMessageHandler(List<Uri> capturedRequests) : HttpMessageHandler
+    {
+        private readonly List<Uri> _capturedRequests = capturedRequests;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri is not null)
+            {
+                _capturedRequests.Add(request.RequestUri);
+            }
+
+            throw new TaskCanceledException("Simulated timeout");
         }
     }
 }

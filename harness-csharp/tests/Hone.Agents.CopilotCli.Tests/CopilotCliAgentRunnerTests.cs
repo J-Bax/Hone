@@ -77,6 +77,93 @@ public sealed class CopilotCliAgentRunnerTests(ITestOutputHelper output) : HoneT
         _ = args.Should().ContainInOrder("-p", prompt);
     }
 
+    [Fact]
+    public async Task ResolveBundledAgentsDirectory_FindsBundledAgentsFolder()
+    {
+        string bundleRoot = Path.Combine(TempDir, "bundle");
+        string agentsDir = Path.Combine(bundleRoot, "agents");
+        Directory.CreateDirectory(agentsDir);
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-analyst.agent.md"), "---");
+
+        string nestedDirectory = Path.Combine(bundleRoot, "bin", "Debug", "net10.0");
+        Directory.CreateDirectory(nestedDirectory);
+
+        string? resolved = CopilotCliAgentRunner.ResolveBundledAgentsDirectory(nestedDirectory);
+
+        _ = resolved.Should().Be(agentsDir);
+    }
+
+    [Fact]
+    public async Task PrepareAgentDefinitions_CopiesBundledAgentsIntoWorkingDirectoryAndCleansUp()
+    {
+        string bundleRoot = Path.Combine(TempDir, "bundle");
+        string agentsDir = Path.Combine(bundleRoot, "agents");
+        Directory.CreateDirectory(agentsDir);
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-analyst.agent.md"), "analyst");
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-classifier.agent.md"), "classifier");
+
+        string workingDirectory = Path.Combine(TempDir, "target");
+        Directory.CreateDirectory(workingDirectory);
+
+        using (CopilotCliAgentRunner.AgentDefinitionOverlay? overlay =
+            CopilotCliAgentRunner.PrepareAgentDefinitions(workingDirectory, bundleRoot))
+        {
+            _ = overlay.Should().NotBeNull();
+
+            string targetAgentsDir = Path.Combine(workingDirectory, ".github", "agents");
+            _ = (await File.ReadAllTextAsync(Path.Combine(targetAgentsDir, "hone-analyst.agent.md"))).Should().Be("analyst");
+            _ = (await File.ReadAllTextAsync(Path.Combine(targetAgentsDir, "hone-classifier.agent.md"))).Should().Be("classifier");
+        }
+
+        _ = Directory.Exists(Path.Combine(workingDirectory, ".github")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PrepareAgentDefinitions_PreservesPreExistingEmptyGithubDirectoryOnDispose()
+    {
+        string bundleRoot = Path.Combine(TempDir, "bundle");
+        string agentsDir = Path.Combine(bundleRoot, "agents");
+        Directory.CreateDirectory(agentsDir);
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-analyst.agent.md"), "analyst");
+
+        string workingDirectory = Path.Combine(TempDir, "target");
+        string githubDirectory = Path.Combine(workingDirectory, ".github");
+        Directory.CreateDirectory(githubDirectory);
+
+        using (CopilotCliAgentRunner.AgentDefinitionOverlay? overlay =
+            CopilotCliAgentRunner.PrepareAgentDefinitions(workingDirectory, bundleRoot))
+        {
+            _ = overlay.Should().NotBeNull();
+            _ = Directory.Exists(Path.Combine(githubDirectory, "agents")).Should().BeTrue();
+        }
+
+        _ = Directory.Exists(githubDirectory).Should().BeTrue();
+        _ = Directory.Exists(Path.Combine(githubDirectory, "agents")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PrepareAgentDefinitions_RestoresOverwrittenDefinitionsOnDispose()
+    {
+        string bundleRoot = Path.Combine(TempDir, "bundle");
+        string agentsDir = Path.Combine(bundleRoot, "agents");
+        Directory.CreateDirectory(agentsDir);
+        await File.WriteAllTextAsync(Path.Combine(agentsDir, "hone-analyst.agent.md"), "fresh");
+
+        string workingDirectory = Path.Combine(TempDir, "target");
+        string targetAgentsDir = Path.Combine(workingDirectory, ".github", "agents");
+        Directory.CreateDirectory(targetAgentsDir);
+        await File.WriteAllTextAsync(Path.Combine(targetAgentsDir, "hone-analyst.agent.md"), "stale");
+
+        using (CopilotCliAgentRunner.AgentDefinitionOverlay? overlay =
+            CopilotCliAgentRunner.PrepareAgentDefinitions(workingDirectory, bundleRoot))
+        {
+            _ = overlay.Should().NotBeNull();
+            _ = (await File.ReadAllTextAsync(Path.Combine(targetAgentsDir, "hone-analyst.agent.md"))).Should().Be("fresh");
+        }
+
+        _ = (await File.ReadAllTextAsync(Path.Combine(targetAgentsDir, "hone-analyst.agent.md"))).Should().Be("stale");
+    }
+
     // ---------------------------------------------------------------
     // Process integration tests (spawn real lightweight processes)
     // ---------------------------------------------------------------
