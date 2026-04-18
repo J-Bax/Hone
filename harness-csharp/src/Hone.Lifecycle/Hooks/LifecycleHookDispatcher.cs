@@ -130,6 +130,16 @@ public sealed class LifecycleHookDispatcher(
                 Artifacts: [],
                 BaseUrl: null);
         }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            return new HookResult(
+                Success: false,
+                Message: $"HTTP {method} {requestUri} failed: request timed out",
+                Duration: stopwatch.Elapsed,
+                Artifacts: [],
+                BaseUrl: null);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             stopwatch.Stop();

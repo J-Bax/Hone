@@ -13,6 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\..\.github\agents\*.agent.md"
+          Link="agents\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Hone.Agents.Core\Hone.Agents.Core.csproj" />
     <ProjectReference Include="..\Hone.Agents.CopilotCli\Hone.Agents.CopilotCli.csproj" />
     <ProjectReference Include="..\Hone.Agents.Loop\Hone.Agents.Loop.csproj" />
