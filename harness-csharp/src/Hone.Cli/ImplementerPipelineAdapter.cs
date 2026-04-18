@@ -71,6 +71,10 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
     /// <inheritdoc />
     public async Task<ApplyStepResult> ApplySuggestionAsync(ApplyStepInput input, CancellationToken ct)
     {
+        string branchName = GetExperimentBranchName(input.Experiment);
+        await EnsureExperimentBranchAsync(input.TargetDir, input.BaseBranch, branchName, ct)
+            .ConfigureAwait(false);
+
         string fullPath = Path.Combine(input.TargetDir, input.FilePath);
         string? dir = Path.GetDirectoryName(fullPath);
         if (!string.IsNullOrEmpty(dir))
@@ -89,6 +93,50 @@ internal sealed class ImplementerPipelineAdapter : IImplementerPipeline
 
         return new ApplyStepResult(Success: true, CommitSha: null, Description: input.Description);
     }
+
+    private async Task EnsureExperimentBranchAsync(
+        string targetDir,
+        string baseBranch,
+        string branchName,
+        CancellationToken ct)
+    {
+        string currentBranch = await _versionControl.GetCurrentBranchAsync(targetDir, ct)
+            .ConfigureAwait(false);
+
+        if (string.Equals(currentBranch, branchName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!string.Equals(currentBranch, baseBranch, StringComparison.Ordinal))
+        {
+            await _versionControl.CheckoutAsync(targetDir, baseBranch, create: false, ct)
+                .ConfigureAwait(false);
+        }
+
+        bool branchExists = await BranchExistsAsync(targetDir, branchName, ct)
+            .ConfigureAwait(false);
+
+        await _versionControl.CheckoutAsync(targetDir, branchName, create: !branchExists, ct)
+            .ConfigureAwait(false);
+    }
+
+    private async Task<bool> BranchExistsAsync(string targetDir, string branchName, CancellationToken ct)
+    {
+        ProcessResult result = await _processRunner.RunAsync(
+            "git",
+            ["show-ref", "--verify", "--quiet", $"refs/heads/{branchName}"],
+            targetDir,
+            timeout: null,
+            ct).ConfigureAwait(false);
+
+        return result.Success;
+    }
+
+    private string GetExperimentBranchName(int experiment) =>
+        string.Create(
+            CultureInfo.InvariantCulture,
+            $"{_config.Loop.BranchPrefix}-{experiment}");
 
     /// <inheritdoc />
     public async Task<BuildStepResult> BuildProjectAsync(BuildStepInput input, CancellationToken ct)
