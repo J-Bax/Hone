@@ -50,8 +50,6 @@ public sealed class EndToEndValidationTests(ITestOutputHelper output) : Integrat
             $"Searched from: {AppContext.BaseDirectory}");
     }
 
-    private static string RepoRoot => Path.GetDirectoryName(FindHarnessCSharpRoot())!;
-
     // ── 1. Config merge from YAML ─────────────────────────────────────────────
 
     /// <summary>
@@ -63,7 +61,7 @@ public sealed class EndToEndValidationTests(ITestOutputHelper output) : Integrat
     public void ConfigMergeFromYaml_EngineAndTarget_ProducesCorrectMerge()
     {
         string enginePath = Path.Combine(FindHarnessCSharpRoot(), "config.yaml");
-        string targetPath = Path.Combine(RepoRoot, "sample-api", ".hone", "config.yaml");
+        string targetPath = Path.Combine(TestFixturesRootPath, "sample-api-target", ".hone", "config.yaml");
 
         HoneConfig engine = ConfigLoader.Load(enginePath);
         HoneConfig target = ConfigLoader.Load(targetPath);
