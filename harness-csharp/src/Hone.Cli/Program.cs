@@ -49,6 +49,8 @@ internal static class Program
             BuildBaselineCommand(),
             BuildResultsCommand(),
             BuildDashboardCommand(),
+            BuildDoctorCommand(),
+            BuildRepairCommand(),
             BuildAssessCommand(),
             BuildInitCommand(),
         };
@@ -113,10 +115,16 @@ internal static class Program
             Console.WriteLine($"Exit reason:     {result.ExitReason}");
             Console.WriteLine($"Experiments run: {result.ExperimentsRun}");
             Console.WriteLine($"Successes:       {result.SuccessCount}");
-            Console.WriteLine($"Best P95:        {result.BestP95:F1}ms (experiment {result.BestExperiment})");
-            Console.WriteLine($"Baseline P95:    {result.BaselineP95:F1}ms");
+            Console.WriteLine(double.IsFinite(result.BestP95)
+                ? $"Best P95:        {result.BestP95:F1}ms (experiment {result.BestExperiment})"
+                : "Best P95:        n/a");
+            Console.WriteLine(double.IsFinite(result.BaselineP95)
+                ? $"Baseline P95:    {result.BaselineP95:F1}ms"
+                : "Baseline P95:    n/a");
 
-            return result.SuccessCount > 0 ? 0 : 1;
+            return string.Equals(result.ExitReason, "repair_required", StringComparison.Ordinal)
+                ? 1
+                : result.SuccessCount > 0 ? 0 : 1;
         });
 
         return command;
@@ -243,9 +251,7 @@ internal static class Program
                     Experiments: []);
 
                 string metadataPath = Path.Combine(resultsPath, "run-metadata.json");
-                Directory.CreateDirectory(Path.GetDirectoryName(metadataPath)!);
-                string metadataJson = JsonSerializer.Serialize(metadata, MetadataJsonOptions);
-                await File.WriteAllTextAsync(metadataPath, metadataJson, ct).ConfigureAwait(false);
+                await AtomicFileWriter.WriteJsonAsync(metadataPath, metadata, MetadataJsonOptions, ct).ConfigureAwait(false);
 
                 Console.WriteLine();
                 Console.WriteLine("Baseline established:");
@@ -372,6 +378,76 @@ internal static class Program
             }
 
             return 0;
+        });
+
+        return command;
+    }
+
+    // ── doctor ─────────────────────────────────────────────────────────
+
+    private static Command BuildDoctorCommand() =>
+        new("doctor", "Inspect operator-facing target state")
+        {
+            BuildDoctorStateCommand(),
+        };
+
+    private static Command BuildDoctorStateCommand()
+    {
+        Option<string> targetOption = CreateTargetOption();
+
+        var command = new Command("state", "Inspect run-state, queue, run metadata, and git invariants")
+        {
+            targetOption,
+        };
+
+        command.SetAction(async (pr, ct) =>
+        {
+            string targetPath = pr.GetValue(targetOption)!;
+
+            (string targetDir, string configPath) = ResolveTarget(targetPath);
+            HoneConfig config = LoadAndMergeConfig(configPath);
+            StateInspectionResult result = await StateOperatorService
+                .Create(targetDir, config)
+                .InspectAsync(ct)
+                .ConfigureAwait(false);
+
+            WriteStateInspection(result);
+            return result.RequiresAttention ? 1 : 0;
+        });
+
+        return command;
+    }
+
+    // ── repair ─────────────────────────────────────────────────────────
+
+    private static Command BuildRepairCommand() =>
+        new("repair", "Apply safe automated state repairs")
+        {
+            BuildRepairStateCommand(),
+        };
+
+    private static Command BuildRepairStateCommand()
+    {
+        Option<string> targetOption = CreateTargetOption();
+
+        var command = new Command("state", "Apply safe repairs to run-state, queue state, and git position")
+        {
+            targetOption,
+        };
+
+        command.SetAction(async (pr, ct) =>
+        {
+            string targetPath = pr.GetValue(targetOption)!;
+
+            (string targetDir, string configPath) = ResolveTarget(targetPath);
+            HoneConfig config = LoadAndMergeConfig(configPath);
+            StateRepairResult result = await StateOperatorService
+                .Create(targetDir, config)
+                .RepairAsync(ct)
+                .ConfigureAwait(false);
+
+            WriteStateRepair(result);
+            return result.Succeeded ? 0 : 1;
         });
 
         return command;
@@ -679,6 +755,91 @@ internal static class Program
             Console.WriteLine("Configuration is valid.");
         }
     }
+
+    private static void WriteStateRepair(StateRepairResult result)
+    {
+#pragma warning disable CA1303 // CLI state output is intentionally fixed English text.
+        Console.WriteLine($"State repair for {result.After.TargetDir}");
+
+        if (result.AppliedSteps.Count == 0)
+        {
+            Console.WriteLine("No safe repairs were applied.");
+        }
+        else
+        {
+            Console.WriteLine("Applied repairs:");
+            foreach (string step in result.AppliedSteps)
+            {
+                Console.WriteLine($"  - {step}");
+            }
+        }
+
+        if (result.Errors.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Repair errors:");
+            foreach (string error in result.Errors)
+            {
+                Console.WriteLine($"  x {error}");
+            }
+        }
+
+        Console.WriteLine();
+        WriteStateInspection(result.After);
+#pragma warning restore CA1303
+    }
+
+    private static void WriteStateInspection(StateInspectionResult result)
+    {
+#pragma warning disable CA1303 // CLI state output is intentionally fixed English text.
+        Console.WriteLine($"State diagnostics for {result.TargetDir}");
+        Console.WriteLine($"  Run state:    {(result.RunStateExists ? "present" : "missing"),-7} {result.Paths.RunStatePath}");
+        Console.WriteLine($"  Queue:        {(result.QueueExists ? $"{result.Queue.Items.Count} item(s), {result.InProgressItemCount} in progress" : "missing"),-18} {result.Paths.QueuePath}");
+        Console.WriteLine($"  Run metadata: {(result.RunMetadataExists ? $"{result.MetadataExperimentCount} experiment(s)" : "missing"),-18} {result.Paths.RunMetadataPath}");
+        Console.WriteLine($"  Git:          {result.Git.Summary}");
+        Console.WriteLine();
+
+        Console.WriteLine("Findings:");
+        if (result.Diagnostics.Count == 0)
+        {
+            Console.WriteLine("  - No issues detected.");
+        }
+        else
+        {
+            foreach (StateDiagnostic diagnostic in result.Diagnostics)
+            {
+                Console.WriteLine($"  {GetDiagnosticPrefix(diagnostic.Severity)} {diagnostic.Message}");
+            }
+        }
+
+        if (result.RepairPlan.HasSteps)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Safe repairs:");
+            foreach (StateRepairStep step in result.RepairPlan.Steps)
+            {
+                Console.WriteLine($"  - {step.Description}");
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"Run: hone repair state --target \"{result.TargetDir}\"");
+        }
+        else if (result.RequiresAttention)
+        {
+            Console.WriteLine();
+            Console.WriteLine("No safe automated repairs are currently available.");
+        }
+#pragma warning restore CA1303
+    }
+
+    private static string GetDiagnosticPrefix(StateDiagnosticSeverity severity) =>
+        severity switch
+        {
+            StateDiagnosticSeverity.Info => "-",
+            StateDiagnosticSeverity.Warning => "!",
+            StateDiagnosticSeverity.Error => "x",
+            _ => "-",
+        };
 
     /// <summary>
     /// Assembles <see cref="DashboardData"/> from loaded results.

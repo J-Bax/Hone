@@ -9,6 +9,7 @@ using Hone.Orchestration.Failure;
 using Hone.Orchestration.Implementer;
 using Hone.Orchestration.Loop;
 using Hone.Orchestration.Queue;
+using Hone.Orchestration.State;
 using Hone.TestInfrastructure;
 using Hone.TestInfrastructure.HarnessTesting;
 using NSubstitute;
@@ -129,12 +130,14 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
 
         string metadataDir = Path.Combine(targetDir, "hone-results", "metadata");
         Directory.CreateDirectory(metadataDir);
+        string currentBranch = "main";
 
         IHoneEventSink eventSink = Substitute.For<IHoneEventSink>();
         IVersionControl versionControl = Substitute.For<IVersionControl>();
 
         // Queue manager (real, filesystem-backed)
         var queueManager = new OptimizationQueueManager(metadataDir, eventSink);
+        var runStateStore = new RunStateStore(targetDir, Path.Combine("hone-results", "metadata"));
 
         // Implementer pipeline mock — sensible defaults
         IImplementerPipeline implPipeline = Substitute.For<IImplementerPipeline>();
@@ -166,20 +169,54 @@ public abstract class IntegrationTestBase(ITestOutputHelper output) : HoneTestBa
         var implementer = new IterativeImplementerRunner(implPipeline, eventSink);
 
         // Failure handler (real, with mocked VCS)
+        _ = versionControl.LocalBranchExistsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        _ = versionControl.GetCurrentBranchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = versionControl.GetHeadShaAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("stable-sha"));
+        _ = versionControl.IsWorkingTreeCleanAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        _ = versionControl.GetTouchedTrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["src/Service1.cs"]));
+        _ = versionControl.GetUntrackedPathsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>([]));
+        _ = versionControl.RestoreTrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _ = versionControl.RemoveUntrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _ = versionControl.CheckoutAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                return Task.CompletedTask;
+            });
         _ = versionControl.RevertLastCommitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
-        var failureHandler = new ExperimentFailureHandler(versionControl, queueManager, eventSink);
+        var failureHandler = new ExperimentFailureHandler(versionControl, runStateStore, queueManager, eventSink);
 
         // Loop pipeline mock — sensible defaults
         ILoopPipeline pipeline = Substitute.For<ILoopPipeline>();
         ConfigureDefaultPipeline(pipeline);
+        _ = pipeline.PushBranchAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                return Task.FromResult(new PushResult(Success: true, Output: null));
+            });
         configurePipeline?.Invoke(pipeline);
 
         config ??= new HoneConfig(
             Loop: new LoopConfig(SkipClassification: true));
 
         var runner = new HoneLoopRunner(
-            pipeline, queueManager, implementer, failureHandler, eventSink);
+            pipeline, queueManager, implementer, failureHandler, versionControl, runStateStore, eventSink);
 
         return new TestHarness(
             Runner: runner,

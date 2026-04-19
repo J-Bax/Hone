@@ -85,9 +85,8 @@ public sealed class HoneLoopIntegrationTests(ITestOutputHelper output)
         _ = result.SuccessCount.Should().Be(0);
         _ = result.FailedExperiments.Should().HaveCount(2);
 
-        // Failure handler should have reverted for each failed experiment
-        await h.VersionControl.Received(2).RevertLastCommitAsync(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(2).RestoreTrackedPathsAsync(
+            Arg.Any<string>(), Arg.Is("main"), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>());
     }
 
     // ── 3. TestFailure_ExperimentRejected ────────────────────────────────────
@@ -115,8 +114,8 @@ public sealed class HoneLoopIntegrationTests(ITestOutputHelper output)
         _ = result.SuccessCount.Should().Be(0);
         _ = result.FailedExperiments.Should().HaveCount(2);
 
-        await h.VersionControl.Received(2).RevertLastCommitAsync(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(2).RestoreTrackedPathsAsync(
+            Arg.Any<string>(), Arg.Is("main"), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>());
     }
 
     // ── 4. PerfRegression_ExperimentRejected ─────────────────────────────────
@@ -153,9 +152,8 @@ public sealed class HoneLoopIntegrationTests(ITestOutputHelper output)
         _ = result.SuccessCount.Should().Be(0);
         _ = result.FailedExperiments.Should().HaveCount(2);
 
-        // Revert should have been called for each regressed experiment
-        await h.VersionControl.Received(2).RevertLastCommitAsync(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(2).RestoreTrackedPathsAsync(
+            Arg.Any<string>(), Arg.Is("main"), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>());
 
         // Stacked-diffs mode creates rejected PRs
         _ = await h.Pipeline.Received(2).CreatePullRequestAsync(

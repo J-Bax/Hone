@@ -192,6 +192,72 @@ internal sealed class OptimizationQueueManager
     }
 
     /// <summary>
+    /// Returns the current durable queue snapshot.
+    /// </summary>
+    internal OptimizationQueue GetSnapshot()
+    {
+        lock (_lock)
+        {
+            QueueFileDto queue = ReadQueue();
+            return new OptimizationQueue(
+                GeneratedByExperiment: queue.GeneratedByExperiment,
+                Items: queue.Items.ConvertAll(ToQueueItem));
+        }
+    }
+
+    /// <summary>
+    /// Marks an existing queue item as in-progress without changing the owning lease authority.
+    /// </summary>
+    internal void MarkInProgress(string itemId, int? experiment = null)
+    {
+        bool updated = UpdateItem(
+            itemId,
+            dto => dto with
+            {
+                Status = QueueItemStatus.InProgress,
+                TriedByExperiment = null,
+                Outcome = null,
+            });
+
+        if (!updated)
+        {
+            return;
+        }
+
+        _eventSink.Emit(new StatusMessage(
+            $"Queue item #{itemId} marked in progress",
+            LogLevel.Info,
+            DateTimeOffset.UtcNow,
+            experiment));
+    }
+
+    /// <summary>
+    /// Releases an active lease back to the pending queue state.
+    /// </summary>
+    internal void ReleaseLease(string itemId, int? experiment = null)
+    {
+        bool updated = UpdateItem(
+            itemId,
+            dto => dto with
+            {
+                Status = QueueItemStatus.Pending,
+                TriedByExperiment = null,
+                Outcome = null,
+            });
+
+        if (!updated)
+        {
+            return;
+        }
+
+        _eventSink.Emit(new StatusMessage(
+            $"Queue item #{itemId} lease released",
+            LogLevel.Warning,
+            DateTimeOffset.UtcNow,
+            experiment));
+    }
+
+    /// <summary>
     /// Marks an item as done with the given outcome and experiment number.
     /// </summary>
     internal void MarkDone(string itemId, string outcome, int experiment)
@@ -295,6 +361,36 @@ internal sealed class OptimizationQueueManager
 
     private static QueueItem ToQueueItem(QueueItemDto dto) =>
         new(dto.Id, dto.FilePath, dto.Explanation, dto.Scope, dto.Status, dto.TriedByExperiment, dto.Outcome);
+
+    private bool UpdateItem(string itemId, Func<QueueItemDto, QueueItemDto> update)
+    {
+        lock (_lock)
+        {
+            QueueFileDto queue = ReadQueue();
+            bool updated = false;
+
+            for (int i = 0; i < queue.Items.Count; i++)
+            {
+                if (!string.Equals(queue.Items[i].Id, itemId, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                queue.Items[i] = update(queue.Items[i]);
+                updated = true;
+                break;
+            }
+
+            if (!updated)
+            {
+                return false;
+            }
+
+            AtomicWriteJson(queue);
+            WriteMarkdown(queue);
+            return true;
+        }
+    }
 
     // ── JSON serialization DTOs ─────────────────────────────────────────────
 
