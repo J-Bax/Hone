@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 
 using FluentAssertions;
+using FluentAssertions.Specialized;
 
 using Hone.Cli;
 using Hone.Core.Config;
@@ -404,6 +405,35 @@ Hooks:
         byte[] persistedBytes = await File.ReadAllBytesAsync(metadataPath);
         _ = persistedBytes.Should().Equal(originalBytes);
         _ = File.Exists(tempPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AtomicFileWriter_WhenPathIsEmptyOrWhitespace_ThrowsBeforeCreatingTempFile()
+    {
+        string targetDir = CreateTargetDir("atomic-file-writer-invalid-path-target");
+        string originalCurrentDirectory = Environment.CurrentDirectory;
+
+        try
+        {
+            Environment.CurrentDirectory = targetDir;
+
+            foreach (string invalidPath in new[] { string.Empty, "   " })
+            {
+                Func<Task> act = () => AtomicFileWriter.WriteBytesAsync(
+                    invalidPath,
+                    Encoding.UTF8.GetBytes("metadata"),
+                    CancellationToken.None);
+
+                ExceptionAssertions<ArgumentException> exceptionAssertions = await act.Should().ThrowAsync<ArgumentException>();
+                _ = exceptionAssertions.Which.ParamName.Should().Be("path");
+            }
+
+            _ = Directory.EnumerateFiles(targetDir, "*.tmp", SearchOption.TopDirectoryOnly).Should().BeEmpty();
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalCurrentDirectory;
+        }
     }
 
     [Fact]

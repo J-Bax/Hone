@@ -33,7 +33,7 @@ internal static class AtomicFileWriter
         Action<string, string> moveFile,
         CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentNullException.ThrowIfNull(bytes);
         ArgumentNullException.ThrowIfNull(writeTempFileAsync);
         ArgumentNullException.ThrowIfNull(moveFile);
