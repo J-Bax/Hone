@@ -17,6 +17,7 @@ using Hone.Orchestration.Failure;
 using Hone.Orchestration.Implementer;
 using Hone.Orchestration.Loop;
 using Hone.Orchestration.Queue;
+using Hone.Orchestration.State;
 using Hone.SourceControl.Experiments;
 using Hone.SourceControl.Git;
 using Hone.SourceControl.PullRequests;
@@ -38,7 +39,7 @@ internal static class ServiceRegistration
         ArgumentException.ThrowIfNullOrEmpty(configPath);
 
         string resultsPath = config.Api.ResultsPath;
-        string metadataPath = config.Api.MetadataPath;
+        string metadataPath = Path.Combine(targetDir, config.Api.MetadataPath);
         string logPath = Path.Combine(targetDir, resultsPath, "hone.log");
 
         // ── Observability ────────────────────────────────────────────────
@@ -113,10 +114,11 @@ internal static class ServiceRegistration
 
         // ── Orchestration ────────────────────────────────────────────────
         var queueManager = new OptimizationQueueManager(metadataPath, eventBus);
+        var runStateStore = new RunStateStore(targetDir, config.Api.MetadataPath);
         var implementerRunner = new IterativeImplementerRunner(implementerPipeline, eventBus);
-        var failureHandler = new ExperimentFailureHandler(versionControl, queueManager, eventBus);
+        var failureHandler = new ExperimentFailureHandler(versionControl, runStateStore, queueManager, eventBus);
         var loopRunner = new HoneLoopRunner(
-            loopPipeline, queueManager, implementerRunner, failureHandler, eventBus);
+            loopPipeline, queueManager, implementerRunner, failureHandler, versionControl, runStateStore, eventBus);
 
         // ── Build provider (manual wiring — no container framework needed) ──
         var provider = new ManualServiceProvider();
@@ -137,6 +139,8 @@ internal static class ServiceRegistration
         provider.Register(branchManager);
         provider.Register(prManager);
         provider.Register(pluginDiscovery);
+        provider.Register<IRunStateStore>(runStateStore);
+        provider.Register(runStateStore);
         provider.Register(queueManager);
         provider.Register(implementerRunner);
         provider.Register(failureHandler);

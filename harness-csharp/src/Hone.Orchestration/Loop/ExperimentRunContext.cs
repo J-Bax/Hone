@@ -16,4 +16,6 @@ internal sealed record ExperimentRunContext(
     string TargetName,
     MachineInfo MachineInfo,
     List<ExperimentMetadata> Experiments,
-    string MetadataPath);
+    string MetadataPath,
+    string ExpectedStableHeadSha,
+    string CleanupManifestPath);

@@ -7,6 +7,7 @@ using Hone.Orchestration.Failure;
 using Hone.Orchestration.Implementer;
 using Hone.Orchestration.Loop;
 using Hone.Orchestration.Queue;
+using Hone.Orchestration.State;
 using Hone.TestInfrastructure;
 using NSubstitute;
 using Xunit;
@@ -114,12 +115,14 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
 
         string metadataDir = Path.Combine(targetDir, "hone-results", "metadata");
         Directory.CreateDirectory(metadataDir);
+        string currentBranch = "main";
 
         IHoneEventSink eventSink = Substitute.For<IHoneEventSink>();
         IVersionControl versionControl = Substitute.For<IVersionControl>();
 
         // Queue manager (real, filesystem-backed)
         var queueManager = new OptimizationQueueManager(metadataDir, eventSink);
+        var runStateStore = new RunStateStore(targetDir, Path.Combine("hone-results", "metadata"));
 
         // Implementer pipeline mock
         IImplementerPipeline implPipeline = Substitute.For<IImplementerPipeline>();
@@ -138,20 +141,54 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         var implementer = new IterativeImplementerRunner(implPipeline, eventSink);
 
         // Failure handler (real, with mocked VCS)
+        _ = versionControl.LocalBranchExistsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        _ = versionControl.GetCurrentBranchAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = versionControl.GetHeadShaAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("stable-sha"));
+        _ = versionControl.IsWorkingTreeCleanAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(true));
+        _ = versionControl.GetTouchedTrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>(["src/Service1.cs"]));
+        _ = versionControl.GetUntrackedPathsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<string>>([]));
+        _ = versionControl.RestoreTrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _ = versionControl.RemoveUntrackedPathsAsync(
+                Arg.Any<string>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        _ = versionControl.CheckoutAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                return Task.CompletedTask;
+            });
         _ = versionControl.RevertLastCommitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.CompletedTask);
-        var failureHandler = new ExperimentFailureHandler(versionControl, queueManager, eventSink);
+        var failureHandler = new ExperimentFailureHandler(versionControl, runStateStore, queueManager, eventSink);
 
         // Loop pipeline mock — sensible defaults
         ILoopPipeline pipeline = Substitute.For<ILoopPipeline>();
         ConfigureDefaultPipeline(pipeline);
+        _ = pipeline.PushBranchAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                return Task.FromResult(new PushResult(Success: true, Output: null));
+            });
         configurePipeline?.Invoke(pipeline);
 
         config ??= new HoneConfig(
             Loop: new LoopConfig(SkipClassification: true));
 
         var runner = new HoneLoopRunner(
-            pipeline, queueManager, implementer, failureHandler, eventSink);
+            pipeline, queueManager, implementer, failureHandler, versionControl, runStateStore, eventSink);
 
         return new TestHarness(
             Runner: runner,
@@ -159,6 +196,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
             ImplPipeline: implPipeline,
             EventSink: eventSink,
             VersionControl: versionControl,
+            RunStateStore: runStateStore,
             QueueManager: queueManager,
             TargetDir: targetDir,
             Config: config);
@@ -238,6 +276,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         IImplementerPipeline ImplPipeline,
         IHoneEventSink EventSink,
         IVersionControl VersionControl,
+        IRunStateStore RunStateStore,
         OptimizationQueueManager QueueManager,
         string TargetDir,
         HoneConfig Config)
@@ -254,6 +293,76 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 DryRun: dryRun,
                 MaxExperimentsOverride: maxExperiments);
     }
+
+    private static RunStateDocument CreateIdleRunState(
+        string stableBranch = "main",
+        string stableHeadSha = "stable-sha") =>
+        new()
+        {
+            StableBranch = stableBranch,
+            StableHeadSha = stableHeadSha,
+            Status = RecoveryState.Idle,
+        };
+
+    private static CurrentExperimentState CreateCurrentExperimentState(
+        int experiment = 1,
+        string queueItemId = "1",
+        string branchName = "hone/experiment-1",
+        string baseBranch = "main",
+        RecoveryState phase = RecoveryState.ExperimentLeased,
+        string? candidateHeadSha = null,
+        ExperimentOutcome? pendingOutcome = null,
+        string? cleanupManifestPath = null) =>
+        new()
+        {
+            Number = experiment,
+            QueueItemId = queueItemId,
+            BranchName = branchName,
+            BaseBranch = baseBranch,
+            CandidateHeadSha = candidateHeadSha,
+            CleanupManifestPath = cleanupManifestPath,
+            Phase = phase,
+            PendingOutcome = pendingOutcome,
+            StartedAt = "2024-01-01T00:00:00Z",
+        };
+
+    private static RunStateDocument CreateActiveRunState(
+        RecoveryState status,
+        CurrentExperimentState currentExperiment,
+        string stableBranch = "main",
+        string stableHeadSha = "stable-sha") =>
+        new()
+        {
+            StableBranch = stableBranch,
+            StableHeadSha = stableHeadSha,
+            Status = status,
+            CurrentExperiment = currentExperiment,
+        };
+
+    private static RunMetadata CreateRunMetadata(params ExperimentMetadata[] experiments) =>
+        new(
+            TargetName: "test-target",
+            StartedAt: experiments.Length == 0 ? "2024-01-01T00:00:00Z" : experiments[0].StartedAt,
+            MachineInfo: TestMachine,
+            Experiments: experiments);
+
+    private static ExperimentMetadata CreateImprovedExperimentMetadata(
+        int experiment,
+        string branchName,
+        string baseBranch = "main") =>
+        new(
+            Experiment: experiment,
+            StartedAt: "2024-01-01T00:00:00Z",
+            CompletedAt: "2024-01-01T00:05:00Z",
+            Outcome: ExperimentOutcome.Improved,
+            BranchName: branchName,
+            BaseBranch: baseBranch,
+            P95: 130,
+            RPS: 550,
+            PrNumber: experiment + 100,
+            PrUrl: null,
+            StaleCount: 0,
+            ConsecutiveFailures: 0);
 
     [Fact]
     public async Task RunAsync_CreatesBaselineAfterPrepareAndStart()
@@ -320,6 +429,513 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
                 input.Experiment == 1
                 && input.BaseUrl == new Uri("http://localhost:5050")),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WithIdleRunState_ValidatesStartupBeforePrepare()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+
+        Received.InOrder(() =>
+        {
+            _ = h.VersionControl.LocalBranchExistsAsync(
+                h.TargetDir, "main", Arg.Any<CancellationToken>());
+            _ = h.VersionControl.GetCurrentBranchAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.GetHeadShaAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.IsWorkingTreeCleanAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.Pipeline.PrepareAsync(
+                h.TargetDir, h.Config, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenExperimentLeased_ReleasesLeaseAndContinues()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+        {
+            _ = pipeline.RunLoadTestAsync(
+                    Arg.Any<LoadTestInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new LoadTestResult(
+                    Success: true, Metrics: MakeImprovedMetrics(experiment: 1),
+                    SummaryPath: null, Output: null)));
+            _ = pipeline.CompareMetrics(
+                    Arg.Any<MetricSet>(), Arg.Any<MetricSet>(), Arg.Any<MetricSet?>(),
+                    Arg.Any<int>(), Arg.Any<HoneConfig>())
+                .Returns(ImprovedComparison());
+        });
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.ExperimentLeased,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.ExperimentLeased,
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+        OptimizationQueue queue = h.QueueManager.GetSnapshot();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = result.ExperimentsRun.Should().Be(1);
+        _ = result.SuccessCount.Should().Be(1);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("hone/experiment-1");
+        _ = queue.Items.Should().ContainSingle();
+        _ = queue.Items[0].Status.Should().Be(QueueItemStatus.Done);
+        _ = h.Pipeline.DidNotReceive().RunAnalysisAsync(
+            Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenBranchCreatedWithCandidateCommit_ResumesVerificationAndClearsLeaseState()
+    {
+        string currentBranch = "hone/experiment-1";
+        string currentHeadSha = "candidate-sha";
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+        {
+            _ = pipeline.RunLoadTestAsync(
+                    Arg.Any<LoadTestInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new LoadTestResult(
+                    Success: true, Metrics: MakeImprovedMetrics(experiment: 1),
+                    SummaryPath: null, Output: null)));
+            _ = pipeline.CompareMetrics(
+                    Arg.Any<MetricSet>(), Arg.Any<MetricSet>(), Arg.Any<MetricSet?>(),
+                    Arg.Any<int>(), Arg.Any<HoneConfig>())
+                .Returns(ImprovedComparison());
+        });
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.VersionControl.GetCurrentBranchAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = h.VersionControl.GetHeadShaAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentHeadSha));
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.BranchCreated,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.BranchCreated,
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+        OptimizationQueue queue = h.QueueManager.GetSnapshot();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = result.ExperimentsRun.Should().Be(1);
+        _ = result.SuccessCount.Should().Be(1);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("hone/experiment-1");
+        _ = savedState.StableHeadSha.Should().Be("candidate-sha");
+        _ = queue.Items.Should().ContainSingle();
+        _ = queue.Items[0].Status.Should().Be(QueueItemStatus.Done);
+        _ = h.Pipeline.DidNotReceive().RunAnalysisAsync(
+            Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>());
+        _ = h.ImplPipeline.DidNotReceive().InvokeImplementerAgentAsync(
+            Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCandidateCommitted_ResumesVerificationAndClearsLeaseState()
+    {
+        string currentBranch = "hone/experiment-1";
+        string currentHeadSha = "candidate-sha";
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+        {
+            _ = pipeline.RunLoadTestAsync(
+                    Arg.Any<LoadTestInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new LoadTestResult(
+                    Success: true, Metrics: MakeImprovedMetrics(experiment: 1),
+                    SummaryPath: null, Output: null)));
+            _ = pipeline.CompareMetrics(
+                    Arg.Any<MetricSet>(), Arg.Any<MetricSet>(), Arg.Any<MetricSet?>(),
+                    Arg.Any<int>(), Arg.Any<HoneConfig>())
+                .Returns(ImprovedComparison());
+            _ = pipeline.PushBranchAsync(
+                    Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(callInfo =>
+                {
+                    currentBranch = callInfo.ArgAt<string>(1);
+                    return Task.FromResult(new PushResult(Success: true, Output: null));
+                });
+        });
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.VersionControl.GetCurrentBranchAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = h.VersionControl.GetHeadShaAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentHeadSha));
+        _ = h.VersionControl.CheckoutAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                return Task.CompletedTask;
+            });
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.CandidateCommitted,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.CandidateCommitted,
+                candidateHeadSha: "candidate-sha",
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+        OptimizationQueue queue = h.QueueManager.GetSnapshot();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = result.ExperimentsRun.Should().Be(1);
+        _ = result.SuccessCount.Should().Be(1);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("hone/experiment-1");
+        _ = savedState.StableHeadSha.Should().Be("candidate-sha");
+        _ = queue.Items.Should().ContainSingle();
+        _ = queue.Items[0].Status.Should().Be(QueueItemStatus.Done);
+        _ = h.Pipeline.DidNotReceive().RunAnalysisAsync(
+            Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>());
+        _ = h.ImplPipeline.DidNotReceive().InvokeImplementerAgentAsync(
+            Arg.Any<FixStepInput>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCandidateCommittedOnStableBranch_ChecksOutExperimentBranchAndResumes()
+    {
+        string currentBranch = "main";
+        string currentHeadSha = "stable-sha";
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+        {
+            _ = pipeline.RunLoadTestAsync(
+                    Arg.Any<LoadTestInput>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new LoadTestResult(
+                    Success: true, Metrics: MakeImprovedMetrics(experiment: 1),
+                    SummaryPath: null, Output: null)));
+            _ = pipeline.CompareMetrics(
+                    Arg.Any<MetricSet>(), Arg.Any<MetricSet>(), Arg.Any<MetricSet?>(),
+                    Arg.Any<int>(), Arg.Any<HoneConfig>())
+                .Returns(ImprovedComparison());
+        });
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.VersionControl.GetCurrentBranchAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = h.VersionControl.GetHeadShaAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentHeadSha));
+        _ = h.VersionControl.CheckoutAsync(
+                Arg.Any<string>(), Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                currentBranch = callInfo.ArgAt<string>(1);
+                if (string.Equals(currentBranch, "hone/experiment-1", StringComparison.Ordinal))
+                {
+                    currentHeadSha = "candidate-sha";
+                }
+
+                return Task.CompletedTask;
+            });
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.CandidateCommitted,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.CandidateCommitted,
+                candidateHeadSha: "candidate-sha",
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+        OptimizationQueue queue = h.QueueManager.GetSnapshot();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = result.ExperimentsRun.Should().Be(1);
+        _ = result.SuccessCount.Should().Be(1);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("hone/experiment-1");
+        _ = savedState.StableHeadSha.Should().Be("candidate-sha");
+        _ = queue.Items.Should().ContainSingle();
+        _ = queue.Items[0].Status.Should().Be(QueueItemStatus.Done);
+        await h.VersionControl.Received(1).CheckoutAsync(
+            h.TargetDir,
+            "hone/experiment-1",
+            create: false,
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenFinalizingAlreadyCompleted_ClearsRunStateToIdle()
+    {
+        string currentBranch = "hone/experiment-1";
+        string currentHeadSha = "candidate-sha";
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+            _ = pipeline.LoadRunMetadataAsync(
+                    Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<RunMetadata?>(CreateRunMetadata(
+                    CreateImprovedExperimentMetadata(1, branchName: "hone/experiment-1")))));
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.VersionControl.GetCurrentBranchAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = h.VersionControl.GetHeadShaAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentHeadSha));
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+        h.QueueManager.MarkDone("1", "improved", experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.Finalizing,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.Finalizing,
+                candidateHeadSha: "candidate-sha",
+                pendingOutcome: ExperimentOutcome.Improved,
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("hone/experiment-1");
+        _ = savedState.StableHeadSha.Should().Be("candidate-sha");
+        _ = await h.Pipeline.Received(1).PrepareAsync(
+            h.TargetDir, h.Config, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenFinalizingRejectedExperimentAlreadyCompleted_ClearsRunStateToIdle()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+            _ = pipeline.LoadRunMetadataAsync(
+                    Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<RunMetadata?>(CreateRunMetadata(
+                    new ExperimentMetadata(
+                        Experiment: 1,
+                        StartedAt: "2024-01-01T00:00:00Z",
+                        CompletedAt: "2024-01-01T00:05:00Z",
+                        Outcome: ExperimentOutcome.Regressed,
+                        BranchName: "hone/experiment-1",
+                        BaseBranch: "main",
+                        P95: 170,
+                        RPS: 450,
+                        PrNumber: 101,
+                        PrUrl: null,
+                        StaleCount: 0,
+                        ConsecutiveFailures: 1)))));
+
+        string baselineDir = Path.Combine(h.TargetDir, "hone-results", "baseline");
+        Directory.CreateDirectory(baselineDir);
+        await File.WriteAllTextAsync(Path.Combine(baselineDir, "k6-summary.json"), "{}");
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+        h.QueueManager.MarkDone("1", "regressed", experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.Finalizing,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.Finalizing,
+                candidateHeadSha: "candidate-sha",
+                pendingOutcome: ExperimentOutcome.Regressed,
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 0));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("max_experiments");
+        _ = result.ExperimentsRun.Should().Be(0);
+        _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.Idle);
+        _ = savedState.CurrentExperiment.Should().BeNull();
+        _ = savedState.StableBranch.Should().Be("main");
+        _ = savedState.StableHeadSha.Should().Be("stable-sha");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStableBranchMissing_MarksRepairRequired()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+        _ = h.VersionControl.LocalBranchExistsAsync(
+                h.TargetDir, "main", Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = result.ExperimentsRun.Should().Be(0);
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+        h.EventSink.Received().Emit(Arg.Is<StatusMessage>(message =>
+            message.Level == LogLevel.Error
+            && message.Message.Contains("Stable branch 'main'", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStableHeadShaDiffers_MarksRepairRequired()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+        _ = h.VersionControl.GetHeadShaAsync(
+                h.TargetDir, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("different-sha"));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenStableWorktreeDirty_MarksRepairRequired()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+        _ = h.VersionControl.IsWorkingTreeCleanAsync(
+                h.TargetDir, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+        h.EventSink.Received().Emit(Arg.Is<StatusMessage>(message =>
+            message.Level == LogLevel.Error &&
+            message.Message.Contains("dirty", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenCandidateCommittedQueueItemAlreadyDone_MarksRepairRequired()
+    {
+        string currentBranch = "hone/experiment-1";
+        string currentHeadSha = "candidate-sha";
+        TestHarness h = CreateHarness();
+
+        _ = h.VersionControl.GetCurrentBranchAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentBranch));
+        _ = h.VersionControl.GetHeadShaAsync(
+                Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult(currentHeadSha));
+
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+        h.QueueManager.MarkDone("1", "regressed", experiment: 1);
+
+        await h.RunStateStore.SaveAsync(CreateActiveRunState(
+            RecoveryState.CandidateCommitted,
+            CreateCurrentExperimentState(
+                phase: RecoveryState.CandidateCommitted,
+                candidateHeadSha: "candidate-sha",
+                cleanupManifestPath: h.RunStateStore.GetCleanupManifestPath(1))));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenQueueLeaseDisagrees_MarksRepairRequired()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+        _ = h.QueueManager.Initialize(MakeOpportunities(count: 1), experiment: 1);
+        _ = h.QueueManager.GetNext(experiment: 1);
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenMetadataStableBranchDisagrees_MarksRepairRequired()
+    {
+        TestHarness h = CreateHarness(configurePipeline: pipeline =>
+            _ = pipeline.LoadRunMetadataAsync(
+                    Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<RunMetadata?>(CreateRunMetadata(
+                    CreateImprovedExperimentMetadata(1, branchName: "hone/experiment-1")))));
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+        RunStateDocument? savedState = await h.RunStateStore.LoadAsync();
+
+        _ = result.ExitReason.Should().Be("repair_required");
+        _ = savedState.Should().NotBeNull();
+        _ = savedState!.Status.Should().Be(RecoveryState.RepairRequired);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
     }
 
     // ── 1. HappyPath_SingleExperiment_Accepted ──────────────────────────────
@@ -413,13 +1029,38 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         _ = result.BranchChain.Should().ContainSingle()
             .Which.Should().Be("hone/experiment-2");
 
-        // Failure handler should have reverted once
-        await h.VersionControl.Received(1).RevertLastCommitAsync(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
-
-        // Checkout back to base branch after failure
-        await h.Pipeline.Received(1).CheckoutAsync(
+        _ = await h.VersionControl.Received(1).GetTouchedTrackedPathsAsync(
             Arg.Any<string>(), Arg.Is("main"), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(1).RestoreTrackedPathsAsync(
+            Arg.Any<string>(), Arg.Is("main"), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(1).CheckoutAsync(
+            Arg.Any<string>(), Arg.Is("main"), create: false, Arg.Any<CancellationToken>());
+        await h.Pipeline.DidNotReceive().CheckoutAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task IterativeFailure_WhenCleanupVerificationFails_StopsLoop()
+    {
+        TestHarness h = CreateHarness(
+            configurePipeline: pipeline =>
+                _ = pipeline.RunAnalysisAsync(
+                        Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new AnalysisResult(
+                        Success: true, Opportunities: MakeOpportunities(count: 2)))),
+            configureImplementer: implPipeline =>
+                _ = implPipeline.BuildProjectAsync(
+                        Arg.Any<BuildStepInput>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(new BuildStepResult(Success: false, Output: "Build failed"))));
+
+        _ = h.VersionControl.IsWorkingTreeCleanAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(false));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 2));
+
+        _ = result.ExitReason.Should().Be("cleanup_failed");
+        _ = result.ExperimentsRun.Should().Be(1);
+        _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
     }
 
     // ── 3. QueueDriven_ReanalyzesWhenEmpty ──────────────────────────────────
@@ -953,8 +1594,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
         _ = result.SuccessCount.Should().Be(1);
         _ = result.FailedExperiments.Should().ContainSingle().Which.Should().Be(1);
 
-        // Failure handler reverted the failed experiment
-        await h.VersionControl.Received(1).RevertLastCommitAsync(
-            Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await h.VersionControl.Received(1).RestoreTrackedPathsAsync(
+            Arg.Any<string>(), Arg.Is("main"), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>());
     }
 }

@@ -262,14 +262,7 @@ internal sealed class LoopPipelineAdapter : ILoopPipeline
     /// <inheritdoc />
     public async Task SaveRunMetadataAsync(string path, RunMetadata metadata, CancellationToken ct)
     {
-        string? dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
-
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(metadata, MetadataJsonOptions);
-        await File.WriteAllBytesAsync(path, bytes, ct).ConfigureAwait(false);
+        await AtomicFileWriter.WriteJsonAsync(path, metadata, MetadataJsonOptions, ct).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

@@ -1,6 +1,8 @@
 using System.Net;
+using System.Text;
 
 using FluentAssertions;
+using FluentAssertions.Specialized;
 
 using Hone.Cli;
 using Hone.Core.Config;
@@ -330,6 +332,108 @@ Hooks:
         _ = File.Exists(persistedSummaryPath).Should().BeTrue();
         string persistedSummary = await File.ReadAllTextAsync(persistedSummaryPath);
         _ = persistedSummary.Should().Be("{\"summary\":true}");
+    }
+
+    [Fact]
+    public async Task SaveRunMetadataAsync_WritesMetadataWithoutLeavingTemporaryFile()
+    {
+        string targetDir = CreateTargetDir("adapter-run-metadata-target");
+        HoneConfig config = CreateConfig(
+            baseUrl: "http://localhost:0",
+            resultsPath: "hone-results",
+            warmupEnabled: false);
+        ILoadTestRunner loadTestRunner = Substitute.For<ILoadTestRunner>();
+        var adapter = new LoopPipelineAdapter(
+            loadTestRunner,
+            analysisAgent: null!,
+            classificationAgent: null!,
+            codeHost: null!,
+            versionControl: null!,
+            config);
+
+        string metadataPath = Path.Combine(targetDir, "hone-results", "run-metadata.json");
+        var metadata = new RunMetadata(
+            TargetName: "AtomicTarget",
+            StartedAt: DateTimeOffset.UtcNow.ToString("o"),
+            MachineInfo: new MachineInfo("Test CPU", 8, 32, "Test OS", ".NET Test"),
+            Experiments: []);
+
+        await adapter.SaveRunMetadataAsync(metadataPath, metadata, CancellationToken.None);
+
+        _ = File.Exists(metadataPath).Should().BeTrue();
+        _ = File.Exists(metadataPath + ".tmp").Should().BeFalse();
+
+        RunMetadata persisted = await adapter.LoadRunMetadataAsync(metadataPath, CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected persisted run metadata.");
+
+        _ = persisted.TargetName.Should().Be("AtomicTarget");
+        _ = persisted.Experiments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AtomicFileWriter_WhenTempWriteFails_PreservesExistingMetadata()
+    {
+        string targetDir = CreateTargetDir("atomic-file-writer-target");
+        string metadataPath = Path.Combine(targetDir, "hone-results", "run-metadata.json");
+        string tempPath = metadataPath + ".tmp";
+
+        Directory.CreateDirectory(Path.GetDirectoryName(metadataPath)!);
+
+        byte[] originalBytes = Encoding.UTF8.GetBytes("""{"targetName":"original"}""");
+        await File.WriteAllBytesAsync(metadataPath, originalBytes);
+
+        bool moveCalled = false;
+        byte[] updatedBytes = Encoding.UTF8.GetBytes("""{"targetName":"updated"}""");
+
+        static async Task WriteTempFileAsync(string path, byte[] bytes, CancellationToken ct)
+        {
+            byte[] partialBytes = bytes[..Math.Min(8, bytes.Length)];
+            await File.WriteAllBytesAsync(path, partialBytes, ct).ConfigureAwait(false);
+            throw new IOException("Simulated temp write failure");
+        }
+
+        Func<Task> act = () => AtomicFileWriter.WriteBytesAsync(
+            metadataPath,
+            updatedBytes,
+            WriteTempFileAsync,
+            (_, _) => moveCalled = true,
+            CancellationToken.None);
+
+        _ = await act.Should().ThrowAsync<IOException>();
+        _ = moveCalled.Should().BeFalse();
+
+        byte[] persistedBytes = await File.ReadAllBytesAsync(metadataPath);
+        _ = persistedBytes.Should().Equal(originalBytes);
+        _ = File.Exists(tempPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AtomicFileWriter_WhenPathIsEmptyOrWhitespace_ThrowsBeforeCreatingTempFile()
+    {
+        string targetDir = CreateTargetDir("atomic-file-writer-invalid-path-target");
+        string originalCurrentDirectory = Environment.CurrentDirectory;
+
+        try
+        {
+            Environment.CurrentDirectory = targetDir;
+
+            foreach (string invalidPath in new[] { string.Empty, "   " })
+            {
+                Func<Task> act = () => AtomicFileWriter.WriteBytesAsync(
+                    invalidPath,
+                    Encoding.UTF8.GetBytes("metadata"),
+                    CancellationToken.None);
+
+                ExceptionAssertions<ArgumentException> exceptionAssertions = await act.Should().ThrowAsync<ArgumentException>();
+                _ = exceptionAssertions.Which.ParamName.Should().Be("path");
+            }
+
+            _ = Directory.EnumerateFiles(targetDir, "*.tmp", SearchOption.TopDirectoryOnly).Should().BeEmpty();
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalCurrentDirectory;
+        }
     }
 
     [Fact]
