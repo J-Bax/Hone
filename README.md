@@ -41,7 +41,7 @@ graph LR
 
 ## Sample API Results
 
-On the included sample API (.NET 6 ecommerce service), Hone autonomously completed **35 experiments in ~24 hours** — accepting 29 and rejecting 6 — while E2E tests continued to pass throughout:
+On the reference sample API ([J-Bax/Hone-SampleAPI](https://github.com/J-Bax/Hone-SampleAPI), a .NET 6 ecommerce service), Hone autonomously completed **35 experiments in ~24 hours** — accepting 29 and rejecting 6 — while E2E tests continued to pass throughout:
 
 | Metric | Baseline | After Optimization | Improvement |
 |--------|----------|-------------------|-------------|
@@ -88,7 +88,7 @@ All diffs include a detailed root-cause analysis and explanation of fix — see 
 
 ### Sample API (reference only)
 
-These are only needed if you're using the included sample API as your optimization target:
+These are only needed if you're using the reference sample target: [J-Bax/Hone-SampleAPI](https://github.com/J-Bax/Hone-SampleAPI).
 
 | Tool | Version | Install |
 |------|---------|---------|
@@ -101,25 +101,27 @@ These are only needed if you're using the included sample API as your optimizati
 # 1. Clone the repo
 git clone https://github.com/J-Bax/Hone.git
 cd Hone
-git submodule update --init --recursive
 
-# 2. Build the harness
+# 2. Clone the reference sample target separately
+git clone https://github.com/J-Bax/Hone-SampleAPI.git ../Hone-SampleAPI
+
+# 3. Build the harness
 dotnet build harness-csharp/Hone.slnx
 
-# 3. Build the sample API and run E2E tests (uses WebApplicationFactory)
-dotnet build sample-api/SampleApi.sln
-dotnet test sample-api/SampleApi.Tests/
+# 4. Build the sample API and run E2E tests (uses WebApplicationFactory)
+dotnet build ../Hone-SampleAPI/SampleApi.sln
+dotnet test ../Hone-SampleAPI/SampleApi.Tests/
 
-# 4. Establish a performance baseline
-hone baseline --target sample-api
+# 5. Establish a performance baseline
+hone baseline --target ../Hone-SampleAPI
 
-# 5. Run the full agentic optimization loop
-hone run --target sample-api
+# 6. Run the full agentic optimization loop
+hone run --target ../Hone-SampleAPI
 ```
 
 ## Configuration
 
-Edit `sample-api/.hone/config.yaml` to customize thresholds, experiment limits, API paths, and k6 scenarios. Engine-wide defaults live in `harness-csharp/config.yaml`. Both files are YAML with PascalCase keys.
+Edit the target repo's `.hone/config.yaml` to customize thresholds, experiment limits, API paths, and k6 scenarios. For the reference target, see [J-Bax/Hone-SampleAPI](https://github.com/J-Bax/Hone-SampleAPI). Engine-wide defaults live in `harness-csharp/config.yaml`. Both files are YAML with PascalCase keys.
 
 See [docs/configuration.md](docs/configuration.md) for the full schema and runtime override flags.
 

@@ -37,8 +37,6 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
             $"Searched from: {AppContext.BaseDirectory}");
     }
 
-    private static string RepoRoot => Path.GetDirectoryName(FindHarnessCSharpRoot())!;
-
     // ── Engine defaults (harness-csharp/config.yaml) ────────────────────────
 
     [Fact]
@@ -221,7 +219,7 @@ public sealed class ConfigYamlMigrationTests(ITestOutputHelper output) : HoneTes
     [Fact]
     public void SampleApiConfig_LoadsCorrectly_WithExpectedOverrides()
     {
-        string path = Path.Combine(RepoRoot, "sample-api", ".hone", "config.yaml");
+        string path = Path.Combine(TestFixturesRootPath, "sample-api-target", ".hone", "config.yaml");
 
         // ConfigLoader loads HoneConfig; TargetConfig fields (Name/BaseBranch/Hooks)
         // are ignored via IgnoreUnmatchedProperties — the HoneConfig override fields

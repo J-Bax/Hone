@@ -57,29 +57,4 @@ Desktop.ini
 # ----- Hone Tools (downloaded, not committed) -----
 tools/
 
-# ----- Hone Results -----
-# NOTE: sample-api/ is a git submodule with its own .gitignore.
-# The rules below do NOT take effect for the parent repo because git
-# delegates ignore rules inside submodules to the submodule's own
-# .gitignore. They are kept here for documentation purposes so
-# contributors understand the intended ignore policy for results.
-#
-# Committed per experiment:
-#   - Agent prompts & responses (analysis-prompt.md, *-response.json, etc.)
-#   - Analyzer reports (cpu-hotspots/, memory-gc/ prompt+response)
-#   - Root cause analysis (root-cause.md)
-#   - Metadata (experiment-queue, experiment-log)
-#   - Run metadata (run-metadata.json)
-#
-# Gitignored (raw profiling data):
-#   - PerfView ETL/CSV/logs, dotnet-counters, k6 JSON summaries
-sample-api/.hone/results/*
-!sample-api/.hone/results/.gitkeep
-!sample-api/.hone/results/baseline/
-sample-api/.hone/results/baseline/*
-!sample-api/.hone/results/baseline/k6-summary.json
-!sample-api/.hone/results/run-metadata.json
-!sample-api/.hone/results/hone.jsonl
-!sample-api/.hone/results/metadata/
-!sample-api/.hone/results/experiment-*/
 
