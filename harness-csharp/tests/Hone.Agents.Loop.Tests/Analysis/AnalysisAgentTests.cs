@@ -90,7 +90,14 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
         AnalysisAgent sut = CreateSut();
 
         AnalysisResult result = await sut.AnalyzeAsync(
-            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            MakeContext(sourceFiles:
+            [
+                "Controllers/ItemsController.cs",
+                "Data/Repository.cs",
+            ]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
             experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
 
         _ = result.Success.Should().BeTrue();
@@ -133,12 +140,83 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
         AnalysisAgent sut = CreateSut();
 
         AnalysisResult result = await sut.AnalyzeAsync(
-            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            MakeContext(sourceFiles:
+            [
+                "Services/AuthService.cs",
+                "Middleware/Logging.cs",
+            ]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
             experiment: 2, targetLabel: "SampleApi", workingDirectory: null);
 
         _ = result.Success.Should().BeTrue();
         _ = result.FilePath.Should().Be("Services/AuthService.cs");
         _ = result.Explanation.Should().Be("JWT validation is synchronous and blocks the request pipeline");
+    }
+
+    [Fact]
+    public async Task AnalysisAgent_CanonicalizesFilePathFromUniqueSuffix()
+    {
+        string json = MakeAgentJson(
+            new
+            {
+                filePath = "PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+                title = "Optimize catalog creation",
+                explanation = "Endpoint allocates too much per request",
+                scope = "narrow",
+            });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        AnalysisAgent sut = CreateSut();
+
+        AnalysisResult result = await sut.AnalyzeAsync(
+            MakeContext(sourceFiles: ["src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs"]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
+            experiment: 1,
+            targetLabel: "eShopOnWeb",
+            workingDirectory: null);
+
+        _ = result.FilePath.Should().Be("src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs");
+        _ = result.Opportunities[0].FilePath.Should().Be("src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs");
+    }
+
+    [Fact]
+    public async Task AnalysisAgent_AmbiguousSuffixMatch_ThrowsInvalidOperationException()
+    {
+        string json = MakeAgentJson(
+            new
+            {
+                filePath = "CreateCatalogItemEndpoint.cs",
+                title = "Optimize catalog creation",
+                explanation = "Endpoint allocates too much per request",
+                scope = "narrow",
+            });
+
+        _ = _runner.InvokeAsync(Arg.Any<AgentInvocation>(), Arg.Any<CancellationToken>())
+            .Returns(OkResult(json));
+
+        AnalysisAgent sut = CreateSut();
+
+        Func<Task> act = () => sut.AnalyzeAsync(
+            MakeContext(sourceFiles:
+            [
+                "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+                "src/Admin/Catalog/CreateCatalogItemEndpoint.cs",
+            ]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
+            experiment: 1,
+            targetLabel: "eShopOnWeb",
+            workingDirectory: null);
+
+        _ = (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*ambiguous FilePath*");
     }
 
     // ── NoOpportunities_ReturnsFailure ──────────────────────────────────
@@ -152,7 +230,10 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
         AnalysisAgent sut = CreateSut();
 
         AnalysisResult result = await sut.AnalyzeAsync(
-            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            MakeContext(sourceFiles: ["Controllers/ItemsController.cs"]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
             experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
 
         _ = result.Success.Should().BeFalse();
@@ -284,7 +365,10 @@ public sealed class AnalysisAgentTests(ITestOutputHelper output) : HoneTestBase(
         AnalysisAgent sut = CreateSut();
 
         AnalysisResult result = await sut.AnalyzeAsync(
-            MakeContext(), MakeMetrics(), MakeMetrics(), comparison: null,
+            MakeContext(sourceFiles: ["Controllers/ItemsController.cs"]),
+            MakeMetrics(),
+            MakeMetrics(),
+            comparison: null,
             experiment: 1, targetLabel: "SampleApi", workingDirectory: null);
 
         _ = result.Opportunities[0].Title.Should().Be("Slow DB queries cause high latency");

@@ -45,7 +45,9 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 
         if (result.ParsedResult?.Opportunities is { Count: > 0 })
         {
-            List<Opportunity> opportunities = NormalizeOpportunities(result.ParsedResult.Opportunities);
+            List<Opportunity> opportunities = NormalizeOpportunities(
+                result.ParsedResult.Opportunities,
+                context.SourceFilePaths);
             Opportunity primary = opportunities[0];
 
             return new AnalysisResult(
@@ -118,6 +120,7 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
         sb.AppendLine("## Source Files");
         sb.AppendLine(CultureInfo.InvariantCulture, $"The following source files are available for analysis (paths relative to the {targetLabel} root).");
         sb.AppendLine("Read the files that are relevant to identifying performance bottlenecks.");
+        sb.AppendLine("Each opportunity.filePath must exactly match one path from the Source Files list.");
         sb.AppendLine();
         sb.AppendLine(fileList);
         sb.AppendLine();
@@ -126,7 +129,9 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
         return sb.ToString();
     }
 
-    private static List<Opportunity> NormalizeOpportunities(List<OpportunityDto> dtos)
+    private static List<Opportunity> NormalizeOpportunities(
+        List<OpportunityDto> dtos,
+        IReadOnlyList<string> sourceFilePaths)
     {
         var result = new List<Opportunity>(dtos.Count);
 
@@ -156,9 +161,10 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
 
             string title = dto.Title ?? dto.Explanation!;
             string explanation = dto.Explanation ?? dto.Title!;
+            string filePath = CanonicalizeFilePath(dto.FilePath, sourceFilePaths);
 
             result.Add(new Opportunity(
-                FilePath: dto.FilePath,
+                FilePath: filePath,
                 Title: title,
                 Explanation: explanation,
                 Scope: scope,
@@ -169,6 +175,76 @@ public sealed class AnalysisAgent(AgentInvoker agentInvoker)
         }
 
         return result;
+    }
+
+    private static string CanonicalizeFilePath(
+        string filePath,
+        IReadOnlyList<string> sourceFilePaths)
+    {
+        string normalizedPath = NormalizeFilePath(filePath);
+        if (sourceFilePaths.Count == 0)
+        {
+            return normalizedPath;
+        }
+
+        Dictionary<string, string> canonicalPaths = BuildCanonicalPathIndex(sourceFilePaths);
+        if (canonicalPaths.TryGetValue(normalizedPath, out string? canonicalPath))
+        {
+            return canonicalPath;
+        }
+
+        string[] suffixMatches =
+        [
+            .. canonicalPaths.Values
+                .Where(path => IsSuffixMatch(path, normalizedPath))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
+        ];
+
+        return suffixMatches.Length switch
+        {
+            1 => suffixMatches[0],
+            > 1 => throw new InvalidOperationException(
+                $"Analysis agent returned ambiguous FilePath '{filePath}'. " +
+                $"It matched multiple discovered source files: {string.Join(", ", suffixMatches.Select(path => $"'{path}'"))}. " +
+                "The filePath must exactly match one listed source file."),
+            _ => throw new InvalidOperationException(
+                $"Analysis agent returned FilePath '{filePath}', which does not match any discovered source file. " +
+                "The filePath must be target-root relative and match one listed source file."),
+        };
+    }
+
+    private static Dictionary<string, string> BuildCanonicalPathIndex(
+        IReadOnlyList<string> sourceFilePaths)
+    {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string path in sourceFilePaths)
+        {
+            string normalized = NormalizeFilePath(path);
+            if (!string.IsNullOrEmpty(normalized))
+            {
+                index[normalized] = normalized;
+            }
+        }
+
+        return index;
+    }
+
+    private static bool IsSuffixMatch(string path, string suffix) =>
+        string.Equals(path, suffix, StringComparison.OrdinalIgnoreCase) ||
+        path.EndsWith($"/{suffix}", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeFilePath(string path)
+    {
+        string normalized = path.Replace('\\', '/').Trim();
+
+        while (normalized.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalized = normalized[2..];
+        }
+
+        return normalized.Trim('/');
     }
 
     private sealed class AnalysisAgentResponse

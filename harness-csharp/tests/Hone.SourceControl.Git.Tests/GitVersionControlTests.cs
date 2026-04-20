@@ -18,7 +18,7 @@ public sealed class GitVersionControlTests(ITestOutputHelper output) : HoneTestB
         ["status", "--porcelain=v1", "-z", "--untracked-files=normal", "--no-renames"];
     private static readonly string[] CheckoutFeatureArgs = ["checkout", "feature"];
     private static readonly string[] CheckoutCreateFeatureArgs = ["checkout", "-b", "feature"];
-    private static readonly string[] AddFilesArgs = ["add", "--", "file1.cs", "file2.cs"];
+    private static readonly string[] AddFilesArgs = ["add", "-f", "--", "file1.cs", "file2.cs"];
     private static readonly string[] CommitArgs = ["commit", "--no-gpg-sign", "-m", "fix bug"];
     private static readonly string[] DiffArgs = ["diff"];
     private static readonly string[] DiffThreeDotArgs = ["diff", "--", "main...HEAD"];
@@ -118,6 +118,26 @@ public sealed class GitVersionControlTests(ITestOutputHelper output) : HoneTestB
 
         _ = (await act.Should().ThrowAsync<InvalidOperationException>())
             .WithMessage("*not a git repo*");
+    }
+
+    [Fact]
+    public async Task GetHeadSha_WhenGitReportsDubiousOwnership_ThrowsActionableInvalidOperation()
+    {
+        SetupProcessRunner(
+            success: false,
+            output: """
+fatal: detected dubious ownership in repository at '/repo'
+To add an exception for this directory, call:
+
+	git config --global --add safe.directory /repo
+""");
+        GitVersionControl sut = CreateSut();
+
+        Func<Task> act = () => sut.GetHeadShaAsync("/repo");
+
+        _ = (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*safe.directory*")
+            .WithMessage("*/repo*");
     }
 
     [Fact]

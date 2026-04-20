@@ -109,6 +109,30 @@ public sealed class IterativeImplementerRunnerTests(ITestOutputHelper output)
         _ = result.CommitSha.Should().Be("abc123");
     }
 
+    [Fact]
+    public async Task RunAsync_WhenTargetFileIsMissing_ReturnsInvalidTarget()
+    {
+        string targetDir = CreateTargetDir("missing-target", b =>
+            b.AddDirectory("src"));
+
+        IImplementerPipeline pipeline = Substitute.For<IImplementerPipeline>();
+        IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+
+        ImplementerOptions options = MakeOptions(targetDir, filePath: "src/MissingService.cs");
+        var runner = new IterativeImplementerRunner(pipeline, sink);
+
+        ImplementerRunResult result = await runner.RunAsync(options);
+
+        _ = result.Result.Success.Should().BeFalse();
+        _ = result.Result.ExitReason.Should().Be("invalid_target");
+        _ = result.Result.FailureDetail.Should().Contain("existing file");
+        _ = await pipeline.DidNotReceive().InvokeImplementerAgentAsync(
+            Arg.Any<FixStepInput>(),
+            Arg.Any<CancellationToken>());
+        sink.Received().Emit(Arg.Is<StatusMessage>(message =>
+            message.Message.Contains("Invalid experiment target path", StringComparison.Ordinal)));
+    }
+
     // ── 2. BuildFailure_RetriesWithErrors ───────────────────────────────────
 
     [Fact]

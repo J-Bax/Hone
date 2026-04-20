@@ -29,10 +29,10 @@ internal sealed class OptimizationQueueManager
 
     internal OptimizationQueueManager(string metadataDir, IHoneEventSink eventSink)
     {
-        _metadataDir = metadataDir;
+        _metadataDir = Path.GetFullPath(metadataDir);
         _eventSink = eventSink;
-        _queueJsonPath = Path.Combine(metadataDir, "experiment-queue.json");
-        _queueMdPath = Path.Combine(metadataDir, "experiment-queue.md");
+        _queueJsonPath = Path.Combine(_metadataDir, "experiment-queue.json");
+        _queueMdPath = Path.Combine(_metadataDir, "experiment-queue.md");
     }
 
     /// <summary>
@@ -320,9 +320,7 @@ internal sealed class OptimizationQueueManager
     private void AtomicWriteJson(QueueFileDto queue)
     {
         string json = JsonSerializer.Serialize(queue, SerializerOptions);
-        string tmpPath = _queueJsonPath + ".tmp";
-        File.WriteAllText(tmpPath, json, Encoding.UTF8);
-        File.Move(tmpPath, _queueJsonPath, overwrite: true);
+        AtomicWriteText(_queueJsonPath, json);
     }
 
     private void WriteMarkdown(QueueFileDto queue)
@@ -356,7 +354,20 @@ internal sealed class OptimizationQueueManager
             sb.Append(CultureInfo.InvariantCulture, $"- [{check}] **#{item.Id}**{scopeTag}`{item.FilePath}` \u2014 {item.Title}{statusNote}\n");
         }
 
-        File.WriteAllText(_queueMdPath, sb.ToString(), Encoding.UTF8);
+        AtomicWriteText(_queueMdPath, sb.ToString());
+    }
+
+    private static void AtomicWriteText(string path, string content)
+    {
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        string tmpPath = path + ".tmp";
+        File.WriteAllText(tmpPath, content, Encoding.UTF8);
+        File.Move(tmpPath, path, overwrite: true);
     }
 
     private static QueueItem ToQueueItem(QueueItemDto dto) =>

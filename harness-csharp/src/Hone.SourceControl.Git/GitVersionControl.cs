@@ -26,8 +26,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         return result.Success
             ? result.Output.Trim()
-            : throw new InvalidOperationException(
-                $"Failed to get current branch: {result.Output}");
+            : throw CreateFailure("get current branch", workingDir, result.Output);
     }
 
     /// <inheritdoc />
@@ -44,8 +43,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         return result.Success
             ? result.Output.Trim()
-            : throw new InvalidOperationException(
-                $"Failed to get HEAD SHA: {result.Output}");
+            : throw CreateFailure("get HEAD SHA", workingDir, result.Output);
     }
 
     /// <inheritdoc />
@@ -65,8 +63,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
         {
             0 => true,
             1 => false,
-            _ => throw new InvalidOperationException(
-                $"Failed to check local branch '{branch}': {result.Output}"),
+            _ => throw CreateFailure($"check local branch '{branch}'", workingDir, result.Output),
         };
     }
 
@@ -84,8 +81,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         return result.Success
             ? string.IsNullOrWhiteSpace(result.Output)
-            : throw new InvalidOperationException(
-                $"Failed to get working tree status: {result.Output}");
+            : throw CreateFailure("get working tree status", workingDir, result.Output);
     }
 
     /// <inheritdoc cref="IPathFilteringVersionControl.IsWorkingTreeCleanAsync(string, IEnumerable{string}, CancellationToken)" />
@@ -106,8 +102,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!result.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to get working tree status: {result.Output}");
+            throw CreateFailure("get working tree status", workingDir, result.Output);
         }
 
         string[] ignored = NormalizeIgnoredPaths(ignoredPaths);
@@ -138,8 +133,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!result.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to checkout branch '{branch}': {result.Output}");
+            throw CreateFailure($"checkout branch '{branch}'", workingDir, result.Output);
         }
     }
 
@@ -151,7 +145,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (paths is not null)
         {
-            List<string> addArgs = ["add", "--"];
+            List<string> addArgs = ["add", "-f", "--"];
             addArgs.AddRange(paths);
 
             ProcessResult addResult = await processRunner.RunAsync(
@@ -163,8 +157,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
             if (!addResult.Success)
             {
-                throw new InvalidOperationException(
-                    $"Failed to stage files: {addResult.Output}");
+                throw CreateFailure("stage files", workingDir, addResult.Output);
             }
         }
 
@@ -177,8 +170,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!commitResult.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to commit: {commitResult.Output}");
+            throw CreateFailure("commit changes", workingDir, commitResult.Output);
         }
     }
 
@@ -200,8 +192,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         return result.Success
             ? result.Output
-            : throw new InvalidOperationException(
-                $"Failed to get diff: {result.Output}");
+            : throw CreateFailure("get diff", workingDir, result.Output);
     }
 
     /// <inheritdoc />
@@ -221,8 +212,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
             ct).ConfigureAwait(false);
         if (!diffResult.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to derive tracked paths from '{baseBranch}': {diffResult.Output}");
+            throw CreateFailure($"derive tracked paths from '{baseBranch}'", workingDir, diffResult.Output);
         }
 
         ProcessResult statusResult = await processRunner.RunAsync(
@@ -233,8 +223,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
             ct).ConfigureAwait(false);
         if (!statusResult.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to derive tracked paths from working tree status: {statusResult.Output}");
+            throw CreateFailure("derive tracked paths from working tree status", workingDir, statusResult.Output);
         }
 
         return NormalizePaths(
@@ -258,8 +247,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         return result.Success
             ? NormalizePaths(ParseStatusPaths(result.Output, includeTracked: false, includeUntracked: true))
-            : throw new InvalidOperationException(
-                $"Failed to derive untracked paths: {result.Output}");
+            : throw CreateFailure("derive untracked paths", workingDir, result.Output);
     }
 
     /// <inheritdoc />
@@ -291,8 +279,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!result.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to restore tracked paths from '{sourceBranch}': {result.Output}");
+            throw CreateFailure($"restore tracked paths from '{sourceBranch}'", workingDir, result.Output);
         }
     }
 
@@ -323,8 +310,7 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!result.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to remove untracked paths: {result.Output}");
+            throw CreateFailure("remove untracked paths", workingDir, result.Output);
         }
     }
 
@@ -342,10 +328,38 @@ public sealed class GitVersionControl(IProcessRunner processRunner) : IVersionCo
 
         if (!result.Success)
         {
-            throw new InvalidOperationException(
-                $"Failed to revert last commit: {result.Output}");
+            throw CreateFailure("revert last commit", workingDir, result.Output);
         }
     }
+
+    private static InvalidOperationException CreateFailure(
+        string action,
+        string workingDir,
+        string? output) =>
+        new(FormatFailureMessage(action, workingDir, output));
+
+    private static string FormatFailureMessage(
+        string action,
+        string workingDir,
+        string? output)
+    {
+        string details = string.IsNullOrWhiteSpace(output)
+            ? "Git returned no output."
+            : output.Trim();
+
+        if (IsRepositoryTrustFailure(details))
+        {
+            return $"Failed to {action}: Git does not trust repository '{workingDir}'. " +
+                "Configure this repo as a safe.directory before running Hone. " +
+                $"Original git output: {details}";
+        }
+
+        return $"Failed to {action}: {details}";
+    }
+
+    private static bool IsRepositoryTrustFailure(string output) =>
+        output.Contains("dubious ownership", StringComparison.OrdinalIgnoreCase) ||
+        output.Contains("safe.directory", StringComparison.OrdinalIgnoreCase);
 
     private static string[] NormalizePaths(IEnumerable<string> paths) =>
     [

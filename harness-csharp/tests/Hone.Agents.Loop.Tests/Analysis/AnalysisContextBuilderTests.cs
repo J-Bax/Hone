@@ -58,6 +58,26 @@ public sealed class AnalysisContextBuilderTests(ITestOutputHelper output) : Hone
             .Which.Should().Contain("UsersController.cs");
     }
 
+    [Fact]
+    public async Task ContextBuilder_CollectsTargetRelativeSourcePaths()
+    {
+        string targetDir = CreateTargetDir("repo-relative", b => b
+            .AddFile("src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs", "// endpoint")
+            .AddFile("src/ApplicationCore/Services/CatalogService.cs", "// service"));
+
+        var config = new HoneConfig(
+            Api: new ApiConfig(
+                ProjectPath: "src/PublicApi",
+                SourceCodePaths: ["src/PublicApi", "src/ApplicationCore"],
+                SourceFileGlob: "*.cs"));
+
+        AnalysisContext result = await AnalysisContextBuilder.BuildAsync(
+            targetDir, config, counters: null, previousRcaExplanation: null, diagnosticReports: null);
+
+        _ = result.SourceFilePaths.Should().Contain("src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs");
+        _ = result.SourceFilePaths.Should().Contain("src/ApplicationCore/Services/CatalogService.cs");
+    }
+
     // ── Counter context ──────────────────────────────────────────────────
 
     [Fact]
