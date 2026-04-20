@@ -73,16 +73,13 @@ internal sealed class HoneLoopRunner
             experiments,
             initialBestP95: double.PositiveInfinity);
         RunStateDocument? runState = await _runStateStore.LoadAsync(ct).ConfigureAwait(false);
-        if (runState is null)
+        RepositoryPreflightResult preflight = await PreflightRepositoryAccessAsync(
+            targetDir,
+            resultsPath,
+            ct).ConfigureAwait(false);
+        if (!preflight.Success)
         {
-            RepositoryPreflightResult preflight = await PreflightRepositoryAccessAsync(
-                targetDir,
-                resultsPath,
-                ct).ConfigureAwait(false);
-            if (!preflight.Success)
-            {
-                return StopForPreflightFailure(preflight.Message, startupState, sw);
-            }
+            return StopForPreflightFailure(preflight.Message, startupState, sw);
         }
 
         StartupGateResult startupGate = await ValidateStartupAsync(

@@ -408,6 +408,7 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
     public async Task RunAsync_WhenRepositoryPreflightFails_StopsBeforePrepare()
     {
         TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
         _ = h.VersionControl.GetHeadShaAsync(
                 h.TargetDir, Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromException<string>(new InvalidOperationException(
@@ -465,6 +466,12 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
 
         Received.InOrder(() =>
         {
+            _ = h.VersionControl.GetCurrentBranchAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.GetHeadShaAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.IsWorkingTreeCleanAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
             _ = h.VersionControl.LocalBranchExistsAsync(
                 h.TargetDir, "main", Arg.Any<CancellationToken>());
             _ = h.VersionControl.GetCurrentBranchAsync(
