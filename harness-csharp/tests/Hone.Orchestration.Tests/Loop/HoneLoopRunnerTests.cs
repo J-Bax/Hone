@@ -109,8 +109,10 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
     {
         string targetDir = CreateTargetDir("target", b =>
         {
-            _ = b.AddFile("src/Service1.cs", "// original code 1");
-            _ = b.AddFile("src/Service2.cs", "// original code 2");
+            for (int i = 1; i <= 12; i++)
+            {
+                _ = b.AddFile($"src/Service{i}.cs", $"// original code {i}");
+            }
         });
 
         string metadataDir = Path.Combine(targetDir, "hone-results", "metadata");
@@ -403,6 +405,27 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task RunAsync_WhenRepositoryPreflightFails_StopsBeforePrepare()
+    {
+        TestHarness h = CreateHarness();
+        await h.RunStateStore.SaveAsync(CreateIdleRunState());
+        _ = h.VersionControl.GetHeadShaAsync(
+                h.TargetDir, Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<string>(new InvalidOperationException(
+                "Failed to get HEAD SHA: Git does not trust repository '/repo'. Configure this repo as a safe.directory before running Hone. Original git output: fatal: detected dubious ownership in repository at '/repo'")));
+
+        LoopResult result = await h.Runner.RunAsync(h.MakeOptions(maxExperiments: 1));
+
+        _ = result.ExitReason.Should().Be("preflight_failed");
+        _ = result.ExperimentsRun.Should().Be(0);
+        _ = await h.Pipeline.DidNotReceive().PrepareAsync(
+            Arg.Any<string>(), Arg.Any<HoneConfig>(), Arg.Any<CancellationToken>());
+        h.EventSink.Received().Emit(Arg.Is<StatusMessage>(message =>
+            message.Level == LogLevel.Error
+            && message.Message.Contains("safe.directory", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task RunAsync_PassesRuntimeBaseUrlIntoLoadTests()
     {
         TestHarness h = CreateHarness(configurePipeline: pipeline =>
@@ -443,6 +466,12 @@ public sealed class HoneLoopRunnerTests(ITestOutputHelper output)
 
         Received.InOrder(() =>
         {
+            _ = h.VersionControl.GetCurrentBranchAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.GetHeadShaAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
+            _ = h.VersionControl.IsWorkingTreeCleanAsync(
+                h.TargetDir, Arg.Any<CancellationToken>());
             _ = h.VersionControl.LocalBranchExistsAsync(
                 h.TargetDir, "main", Arg.Any<CancellationToken>());
             _ = h.VersionControl.GetCurrentBranchAsync(

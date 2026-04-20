@@ -53,10 +53,11 @@ public static class AnalysisContextBuilder
 
     internal static IReadOnlyList<string> CollectSourceFilePaths(string targetDir, ApiConfig api)
     {
-        string projectPath = Path.Combine(targetDir, api.ProjectPath);
+        string fullTargetDir = Path.GetFullPath(targetDir);
+        string projectPath = Path.GetFullPath(Path.Combine(fullTargetDir, api.ProjectPath));
         string glob = string.IsNullOrEmpty(api.SourceFileGlob) ? "*.*" : api.SourceFileGlob;
 
-        List<string> results = CollectFromPaths(targetDir, projectPath, api.SourceCodePaths, glob);
+        List<string> results = CollectFromPaths(fullTargetDir, projectPath, api.SourceCodePaths, glob);
 
         // Fallback: if configured paths yielded zero files, auto-detect source directories
         if (results.Count == 0 && Directory.Exists(projectPath))
@@ -64,7 +65,7 @@ public static class AnalysisContextBuilder
             foreach (string fallbackGlob in GetFallbackSourceFileGlobs(glob))
             {
                 IReadOnlyList<string> detectedPaths = DetectSourceDirectories(projectPath, fallbackGlob);
-                results = CollectFromPaths(targetDir, projectPath, detectedPaths, fallbackGlob);
+                results = CollectFromPaths(fullTargetDir, projectPath, detectedPaths, fallbackGlob);
 
                 if (results.Count > 0)
                 {
@@ -101,24 +102,73 @@ public static class AnalysisContextBuilder
         string targetDir, string projectPath, IReadOnlyList<string> subPaths, string glob)
     {
         List<string> results = [];
+        var seenDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (string subPath in subPaths)
         {
-            string searchDir = Path.Combine(projectPath, subPath);
-            if (!Directory.Exists(searchDir))
+            foreach (string searchDir in ResolveSearchDirectories(targetDir, projectPath, subPath))
             {
-                continue;
-            }
+                if (!seenDirectories.Add(searchDir) || !Directory.Exists(searchDir))
+                {
+                    continue;
+                }
 
-            foreach (string file in Directory.EnumerateFiles(searchDir, glob, SearchOption.AllDirectories))
-            {
-                string relative = Path.GetRelativePath(targetDir, file);
-                results.Add(relative);
+                foreach (string file in Directory.EnumerateFiles(searchDir, glob, SearchOption.AllDirectories))
+                {
+                    string relative = NormalizePath(Path.GetRelativePath(targetDir, file));
+                    results.Add(relative);
+                }
             }
         }
 
-        return results;
+        return
+        [
+            .. results
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
+        ];
     }
+
+    private static IEnumerable<string> ResolveSearchDirectories(
+        string targetDir,
+        string projectPath,
+        string subPath)
+    {
+        if (string.IsNullOrWhiteSpace(subPath))
+        {
+            yield break;
+        }
+
+        foreach (string basePath in new[] { targetDir, projectPath })
+        {
+            string candidate = Path.GetFullPath(Path.Combine(basePath, subPath));
+            if (IsWithinTargetRoot(candidate, targetDir))
+            {
+                yield return candidate;
+            }
+        }
+    }
+
+    private static bool IsWithinTargetRoot(string candidatePath, string targetDir)
+    {
+        string fullTargetDir = Path.GetFullPath(targetDir)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string fullCandidate = Path.GetFullPath(candidatePath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (string.Equals(fullCandidate, fullTargetDir, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return fullCandidate.StartsWith(
+            fullTargetDir + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizePath(string path) =>
+        path.Replace('\\', '/');
 
     /// <summary>
     /// Lightweight auto-detection of source directories under a project path.
@@ -150,7 +200,7 @@ public static class AnalysisContextBuilder
                 bool hasFiles = Directory.EnumerateFiles(dir, glob, SearchOption.TopDirectoryOnly).Any();
                 if (hasFiles)
                 {
-                    detected.Add(relative.Replace('\\', '/'));
+                    detected.Add(NormalizePath(relative));
                 }
             }
         }

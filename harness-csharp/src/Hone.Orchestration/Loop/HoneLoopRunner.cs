@@ -73,6 +73,15 @@ internal sealed class HoneLoopRunner
             experiments,
             initialBestP95: double.PositiveInfinity);
         RunStateDocument? runState = await _runStateStore.LoadAsync(ct).ConfigureAwait(false);
+        RepositoryPreflightResult preflight = await PreflightRepositoryAccessAsync(
+            targetDir,
+            resultsPath,
+            ct).ConfigureAwait(false);
+        if (!preflight.Success)
+        {
+            return StopForPreflightFailure(preflight.Message, startupState, sw);
+        }
+
         StartupGateResult startupGate = await ValidateStartupAsync(
             targetDir,
             resultsPath,
@@ -1244,6 +1253,55 @@ internal sealed class HoneLoopRunner
         return await _versionControl.IsWorkingTreeCleanAsync(targetDir, ct).ConfigureAwait(false);
     }
 
+    private async Task<RepositoryPreflightResult> PreflightRepositoryAccessAsync(
+        string targetDir,
+        string resultsPath,
+        CancellationToken ct)
+    {
+        try
+        {
+            _ = await _versionControl.GetCurrentBranchAsync(targetDir, ct).ConfigureAwait(false);
+            _ = await _versionControl.GetHeadShaAsync(targetDir, ct).ConfigureAwait(false);
+            _ = await IsManagedWorkingTreeCleanAsync(targetDir, resultsPath, ct).ConfigureAwait(false);
+
+            return RepositoryPreflightResult.Succeeded;
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new RepositoryPreflightResult(
+                Success: false,
+                Message: $"Repository preflight failed: {ex.Message}");
+        }
+    }
+
+    private LoopResult StopForPreflightFailure(
+        string message,
+        LoopState state,
+        Stopwatch sw)
+    {
+        _eventSink.Emit(new StatusMessage(
+            message,
+            LogLevel.Error,
+            DateTimeOffset.UtcNow,
+            Experiment: null));
+
+        sw.Stop();
+        _eventSink.Emit(new PhaseCompleted(
+            "loop", sw.Elapsed, Success: false,
+            DateTimeOffset.UtcNow, Experiment: null));
+
+        return new LoopResult(
+            ExitReason: "preflight_failed",
+            ExperimentsRun: 0,
+            SuccessCount: state.SuccessCount,
+            BestP95: NormalizeBestP95(state.BestP95),
+            BestExperiment: state.BestExperiment,
+            BaselineP95: double.NaN,
+            PrChain: [.. state.PrChain],
+            BranchChain: [.. state.BranchChain],
+            FailedExperiments: [.. state.FailedExperiments]);
+    }
+
     private async Task<LoopResult> StopForRepairRequiredAsync(
         StartupGateResult startupGate,
         LoopState state,
@@ -1921,6 +1979,15 @@ internal sealed class HoneLoopRunner
         CurrentExperimentState CurrentExperiment,
         QueueItem QueueItem,
         string StableHeadSha);
+
+    private readonly record struct RepositoryPreflightResult(
+        bool Success,
+        string Message)
+    {
+        internal static RepositoryPreflightResult Succeeded { get; } = new(
+            Success: true,
+            Message: string.Empty);
+    }
 
     private sealed record StartupGateResult(
         bool CanContinue,

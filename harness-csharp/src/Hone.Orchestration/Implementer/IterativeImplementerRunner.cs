@@ -49,25 +49,24 @@ internal sealed class IterativeImplementerRunner
 
         string branchName = $"{options.BranchPrefix}-{options.Experiment}";
         string targetFile = ResolveTargetFile(options.FilePath, options.TargetName);
-        string fullTargetPath = Path.Combine(options.TargetDir, targetFile);
+        string fullTargetPath = GetFullTargetPath(options.TargetDir, targetFile);
 
         // If the resolved path doesn't exist, try the original (unstripped) path.
         // This handles cases where targetName matches a real directory in the repo.
         if (!File.Exists(fullTargetPath))
         {
-            string originalFull = Path.Combine(options.TargetDir, options.FilePath.Trim());
-            if (File.Exists(originalFull))
+            string originalCandidate = options.FilePath.Trim();
+            string originalFull = GetFullTargetPath(options.TargetDir, originalCandidate);
+            if (IsPathWithinTargetRoot(originalFull, options.TargetDir) && File.Exists(originalFull))
             {
-                targetFile = options.FilePath.Trim();
+                targetFile = originalCandidate;
                 fullTargetPath = originalFull;
             }
         }
 
-        // Validate target directory exists
-        string? parentDir = Path.GetDirectoryName(fullTargetPath);
-        if (parentDir is null || !Directory.Exists(parentDir))
+        if (!IsPathWithinTargetRoot(fullTargetPath, options.TargetDir) || !File.Exists(fullTargetPath))
         {
-            string detail = $"Target path could not be resolved: {targetFile}";
+            string detail = $"Target path could not be resolved to an existing file: {targetFile}";
             _eventSink.Emit(new StatusMessage(
                 $"Invalid experiment target path: {targetFile}",
                 LogLevel.Warning,
@@ -498,6 +497,26 @@ internal sealed class IterativeImplementerRunner
         }
 
         return targetFile;
+    }
+
+    private static string GetFullTargetPath(string targetDir, string targetFile) =>
+        Path.GetFullPath(Path.Combine(targetDir, targetFile));
+
+    private static bool IsPathWithinTargetRoot(string fullPath, string targetDir)
+    {
+        string fullTargetRoot = Path.GetFullPath(targetDir)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedFullPath = Path.GetFullPath(fullPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (string.Equals(normalizedFullPath, fullTargetRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return normalizedFullPath.StartsWith(
+            fullTargetRoot + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     internal static string? LimitErrorText(string? text, int maxLength = MaxErrorTextLength)

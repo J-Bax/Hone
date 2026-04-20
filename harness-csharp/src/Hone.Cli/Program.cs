@@ -103,7 +103,7 @@ internal static class Program
             var options = new LoopOptions(
                 TargetDir: targetDir,
                 Config: config,
-                TargetName: config.Name ?? Path.GetFileName(targetDir),
+                TargetName: ResolveTargetName(config, targetDir),
                 DefaultBranch: config.BaseBranch ?? "main",
                 ResultsPath: config.Api.ResultsPath,
                 DryRun: dryRun,
@@ -245,7 +245,7 @@ internal static class Program
 
                 MachineInfo machineInfo = await pipeline.GetMachineInfoAsync(ct).ConfigureAwait(false);
                 var metadata = new RunMetadata(
-                    TargetName: Path.GetFileName(targetDir),
+                    TargetName: ResolveTargetName(config, targetDir),
                     StartedAt: DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture),
                     MachineInfo: machineInfo,
                     Experiments: []);
@@ -704,6 +704,16 @@ internal static class Program
         var engine = new HoneConfig();
         HoneConfig target = ConfigLoader.Load(configPath);
         return ConfigMerger.Merge(engine, target, cli);
+    }
+
+    internal static string ResolveTargetName(HoneConfig config, string targetDir)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetDir);
+
+        return !string.IsNullOrWhiteSpace(config.Name)
+            ? config.Name
+            : Path.GetFileName(Path.TrimEndingDirectorySeparator(targetDir));
     }
 
     internal static TargetConfig LoadTargetConfig(string configPath) =>

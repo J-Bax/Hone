@@ -80,6 +80,30 @@ Hooks:
     }
 
     [Fact]
+    public void ResolveTargetName_UsesConfiguredName()
+    {
+        string targetDir = CreateTargetDir("resolve-target-name-configured");
+
+        string targetName = Program.ResolveTargetName(
+            new HoneConfig(Name: "ConfiguredTarget"),
+            targetDir);
+
+        _ = targetName.Should().Be("ConfiguredTarget");
+    }
+
+    [Fact]
+    public void ResolveTargetName_FallsBackToDirectoryName()
+    {
+        string targetDir = CreateTargetDir("resolve-target-name-fallback");
+
+        string targetName = Program.ResolveTargetName(
+            new HoneConfig(),
+            targetDir);
+
+        _ = targetName.Should().Be("resolve-target-name-fallback");
+    }
+
+    [Fact]
     public void ValidateConfiguration_MissingBuildAndTestHooks_Fails()
     {
         string targetDir = CreateTargetDir("validate-target", builder =>

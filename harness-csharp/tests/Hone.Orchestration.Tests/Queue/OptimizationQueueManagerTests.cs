@@ -246,6 +246,38 @@ public sealed class OptimizationQueueManagerTests(ITestOutputHelper output) : Ho
     }
 
     [Fact]
+    public void RelativeMetadataDirectory_RemainsStableWhenCurrentDirectoryChanges()
+    {
+        string originalCurrentDirectory = Environment.CurrentDirectory;
+        string managerRoot = CreateTargetDir("relative-manager-root");
+        string alternateRoot = CreateTargetDir("relative-manager-alt");
+
+        try
+        {
+            Environment.CurrentDirectory = managerRoot;
+
+            IHoneEventSink sink = Substitute.For<IHoneEventSink>();
+            var manager = new OptimizationQueueManager(Path.Combine("hone-results", "metadata"), sink);
+            _ = manager.Initialize(CreateTestOpportunities(), 0);
+            _ = manager.GetNext(1);
+
+            Environment.CurrentDirectory = alternateRoot;
+            manager.MarkDone("1", "improved", 1);
+
+            string jsonPath = Path.Combine(managerRoot, "hone-results", "metadata", "experiment-queue.json");
+            using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath, Encoding.UTF8));
+            JsonElement item1 = doc.RootElement.GetProperty("items")[0];
+
+            _ = item1.GetProperty("status").GetString().Should().Be("done");
+            _ = Directory.Exists(Path.Combine(alternateRoot, "hone-results")).Should().BeFalse();
+        }
+        finally
+        {
+            Environment.CurrentDirectory = originalCurrentDirectory;
+        }
+    }
+
+    [Fact]
     public void ConcurrentRead_SafeDuringWrite()
     {
         // Arrange
